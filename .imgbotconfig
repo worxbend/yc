@@ -1,0 +1,7 @@
+{
+  "ignoredFiles": [
+    "docs/assets/screenshots/*.svg",
+    "site/assets/screenshots/*.svg"
+  ],
+  "aggressiveCompression": "false"
+}
