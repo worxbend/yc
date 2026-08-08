@@ -1,0 +1,84 @@
+# --- AI agents / assistants ---
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+GEMINI.md
+.claude/
+.codex/
+.gemini/
+.cursor/
+.cursorrules
+.aider*
+.windsurfrules
+.github/copilot-instructions.md
+.mcp.json
+.continue/
+.roo/
+.kilocode/
+.serena/
+.specstory/
+.repomix/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Editors ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Credentials / local state ---
+# yc writes credentials.json and the estimated quota ledger under the platform
+# config and cache directories, but an isolated XDG_* run or a Docker bind mount
+# can land them in the working tree.
+credentials.json
+*credentials*.json
+config.toml
+.local/
+quota/
+
+# --- Go build output ---
+/yc
+/bin/
+/dist/
+/build/
+/out/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.prof
+*.pprof
+*.coverprofile
+coverage.txt
+coverage.html
+/vendor/
+go.work
+go.work.sum
+.gocache/
+.gomodcache/
+
+# --- Site build output ---
+# scripts/build-site.sh assembles _site/ from site/ plus a mirror of
+# docs/assets/screenshots/. site/ is the tracked source; _site/ is generated
+# and is what .github/workflows/pages.yml rebuilds on the runner. The mirrored
+# screenshots under site/assets/screenshots/ are ignored by site/assets/.gitignore,
+# next to what they cover.
+/_site/
+
+# --- Build / logs / temp ---
+*.log
+tmp/
+temp/
+.cache/

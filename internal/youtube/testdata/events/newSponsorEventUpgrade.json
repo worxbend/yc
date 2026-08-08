@@ -1,0 +1,10 @@
+{
+  "id": "msg-newsponsor-2",
+  "snippet": {
+    "type": "newSponsorEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:03:30Z",
+    "newSponsorDetails": {"memberLevelName": "Super Supporter", "isUpgrade": true}
+  },
+  "authorDetails": {"channelId": "UCauthor0000000000000006", "displayName": "Upgraded Member", "isChatSponsor": true}
+}

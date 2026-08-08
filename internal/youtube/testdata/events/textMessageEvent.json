@@ -1,0 +1,25 @@
+{
+  "id": "msg-text-1",
+  "etag": "etag-text-1",
+  "snippet": {
+    "type": "textMessageEvent",
+    "liveChatId": "live-chat-1",
+    "authorChannelId": "UCauthor0000000000000001",
+    "publishedAt": "2026-08-08T20:00:00Z",
+    "hasDisplayContent": true,
+    "displayMessage": "hello @Streamer :_wave: 🎉 https://example.com/x",
+    "textMessageDetails": {
+      "messageText": "hello @Streamer :_wave: 🎉 https://example.com/x"
+    }
+  },
+  "authorDetails": {
+    "channelId": "UCauthor0000000000000001",
+    "channelUrl": "https://www.youtube.com/channel/UCauthor0000000000000001",
+    "displayName": "Regular Viewer",
+    "profileImageUrl": "https://yt3.example/photo.jpg",
+    "isVerified": false,
+    "isChatOwner": false,
+    "isChatSponsor": false,
+    "isChatModerator": false
+  }
+}

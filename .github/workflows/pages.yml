@@ -1,0 +1,132 @@
+name: Pages
+
+# Publishes the static site in site/ to https://worxbend.github.io/yc/.
+# The site is hand-written HTML and CSS with no build step and no external
+# requests, so "build" here means assemble and sanity-check a directory.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "site/**"
+      - "docs/assets/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time. A half-finished deploy is never cancelled; a newer
+# commit simply queues behind it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Assemble the site directory
+        env:
+          # Do not create the site/assets/screenshots/ convenience mirror on the
+          # runner. It only exists so site/index.html renders when opened
+          # straight off a developer's filesystem; the published tree gets its
+          # copy from docs/assets/ either way.
+          YC_SITE_NO_MIRROR: "1"
+        run: |
+          set -euo pipefail
+          # This calls the same script a developer runs, rather than repeating
+          # its copy rules here. The two implementations had already drifted
+          # once: this step used to mirror docs/assets/ to assets/docs/, while
+          # index.html asks for assets/screenshots/, so every screenshot on the
+          # published site would have 404'd. One assembly path, exercised
+          # locally, is the fix.
+          bash scripts/build-site.sh "$RUNNER_TEMP/site"
+
+          find "$RUNNER_TEMP/site" -type f | sort
+          du -sh "$RUNNER_TEMP/site"
+
+      - name: Site sanity checks
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/site"
+          failed=0
+
+          # A published page that reaches out to a CDN is a page that leaks a
+          # visitor's IP to a third party and breaks when that host does.
+          hits=$(grep -rniE \
+            'src="https?://|href="https?://[^"]*\.(css|js)|@import[[:space:]]+url\(https?:' \
+            "$out" --include='*.html' --include='*.css' || true)
+          if [ -n "$hits" ]; then
+            echo "the site must not load assets from another host:"
+            printf '%s\n' "$hits"
+            failed=1
+          fi
+
+          # Every local href/src must resolve inside the published tree.
+          python3 - "$out" <<'PY'
+          import os
+          import re
+          import sys
+
+          root = sys.argv[1]
+          reference = re.compile(r'(?:href|src)="([^"]+)"', re.IGNORECASE)
+          external = re.compile(r'^(https?:|mailto:|tel:|data:|#|//)')
+          problems = []
+
+          for base, _, names in os.walk(root):
+              for name in names:
+                  if not name.endswith((".html", ".css")):
+                      continue
+                  path = os.path.join(base, name)
+                  with open(path, encoding="utf-8", errors="replace") as handle:
+                      text = handle.read()
+                  for target in reference.findall(text):
+                      if external.match(target):
+                          continue
+                      clean = target.split("#", 1)[0].split("?", 1)[0]
+                      if not clean:
+                          continue
+                      if clean.startswith("/"):
+                          resolved = os.path.join(root, clean.lstrip("/"))
+                      else:
+                          resolved = os.path.join(base, clean)
+                      if not os.path.exists(resolved):
+                          problems.append("%s -> %s" % (
+                              os.path.relpath(path, root), target))
+
+          for problem in problems:
+              print("dangling reference: %s" % problem)
+          sys.exit(1 if problems else 0)
+          PY
+
+          exit "$failed"
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/site
+
+  deploy:
+    name: Deploy to Pages
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

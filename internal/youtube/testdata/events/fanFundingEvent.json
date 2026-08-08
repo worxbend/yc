@@ -1,0 +1,15 @@
+{
+  "id": "msg-fanfunding-1",
+  "snippet": {
+    "type": "fanFundingEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:07:00Z",
+    "fanFundingEventDetails": {
+      "amountMicros": "1500000",
+      "currency": "GBP",
+      "amountDisplayString": "£1.50",
+      "userComment": "a tip from the old days"
+    }
+  },
+  "authorDetails": {"channelId": "UCauthor0000000000000012", "displayName": "Nostalgic Viewer"}
+}

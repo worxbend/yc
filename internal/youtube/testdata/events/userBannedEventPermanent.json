@@ -1,0 +1,13 @@
+{
+  "id": "msg-banned-2",
+  "snippet": {
+    "type": "userBannedEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:10:30Z",
+    "userBannedDetails": {
+      "bannedUserDetails": {"channelId": "UCspam0000000000000000002", "displayName": "Repeat Offender"},
+      "banType": "permanent"
+    }
+  },
+  "authorDetails": {"channelId": "UCowner00000000000000001", "displayName": "Streamer", "isChatOwner": true}
+}

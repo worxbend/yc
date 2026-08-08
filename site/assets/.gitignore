@@ -1,0 +1,4 @@
+# Mirrored from docs/assets/screenshots/ by scripts/build-site.sh so that
+# site/index.html also renders when opened straight off the filesystem.
+# docs/assets/ holds the only tracked copy.
+/screenshots/

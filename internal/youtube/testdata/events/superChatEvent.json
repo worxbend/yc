@@ -1,0 +1,22 @@
+{
+  "id": "msg-superchat-1",
+  "snippet": {
+    "type": "superChatEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:01:00Z",
+    "hasDisplayContent": true,
+    "displayMessage": "keep going!",
+    "superChatDetails": {
+      "amountMicros": "5000000",
+      "currency": "USD",
+      "amountDisplayString": "$5.00",
+      "userComment": "keep going!",
+      "tier": 3
+    }
+  },
+  "authorDetails": {
+    "channelId": "UCauthor0000000000000002",
+    "displayName": "Generous Viewer",
+    "isChatSponsor": true
+  }
+}

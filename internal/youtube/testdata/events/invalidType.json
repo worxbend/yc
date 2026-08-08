@@ -1,0 +1,10 @@
+{
+  "id": "msg-invalid-1",
+  "snippet": {
+    "type": "invalidType",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:14:00Z",
+    "displayMessage": "an event yc cannot classify"
+  },
+  "authorDetails": {"channelId": "UCauthor0000000000000013", "displayName": "Mystery"}
+}

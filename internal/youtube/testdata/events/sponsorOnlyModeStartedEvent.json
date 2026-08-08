@@ -1,0 +1,10 @@
+{
+  "id": "msg-sponsoronly-1",
+  "snippet": {
+    "type": "sponsorOnlyModeStartedEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:11:00Z",
+    "displayMessage": "Members-only mode is on"
+  },
+  "authorDetails": {"channelId": "UCowner00000000000000001", "displayName": "Streamer", "isChatOwner": true}
+}

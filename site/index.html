@@ -1,0 +1,1886 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>yc — YouTube live chat that lives in your terminal</title>
+<meta name="description" content="yc is a keyboard-first terminal YouTube live chat client written in Go. 58 themes, three message layouts, and a quota meter that makes 10,000 API units last a whole day.">
+<link rel="icon" href="assets/yc-logo.svg" type="image/svg+xml">
+
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://worxbend.github.io/yc/">
+<meta property="og:title" content="yc — YouTube live chat that lives in your terminal">
+<meta property="og:description" content="Keyboard-first terminal YouTube live chat. 58 themes, budget-aware polling, secrets redacted by design.">
+<meta property="og:image" content="https://worxbend.github.io/yc/assets/yc-banner.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0b0708" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#faf7f8" media="(prefers-color-scheme: light)">
+
+<script>
+/* Theme bootstrap. Runs before first paint so a saved choice never flashes.
+   Three states: "auto" (follow the OS), "light", "dark". */
+(function () {
+  try {
+    var t = localStorage.getItem('yc-theme');
+    if (t === 'light' || t === 'dark') {
+      document.documentElement.setAttribute('data-theme', t);
+    }
+  } catch (e) { /* private mode, file:// with storage disabled — auto is fine */ }
+})();
+</script>
+
+<style>
+/* ============================================================================
+   Tokens.
+
+   The dark palette IS the `yc` preset from internal/theme/presets.go, verbatim.
+   Three tokens (--bg-soft, --panel-2, --line-soft) are interpolations on that
+   preset's own ramp, not new hues, which is why `yc chat --theme yc` in a
+   terminal and this page in a browser are the same object.
+
+   Every colour below is a var() or a color-mix(). The only literal hexes in
+   this stylesheet are the .term component's locked block (a terminal is dark on
+   a white page or it is a lie) and the theme swatches, where the hexes ARE the
+   data being shown.
+   ========================================================================= */
+:root {
+  color-scheme: light dark;
+
+  /* surfaces */
+  --bg:        #0b0708;   /* preset Background */
+  --bg-soft:   #100b0c;   /* derived: bg -> surface, 40% */
+  --panel:     #150e10;   /* preset Surface */
+  --panel-2:   #1d1316;   /* derived: one step above Surface */
+  --line:      #3a2429;   /* preset Border */
+  --line-soft: #241619;   /* derived: quiet hairline */
+
+  /* ink */
+  --text:      #f4eef0;   /* preset Foreground */
+  --muted:     #948a8d;   /* preset Muted */
+
+  /* accent + semantics */
+  --brand:      #ff2d46;  /* preset Accent */
+  --brand-soft: #ff7a8c;  /* derived tint, text-safe on the dark canvas */
+  --warn:       #ffb340;  /* preset Warning */
+  --err:        #ff7a6b;  /* preset Error */
+  --ok:         #5ce0a0;  /* preset Success */
+
+  /* non-text fills that stay vivid in both schemes (>=3:1 is the bar there) */
+  --brand-vivid: #ff2d46;
+  --warn-vivid:  #ffb340;
+  --btn-ink:     #14090b;  /* near-black ink on the red button: 5.2:1 */
+
+  /* display gradient stops (large text only, >=3:1 in both schemes) */
+  --grad-a: #ff7a8c;
+  --grad-b: #ff2d46;
+  --grad-c: #ffb340;
+
+  /* geometry */
+  --radius:    16px;
+  --radius-sm: 10px;
+  --radius-xs: 6px;
+  --maxw:      1140px;
+  --shadow-lg: 0 40px 90px -40px rgba(0,0,0,.85);
+  --shadow-md: 0 24px 60px -34px rgba(0,0,0,.75);
+
+  /* type */
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+          "DejaVu Sans Mono", "Liberation Mono", "Courier New", monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Inter,
+          "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Light. Declared twice on purpose: once for the OS preference (unless the
+   reader has explicitly chosen dark) and once for the explicit toggle, so the
+   manual choice wins in both directions. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:        #faf7f8;
+    --bg-soft:   #ffffff;
+    --panel:     #ffffff;
+    --panel-2:   #f4eef0;
+    --line:      #e3d5d9;
+    --line-soft: #efe6e8;
+    --text:      #1a1215;
+    --muted:     #6b5d61;
+    --brand:      #d10f2d;
+    --brand-soft: #a80a23;
+    --warn:       #8f5600;
+    --err:        #c0362a;
+    --ok:         #0a7d51;
+    --grad-a: #e0102f;
+    --grad-b: #d10f2d;
+    --grad-c: #a8390a;
+    --shadow-lg: 0 40px 90px -50px rgba(26,18,21,.28);
+    --shadow-md: 0 24px 60px -40px rgba(26,18,21,.20);
+  }
+}
+:root[data-theme="light"] {
+  --bg:        #faf7f8;
+  --bg-soft:   #ffffff;
+  --panel:     #ffffff;
+  --panel-2:   #f4eef0;
+  --line:      #e3d5d9;
+  --line-soft: #efe6e8;
+  --text:      #1a1215;
+  --muted:     #6b5d61;
+  --brand:      #d10f2d;
+  --brand-soft: #a80a23;
+  --warn:       #8f5600;
+  --err:        #c0362a;
+  --ok:         #0a7d51;
+  --grad-a: #e0102f;
+  --grad-b: #d10f2d;
+  --grad-c: #a8390a;
+  --shadow-lg: 0 40px 90px -50px rgba(26,18,21,.28);
+  --shadow-md: 0 24px 60px -40px rgba(26,18,21,.20);
+}
+
+@media (prefers-contrast: more) {
+  :root { --muted: #c2b8bb; --line: #5a3a41; --line-soft: #3a2429; }
+  :root[data-theme="light"] { --muted: #4a3f42; --line: #b9a4aa; --line-soft: #d8c7cc; }
+}
+@media (prefers-color-scheme: light) and (prefers-contrast: more) {
+  :root:not([data-theme="dark"]) { --muted: #4a3f42; --line: #b9a4aa; --line-soft: #d8c7cc; }
+}
+
+/* ---------- base ---------- */
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 1rem;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+a { color: inherit; }
+img, svg { max-width: 100%; }
+h1, h2, h3 { text-wrap: balance; }
+.wrap { width: min(100% - 2.5rem, var(--maxw)); margin-inline: auto; }
+section { padding: 4rem 0; }
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+  border-radius: var(--radius-xs);
+}
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+  white-space: nowrap; border: 0;
+}
+
+.skip {
+  position: absolute; left: -9999px; top: 0; z-index: 100;
+  padding: .7rem 1.1rem; border-radius: var(--radius-sm);
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--brand); text-decoration: none; font-weight: 600;
+}
+.skip:focus { left: 1rem; top: 1rem; }
+
+code, .code { font-family: var(--mono); font-size: .9rem; line-height: 1.55; }
+code { color: var(--brand-soft); }
+kbd {
+  font-family: var(--mono); font-size: .8rem; line-height: 1;
+  padding: .2rem .5rem; border-radius: var(--radius-xs);
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-bottom-width: 2px; white-space: nowrap; color: var(--text);
+  display: inline-block;
+}
+
+/* ---------- nav ---------- */
+header.nav {
+  position: sticky; top: 0; z-index: 50;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border-bottom: 1px solid var(--line);
+}
+.nav-inner { display: flex; align-items: center; gap: 1rem; padding: .8rem 0; }
+.brand {
+  display: flex; align-items: center; gap: .55rem; text-decoration: none;
+  font-family: var(--mono); font-weight: 700; font-size: 1.25rem; letter-spacing: -.5px;
+}
+.brand .dot {
+  width: 10px; height: 10px; border-radius: 50%; flex: none;
+  background: linear-gradient(135deg, var(--brand-vivid), var(--warn-vivid));
+  box-shadow: 0 0 14px var(--brand-vivid);
+}
+.nav-links { margin-left: auto; display: flex; gap: 1.3rem; align-items: center; }
+.nav-links a {
+  text-decoration: none; color: var(--muted); font-size: .93rem; font-weight: 500;
+  transition: color .15s;
+}
+.nav-links a:hover { color: var(--text); }
+.nav-cta {
+  padding: .45rem .95rem; border-radius: 999px;
+  min-height: 34px; display: inline-flex; align-items: center;
+  border: 1px solid color-mix(in srgb, var(--brand) 55%, transparent);
+  background: color-mix(in srgb, var(--brand) 16%, transparent);
+  color: var(--brand-soft) !important;
+}
+.theme-toggle {
+  font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; gap: .45rem;
+  min-height: 34px; padding: .35rem .8rem; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+  transition: color .15s, border-color .15s;
+}
+.theme-toggle:hover { color: var(--text); border-color: color-mix(in srgb, var(--brand) 50%, transparent); }
+.theme-toggle .ti { font-size: 1rem; line-height: 1; }
+@media (max-width: 760px) {
+  .nav-links { gap: .6rem; }
+  .nav-links a:not(.nav-cta) { display: none; }
+  .nav-cta, .theme-toggle { min-height: 44px; }
+}
+
+/* ---------- hero ---------- */
+.hero { position: relative; padding: 4.5rem 0 3rem; overflow: hidden; }
+.hero::before, .hero::after {
+  content: ""; position: absolute; border-radius: 50%; filter: blur(80px);
+  z-index: 0; pointer-events: none;
+}
+.hero::before {
+  width: 620px; height: 460px; left: -180px; top: -160px;
+  background: color-mix(in srgb, var(--brand-vivid) 30%, transparent);
+}
+.hero::after {
+  width: 560px; height: 420px; right: -180px; top: 120px;
+  background: color-mix(in srgb, var(--warn-vivid) 16%, transparent);
+}
+.hero .wrap { position: relative; z-index: 1; }
+.hero-grid {
+  display: grid; gap: 2.4rem; align-items: center;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+}
+.hero-grid > * { min-width: 0; }
+@media (max-width: 900px) { .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 1.8rem; } }
+
+.logo-wrap { margin-bottom: 1.2rem; overflow-x: auto; }
+.logo {
+  margin: 0; font-family: var(--mono); font-weight: 700;
+  font-size: clamp(9px, 2.1vw, 20px); line-height: 1.02; letter-spacing: 0;
+  font-variant-ligatures: none; white-space: pre; tab-size: 0;
+  color: var(--brand);
+  background: linear-gradient(110deg, var(--grad-a), var(--grad-b) 48%, var(--grad-c));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
+@supports not ((background-clip: text) or (-webkit-background-clip: text)) {
+  .logo { color: var(--brand); -webkit-text-fill-color: currentColor; }
+}
+
+.eyebrow {
+  display: inline-flex; align-items: center; gap: .5rem;
+  font-family: var(--mono); font-size: .78rem; font-weight: 500;
+  letter-spacing: .06em; text-transform: uppercase; line-height: 1.4;
+  padding: .35rem .8rem; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--brand) 45%, transparent);
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  color: var(--brand-soft);
+}
+h1 {
+  font-size: clamp(2.5rem, 6vw, 4.25rem); line-height: 1.05; font-weight: 800;
+  letter-spacing: -.03em; margin: 1.1rem 0 .6rem;
+}
+h1 .grad {
+  background: linear-gradient(110deg, var(--grad-a), var(--grad-b) 45%, var(--grad-c));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
+
+.typeline {
+  font-family: var(--mono); font-size: .95rem; color: var(--muted);
+  margin: 0 0 1rem; display: flex; gap: .5rem; align-items: baseline;
+  overflow-x: auto; white-space: nowrap;
+}
+.typeline .prompt { color: var(--ok); font-weight: 600; }
+.type-slot { position: relative; display: inline-block; }
+.type-ghost { visibility: hidden; }
+.type-out { position: absolute; inset: 0 auto 0 0; white-space: pre; color: var(--text); }
+.caret {
+  display: inline-block; width: .58em; height: 1.05em; vertical-align: text-bottom;
+  background: var(--brand); animation: blink 1.05s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+.lede {
+  font-size: clamp(1.05rem, 2vw, 1.3rem); line-height: 1.6; color: var(--muted);
+  max-width: 62ch; margin: 0 0 1.6rem;
+}
+.cta-row { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  padding: .75rem 1.35rem; min-height: 44px; border-radius: 12px;
+  text-decoration: none; font-weight: 600; font-size: .97rem;
+  border: 1px solid transparent;
+  transition: transform .15s, box-shadow .15s, border-color .15s;
+}
+.btn-primary {
+  background: linear-gradient(135deg, var(--brand-vivid), color-mix(in srgb, var(--warn-vivid) 70%, var(--brand-vivid)));
+  color: var(--btn-ink);
+  box-shadow: 0 10px 30px -10px var(--brand-vivid);
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 16px 36px -12px var(--brand-vivid); }
+.btn-primary:focus-visible {
+  outline-color: #fff;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 45%, transparent);
+}
+.btn-ghost { border-color: var(--line); background: var(--panel); color: var(--text); }
+.btn-ghost:hover { border-color: color-mix(in srgb, var(--brand) 50%, transparent); transform: translateY(-2px); }
+
+.copyline { margin: 1.4rem 0 0; max-width: 34rem; }
+.copyline .hint { display: block; color: var(--muted); font-size: .85rem; margin-top: .5rem; }
+
+.frame-cap { color: var(--muted); font-size: .85rem; margin: .8rem 0 0; text-align: center; }
+.hero-shot { margin-top: 3rem; }
+
+/* ---------- generic section furniture ---------- */
+.section-head { max-width: 62ch; margin-bottom: 2.2rem; }
+.section-head h2 {
+  font-size: clamp(1.7rem, 3.4vw, 2.4rem); line-height: 1.15;
+  letter-spacing: -.02em; font-weight: 700; margin: .3rem 0 .6rem;
+}
+.section-head p { color: var(--muted); margin: 0; font-size: 1.05rem; line-height: 1.6; max-width: 60ch; }
+.kicker {
+  font-family: var(--mono); font-size: .8rem; font-weight: 500; line-height: 1.4;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--brand-soft);
+}
+.note {
+  border-left: 3px solid var(--brand);
+  background: color-mix(in srgb, var(--brand) 8%, transparent);
+  padding: .9rem 1.1rem; border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--muted); font-size: .95rem; margin: 0;
+}
+.note + .note { margin-top: .9rem; }
+.note strong { color: var(--text); }
+
+/* ---------- code + copy ---------- */
+.code-wrap { position: relative; margin: 0 0 .9rem; }
+.code {
+  background: var(--bg-soft); border: 1px solid var(--line); border-radius: 12px;
+  padding: 1rem 1.15rem; padding-right: 5rem; overflow-x: auto; white-space: pre;
+  color: var(--text); margin: 0;
+}
+.code .c { color: var(--muted); }
+.code .p { color: var(--ok); }
+.copy {
+  position: absolute; top: .55rem; right: .55rem;
+  font: inherit; font-family: var(--sans); font-size: .78rem; font-weight: 600;
+  cursor: pointer; padding: .3rem .7rem; min-height: 30px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+  opacity: .55; transition: opacity .15s, color .15s, border-color .15s;
+}
+.code-wrap:hover .copy, .copy:hover, .copy:focus-visible { opacity: 1; color: var(--text); }
+.copy:hover { border-color: color-mix(in srgb, var(--brand) 55%, transparent); }
+.copy.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 60%, transparent); opacity: 1; }
+
+/* ---------- quota ---------- */
+.stats { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom: 2rem; }
+.stat {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.2rem 1.3rem;
+}
+.stat .fig {
+  font-family: var(--mono); font-size: clamp(1.6rem, 3.5vw, 2.4rem); font-weight: 700;
+  line-height: 1.1; color: var(--text); display: block;
+}
+.stat .lab { color: var(--muted); font-size: .88rem; line-height: 1.5; display: block; margin-top: .35rem; }
+
+.cadence { display: grid; gap: 1.2rem; margin-bottom: 2rem; }
+.lane { display: grid; gap: .45rem; }
+.lane-head { display: flex; flex-wrap: wrap; gap: .6rem; align-items: baseline; justify-content: space-between; }
+.lane-head .who { font-weight: 600; font-size: .95rem; }
+.lane-head .who code { font-size: .85rem; }
+.lane-head .out { color: var(--muted); font-family: var(--mono); font-size: .82rem; }
+.track {
+  position: relative; height: 14px; border-radius: 999px;
+  background: var(--panel-2); border: 1px solid var(--line-soft); overflow: hidden;
+}
+.track .fill { display: block; height: 100%; border-radius: 999px; }
+.track.a .fill { background: linear-gradient(90deg, var(--err), var(--brand)); }
+.track.b .fill { background: linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--ok) 55%, var(--brand))); }
+.track.a::after {
+  content: ""; position: absolute; left: 11.6%; top: 0; bottom: 0;
+  border-left: 2px dashed color-mix(in srgb, var(--text) 55%, transparent);
+}
+.lane .mark { font-family: var(--mono); font-size: .74rem; color: var(--muted); }
+
+.meter {
+  display: flex; align-items: center; gap: .8rem; margin: 1.2rem 0 0;
+  padding: .9rem 1.1rem; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.meter .bar {
+  flex: 1 1 auto; height: 12px; border-radius: 999px; overflow: hidden;
+  background: var(--panel-2); border: 1px solid var(--line-soft);
+}
+.meter .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--ok), var(--warn) 70%, var(--err)); }
+.meter .read { font-family: var(--mono); font-size: .85rem; color: var(--muted); white-space: nowrap; }
+
+.quota-facts { margin: 1.4rem 0 0; padding-left: 1.1rem; color: var(--muted); }
+.quota-facts li { margin-bottom: .45rem; }
+.quota-facts strong { color: var(--text); }
+
+.calc {
+  margin-top: 2rem; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1.3rem 1.4rem;
+}
+.calc h3 { margin: 0 0 .2rem; font-size: 1.08rem; font-weight: 600; letter-spacing: -.01em; line-height: 1.35; }
+.calc p.sub { margin: 0 0 1rem; color: var(--muted); font-size: .92rem; }
+.calc label { display: block; font-size: .9rem; font-weight: 600; margin-bottom: .5rem; }
+.calc input[type=range] { width: 100%; accent-color: var(--brand); height: 30px; }
+.calc-out { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-top: 1rem; }
+.calc-out div { background: var(--bg-soft); border: 1px solid var(--line-soft); border-radius: var(--radius-sm); padding: .7rem .9rem; }
+.calc-out output { display: block; font-family: var(--mono); font-size: 1.25rem; font-weight: 700; color: var(--text); }
+.calc-out span { color: var(--muted); font-size: .82rem; }
+.calc .clamp { margin: .9rem 0 0; color: var(--warn); font-size: .85rem; min-height: 1.3em; }
+
+/* ---------- features ---------- */
+.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(275px, 1fr)); }
+.card {
+  background: var(--panel); border: 1px solid var(--line);
+  border-top: 2px solid color-mix(in srgb, var(--card-hue) 55%, transparent);
+  border-radius: var(--radius); padding: 1.4rem;
+  transition: transform .18s, border-color .18s;
+  --card-hue: var(--brand);
+}
+.card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--card-hue) 50%, transparent); }
+.card:nth-child(5n+1) { --card-hue: var(--brand); }
+.card:nth-child(5n+2) { --card-hue: #ffb340; }
+.card:nth-child(5n+3) { --card-hue: #5ce0a0; }
+.card:nth-child(5n+4) { --card-hue: #7aa2f7; }
+.card:nth-child(5n+5) { --card-hue: #cba6f7; }
+.card .ico { font-size: 1.5rem; line-height: 1; display: block; margin-bottom: .7rem; }
+.card h3 { margin: 0 0 .4rem; font-size: 1.08rem; font-weight: 600; line-height: 1.35; letter-spacing: -.01em; }
+.card p { margin: 0; color: var(--muted); font-size: .95rem; line-height: 1.6; }
+
+/* ---------- tab strips (CSS only, real radios) ---------- */
+.tabs { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.2rem; }
+.tabs label {
+  cursor: pointer; padding: .55rem 1rem; min-height: 44px;
+  display: inline-flex; align-items: center;
+  border-radius: 999px; font-size: .9rem; font-weight: 600;
+  border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+  transition: color .15s, background .15s, border-color .15s;
+}
+.tabs label:hover { color: var(--text); }
+
+.shots > input, .inst > input { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); }
+
+#s1:checked ~ .tabs label[for=s1],
+#s2:checked ~ .tabs label[for=s2],
+#s3:checked ~ .tabs label[for=s3],
+#s4:checked ~ .tabs label[for=s4],
+#i1:checked ~ .tabs label[for=i1],
+#i2:checked ~ .tabs label[for=i2],
+#i3:checked ~ .tabs label[for=i3],
+#i4:checked ~ .tabs label[for=i4] {
+  background: color-mix(in srgb, var(--brand) 18%, transparent);
+  border-color: color-mix(in srgb, var(--brand) 55%, transparent);
+  color: var(--brand-soft);
+}
+#s1:focus-visible ~ .tabs label[for=s1],
+#s2:focus-visible ~ .tabs label[for=s2],
+#s3:focus-visible ~ .tabs label[for=s3],
+#s4:focus-visible ~ .tabs label[for=s4],
+#i1:focus-visible ~ .tabs label[for=i1],
+#i2:focus-visible ~ .tabs label[for=i2],
+#i3:focus-visible ~ .tabs label[for=i3],
+#i4:focus-visible ~ .tabs label[for=i4] {
+  outline: 2px solid var(--brand); outline-offset: 3px;
+}
+
+/* the SVG screenshots carry their own window chrome, so the panel box is a
+   positioning container only — a second border would double the frame */
+.panelbox { border-radius: 12px; }
+.panelbox > figure { display: none; }
+#s1:checked ~ .panelbox > figure:nth-of-type(1),
+#s2:checked ~ .panelbox > figure:nth-of-type(2),
+#s3:checked ~ .panelbox > figure:nth-of-type(3),
+#s4:checked ~ .panelbox > figure:nth-of-type(4) { display: block; }
+
+.shot { margin: 0; background: none; border: none; padding: 0; }
+.shot img { display: block; width: 100%; height: auto; border-radius: 12px; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .shot img { filter: drop-shadow(0 30px 60px rgba(0,0,0,.5)); }
+}
+:root[data-theme="dark"] .shot img { filter: drop-shadow(0 30px 60px rgba(0,0,0,.5)); }
+.shot figcaption { padding: .85rem .25rem 0; color: var(--muted); font-size: .9rem; }
+.shot figcaption strong { color: var(--text); }
+
+.instpanels > div { display: none; }
+#i1:checked ~ .instpanels > div:nth-of-type(1),
+#i2:checked ~ .instpanels > div:nth-of-type(2),
+#i3:checked ~ .instpanels > div:nth-of-type(3),
+#i4:checked ~ .instpanels > div:nth-of-type(4) { display: block; }
+
+/* ---------- themes ---------- */
+.themes { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.theme {
+  border: 1px solid var(--line); border-radius: 12px; padding: .85rem;
+  background: var(--panel); transition: transform .18s, border-color .18s;
+}
+.theme:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+.theme .name {
+  font-family: var(--mono); font-size: .85rem; margin-bottom: .6rem;
+  display: flex; justify-content: space-between; align-items: center; gap: .5rem;
+}
+.theme .name .tag { font-size: .68rem; color: var(--muted); font-family: var(--sans); }
+.sw { display: flex; height: 28px; border-radius: 7px; overflow: hidden; border: 1px solid var(--line); }
+.sw span { flex: 1; }
+.themes-more { margin: 1.4rem 0 0; color: var(--muted); font-size: .95rem; }
+
+/* ---------- install ---------- */
+.steps { display: grid; gap: 1.6rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.steps h3 { margin: 0 0 .7rem; font-size: 1.08rem; font-weight: 600; line-height: 1.35; letter-spacing: -.01em; }
+.steps h3 .n { font-family: var(--mono); color: var(--brand-soft); margin-right: .5rem; }
+.modes { width: 100%; border-collapse: collapse; margin: 0 0 1rem; font-size: .9rem; }
+.modes th, .modes td { text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+.modes th { color: var(--text); font-weight: 600; }
+.modes td { color: var(--muted); }
+.modes td:first-child { color: var(--text); font-family: var(--mono); font-size: .85rem; white-space: nowrap; }
+
+/* ---------- keys ---------- */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: var(--radius); }
+table.keys { width: 100%; border-collapse: collapse; font-size: .93rem; }
+table.keys th, table.keys td { text-align: left; padding: .65rem .85rem; border-bottom: 1px solid var(--line-soft); }
+table.keys thead th { color: var(--muted); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; font-family: var(--mono); font-weight: 500; }
+table.keys tbody tr:last-child td { border-bottom: 0; }
+table.keys tbody tr:hover { background: color-mix(in srgb, var(--brand) 6%, transparent); }
+table.keys td:first-child { white-space: nowrap; }
+table.keys td:last-child { color: var(--muted); }
+.keys-foot { margin: 1rem 0 0; color: var(--muted); font-size: .9rem; }
+
+/* ---------- docs ---------- */
+.doclist { display: grid; gap: .7rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.doc {
+  display: flex; align-items: center; gap: .9rem; min-height: 44px;
+  text-decoration: none; padding: .95rem 1.1rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  transition: transform .18s, border-color .18s;
+}
+.doc:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+.doc .txt { flex: 1 1 auto; color: var(--muted); font-size: .92rem; line-height: 1.5; }
+.doc .txt strong { display: block; color: var(--text); font-size: 1rem; }
+.doc .arw { font-family: var(--mono); color: var(--brand-soft); transition: transform .18s; }
+.doc:hover .arw { transform: translateX(3px); }
+
+/* ---------- footer ---------- */
+footer { border-top: 1px solid var(--line); padding: 2.5rem 0; color: var(--muted); font-size: .9rem; line-height: 1.6; }
+.foot { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between; }
+.foot a { color: var(--muted); text-decoration: none; margin-right: 1.1rem; display: inline-block; }
+.foot a:hover { color: var(--text); }
+
+/* ============================================================================
+   .term — the hand-built HTML terminal.
+
+   It carries a private palette, identical in light and dark, because a
+   terminal on a white page is a lie. Same decision twi makes about its own
+   replica. Nothing in here consumes the page tokens except the outer border.
+   ========================================================================= */
+.term {
+  --t-bg:      #0b0708;
+  --t-surface: #150e10;
+  --t-raised:  #1d1316;
+  --t-line:    #3a2429;
+  --t-text:    #f4eef0;
+  --t-dim:     #948a8d;
+  --t-brand:   #ff2d46;
+  --t-warn:    #ffb340;
+  --t-err:     #ff7a6b;
+  --t-ok:      #5ce0a0;
+  --t-blue:    #7aa2f7;
+  --t-purple:  #cba6f7;
+
+  position: relative;
+  max-width: 100%;
+  font-family: var(--mono);
+  font-size: clamp(9px, 1.06vw, 13px);
+  line-height: 1.55;
+  background: var(--t-bg);
+  color: var(--t-text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg), 0 0 60px -28px color-mix(in srgb, var(--brand-vivid) 55%, transparent);
+}
+.term::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 2;
+  background:
+    repeating-linear-gradient(to bottom, rgba(255,255,255,.030) 0 1px, transparent 1px 3px),
+    radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--t-brand) 9%, transparent) 0%, transparent 62%);
+  mix-blend-mode: screen;
+  opacity: .55;
+}
+.term-bar {
+  height: 34px; display: flex; align-items: center; gap: 8px; padding-inline: 14px;
+  background: rgba(0,0,0,.22);
+}
+.term-bar .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.term-bar .dot.r { background: #ff5f57; }
+.term-bar .dot.y { background: #febc2e; }
+.term-bar .dot.g { background: #28c840; }
+.term-title { margin-inline: auto; color: var(--t-dim); font-size: .92em; }
+.term-tabs {
+  display: flex; gap: 1.4em; padding: .25em .9em;
+  background: linear-gradient(90deg, var(--t-brand), color-mix(in srgb, var(--t-brand) 45%, var(--t-warn)) 55%, var(--t-warn));
+  color: #fff1f2; font-weight: 600;
+  white-space: nowrap; overflow: hidden;
+}
+.term-tabs .sp { margin-left: auto; opacity: .92; }
+.term-status {
+  padding: .25em .9em; background: var(--t-raised); color: var(--t-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.term-status .dim { color: var(--t-dim); }
+.term-status .warnc { color: var(--t-warn); }
+.term-status .okc { color: var(--t-ok); }
+.chip {
+  font-style: normal; font-weight: 600; border-radius: 4px; padding: 0 .4em;
+  background: color-mix(in srgb, var(--t-warn) 22%, transparent);
+  color: var(--t-warn);
+  border: 1px solid color-mix(in srgb, var(--t-warn) 45%, transparent);
+}
+.term-body { display: flex; gap: .55em; padding: .55em; min-height: 20em; }
+.pane { border: 1px solid var(--t-line); border-radius: 8px; padding: .45em .6em; position: relative; }
+.pane > .lbl {
+  position: absolute; top: -.72em; left: .8em; padding: 0 .45em;
+  background: var(--t-bg); font-size: .92em; white-space: nowrap;
+}
+.pane-side { flex: 0 0 11em; transition: flex-basis .45s ease, opacity .35s ease; }
+.pane-side[hidden] { display: block; flex-basis: 0; opacity: 0; padding: 0; border-width: 0; overflow: hidden; }
+.pane-side .lbl { color: var(--t-ok); }
+.pane-chat { flex: 1 1 auto; min-width: 0; }
+.pane-chat .lbl { color: var(--t-brand); }
+.pane-act { flex: 0 0 12em; }
+.pane-act .lbl { color: var(--t-warn); }
+@media (max-width: 640px) { .pane-act { display: none; } }
+
+.rows { display: flex; flex-direction: column; gap: .3em; padding-top: .2em; }
+.row {
+  border-left: .35em solid var(--t-line); background: var(--t-surface); border-radius: 3px;
+  padding: .1em .55em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  animation: rowIn .35s ease both;
+}
+.row .t { color: var(--t-dim); }
+.row .who { font-weight: 600; }
+.row.a { border-left-color: var(--t-ok); }
+.row.a .who { color: var(--t-ok); }
+.row.b { border-left-color: var(--t-blue); }
+.row.b .who { color: var(--t-blue); }
+.row.me { border-left-color: var(--t-brand); }
+.row.me .who { color: var(--t-brand); }
+.row.mem { border-left-color: var(--t-purple); }
+.row.mem .who { color: var(--t-purple); }
+.row.sc { border-left-color: var(--t-warn); background: color-mix(in srgb, var(--t-warn) 12%, var(--t-surface)); }
+.row.sc .who { color: var(--t-warn); }
+.row .money {
+  border-radius: 3px; padding: 0 .35em; font-weight: 600;
+  background: color-mix(in srgb, var(--t-warn) 25%, transparent); color: var(--t-warn);
+}
+@keyframes rowIn { from { opacity: 0; transform: translateY(.5em); } to { opacity: 1; transform: none; } }
+
+.term-empty { color: var(--t-dim); padding: 1.6em .4em; }
+.term-empty b { display: block; color: var(--t-text); font-weight: 600; margin-bottom: .5em; }
+.act-row { color: var(--t-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: rowIn .3s ease both; }
+.chat-row { color: var(--t-dim); white-space: nowrap; padding: .05em 0; }
+.chat-row.on { color: var(--t-text); }
+
+.term-overlay {
+  margin: 0 .55em .1em; border: 1px solid var(--t-line); border-radius: 8px;
+  padding: .45em .6em; position: relative; animation: rowIn .25s ease both;
+}
+.term-overlay .lbl {
+  position: absolute; top: -.72em; left: .8em; padding: 0 .45em;
+  background: var(--t-bg); color: var(--t-ok); font-size: .92em;
+}
+.opt { color: var(--t-dim); padding: .02em 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.opt.on { color: var(--t-text); }
+.opt.on::before { content: "> "; color: var(--t-ok); }
+.opt:not(.on)::before { content: "  "; }
+
+.term-composer {
+  margin: .3em .55em .1em; border-left: .35em solid var(--t-line);
+  padding: .35em .7em; min-height: 3.2em; background: var(--t-surface);
+  border-radius: 3px; transition: border-color .2s;
+}
+.term-composer.focus { border-left-color: var(--t-brand); }
+.term-composer .ph { color: var(--t-dim); }
+.t-caret {
+  display: inline-block; width: .58em; height: 1.05em; vertical-align: text-bottom;
+  background: var(--t-text); animation: blink 1.05s steps(1) infinite;
+}
+.term-help {
+  padding: .2em .9em .45em; color: var(--t-dim); background: var(--t-surface);
+  white-space: nowrap; overflow: hidden;
+}
+.term-keys {
+  position: absolute; right: 1em; bottom: 3.4em; z-index: 3;
+  display: flex; gap: .35em; opacity: 0; transition: opacity .18s; pointer-events: none;
+}
+.term-keys.on { opacity: 1; }
+.term-keys span {
+  font-family: var(--mono); font-size: 1em; padding: .2em .6em; border-radius: 6px;
+  background: #f4eef0; color: #14090b; border-bottom: 2px solid #b9a4aa; font-weight: 600;
+}
+.term :focus-visible { outline-color: #fff; box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 45%, transparent); }
+
+/* the single-line quota frame */
+.term-mini .term-status { padding: .9em 1.1em; font-size: 1.15em; }
+
+/* demo step list, stacked under the frame it narrates */
+.hero-demo { display: grid; gap: 1.1rem; align-content: start; grid-template-columns: minmax(0, 1fr); }
+.hero-demo > * { min-width: 0; }
+.demo-steps li { min-width: 0; }
+.demo-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
+.demo-steps li {
+  display: flex; gap: .7rem; align-items: flex-start; padding: .6rem .8rem;
+  border-radius: var(--radius-sm); border: 1px solid transparent;
+  color: var(--muted); font-size: .92rem; transition: border-color .25s, background .25s, color .25s;
+}
+.demo-steps li .n { font-family: var(--mono); font-size: .78rem; opacity: .7; padding-top: .15rem; }
+.demo-steps li.on {
+  border-color: color-mix(in srgb, var(--brand) 45%, transparent);
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  color: var(--text);
+}
+.demo-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .8rem; margin-top: .9rem; }
+.demo-btn {
+  font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer;
+  padding: .45rem .9rem; min-height: 36px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--text);
+}
+.demo-btn:hover { border-color: color-mix(in srgb, var(--brand) 55%, transparent); }
+.demo-note { color: var(--muted); font-size: .85rem; }
+
+/* ---------- breakpoints ---------- */
+@media (max-width: 760px) {
+  section { padding: 3rem 0; }
+  .hero { padding: 2.5rem 0 2rem; }
+}
+@media (max-width: 640px) {
+  .grid, .stats, .themes, .doclist, .steps, .calc-out { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  /* nothing to hover on a touch screen, and no room to overlay: the button
+     moves out from over the command it copies */
+  .code { padding-right: 1.15rem; }
+  .copy { position: static; display: block; margin: .5rem 0 0 auto; opacity: 1; min-height: 36px; }
+}
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .caret, .t-caret { animation: none; opacity: 1; }
+  .term::after { opacity: .25; }
+}
+
+/* ---------- forced colors ---------- */
+@media (forced-colors: active) {
+  .term::after { display: none; }
+  .term, .card, .stat, .doc, .theme { mix-blend-mode: normal; }
+  .sw, .sw span, .track, .track .fill, .meter .bar, .meter .bar i { forced-color-adjust: none; }
+  .btn-primary { forced-color-adjust: none; }
+}
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#main"><span class="dot" aria-hidden="true"></span>yc</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#quota">Quota</a>
+      <a href="#features">Features</a>
+      <a href="#shots">Screenshots</a>
+      <a href="#themes">Themes</a>
+      <a href="#install">Install</a>
+      <a href="#keys">Keys</a>
+      <a href="#docs">Docs</a>
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Colour theme: follow system">
+        <span class="ti" id="themeIcon" aria-hidden="true">◐</span><span id="themeLabel">Auto</span>
+      </button>
+      <a class="nav-cta" href="https://github.com/worxbend/yc">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ============================ hero ============================ -->
+<section class="hero" aria-labelledby="hero-h">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div>
+        <div class="logo-wrap" role="img" aria-label="yc">
+<pre class="logo" aria-hidden="true">██╗   ██╗ ██████╗
+╚██╗ ██╔╝██╔════╝
+ ╚████╔╝ ██║
+  ╚██╔╝  ██║
+   ██║   ╚██████╗
+   ╚═╝    ╚═════╝</pre>
+        </div>
+
+        <span class="eyebrow">▸ Terminal-native YouTube live chat</span>
+        <h1 id="hero-h">YouTube live chat that lives in <span class="grad">your terminal</span>.</h1>
+
+        <p class="typeline">
+          <span class="prompt" aria-hidden="true">$</span>
+          <span class="type-slot">
+            <span class="type-ghost" aria-hidden="true">yc chat --channel @terminalrenaissance</span>
+            <span class="type-out" id="typeOut" aria-hidden="true"></span><span class="caret" id="typeCaret" aria-hidden="true"></span>
+          </span>
+          <span class="sr-only">Example command: yc chat --channel @terminalrenaissance</span>
+        </p>
+
+        <p class="lede">
+          yc is a keyboard-first YouTube live chat client written in Go. The Data API gives you
+          10,000 units a day; polling at the cadence YouTube advises burns them in under three
+          hours. yc meters every call, stretches its own interval to make the day last, and shows
+          you the arithmetic on every frame.
+        </p>
+
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#install">Get started</a>
+          <a class="btn btn-ghost" href="https://github.com/worxbend/yc">Star on GitHub</a>
+          <a class="btn btn-ghost" href="#quota">Read the quota story</a>
+        </div>
+
+        <div class="copyline">
+          <div class="code-wrap">
+            <pre class="code"><span class="c"># the whole UI, no credentials, no network, no quota</span>
+<span class="p">$</span> go run ./cmd/yc chat --mock</pre>
+            <button class="copy" type="button" data-copy="go run ./cmd/yc chat --mock"
+                    aria-label="Copy command: go run ./cmd/yc chat --mock">Copy</button>
+          </div>
+          <span class="hint">Nothing to sign up for. Mock mode is the real UI against scripted chat.</span>
+        </div>
+      </div>
+
+      <div class="hero-demo">
+        <figure style="margin:0">
+          <div class="term" id="term" role="img" aria-label="A mock of the yc terminal interface: a tab bar, a quota status line reading 28 second interval with 8,850 of 10,000 estimated units spent and a STRETCHED marker, a chat pane of live messages including a Super Chat, a chats sidebar, an activity column, and a composer.">
+            <div class="term-bar" aria-hidden="true">
+              <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+              <span class="term-title">yc — chat</span>
+            </div>
+            <div class="term-tabs" aria-hidden="true">
+              <b>*1:Chat</b><span>2:Stream Info</span><span>3:Quota</span>
+              <span class="sp" id="tSp">Terminal Renaissance — live build</span>
+            </div>
+            <div class="term-status" id="tStatus" aria-hidden="true">idle · no chat open</div>
+            <div class="term-body" aria-hidden="true">
+              <div class="pane pane-side" id="tSide" hidden>
+                <span class="lbl">▤ Chats · <span id="tSideCount">01</span></span>
+                <div id="tChats"></div>
+              </div>
+              <div class="pane pane-chat">
+                <span class="lbl">✉ Chat<span id="tChatName"></span></span>
+                <div class="rows" id="tRows"></div>
+              </div>
+              <div class="pane pane-act">
+                <span class="lbl">◈ Activity</span>
+                <div id="tAct"></div>
+              </div>
+            </div>
+            <div class="term-overlay" id="tPicker" aria-hidden="true" hidden>
+              <span class="lbl">▤ Open chat</span>
+              <div id="tPickerHead">Open chat (enter=open, esc=cancel)</div>
+              <div id="tOpts"></div>
+            </div>
+            <div class="term-composer" id="tComposer" aria-hidden="true">
+              <div id="tDraft"></div>
+            </div>
+            <div class="term-help" aria-hidden="true">⌨ ctrl+p | i/esc | jk | space e/c | [] | 1-4/0 | ? | r/K | ctrl+e | q quit</div>
+            <div class="term-keys" id="tKeys" aria-hidden="true"></div>
+          </div>
+          <figcaption class="frame-cap">Live mock of yc's chat view. Not a video — this is HTML.</figcaption>
+        </figure>
+
+        <ol class="demo-steps" id="tSteps">
+          <li><span class="n">01</span><span>Start with nothing open — the shell waits instead of erroring out.</span></li>
+          <li><span class="n">02</span><span><kbd>space</kbd> <kbd>c</kbd> opens the chat picker.</span></li>
+          <li><span class="n">03</span><span><kbd>enter</kbd> connects; the quota meter starts counting.</span></li>
+          <li><span class="n">04</span><span>A Super Chat lands and gets its own amber row.</span></li>
+          <li><span class="n">05</span><span>The interval stretches — 12s, 28s, 43s — to make the day last.</span></li>
+          <li><span class="n">06</span><span><kbd>i</kbd> to write, <kbd>enter</kbd> to send, <kbd>esc</kbd> back to chat.</span></li>
+        </ol>
+        <div class="demo-bar">
+          <button class="demo-btn" id="demoToggle" type="button">Pause</button>
+          <span class="demo-note" id="demoNote">Loops automatically.</span>
+        </div>
+      </div>
+    </div>
+
+    <figure class="shot hero-shot">
+      <img src="assets/screenshots/chat-grouped.svg" width="1145" height="646" loading="eager"
+           alt="yc running in a terminal: a chats sidebar, grouped chat messages tinted per author with Super Chat and membership rows, an activity column, a composer, and a status bar carrying the estimated quota ledger.">
+      <figcaption><strong>Grouped layout</strong> — generated by rendering yc's real <code>View()</code> output straight to SVG.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ============================ quota ============================ -->
+<section id="quota" aria-labelledby="quota-h">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">The differentiator</span>
+      <h2 id="quota-h">Ten thousand units a day. yc makes them last.</h2>
+      <p>Twitch gives you a socket. YouTube gives you a budget. Every design decision in yc falls out of that.</p>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><span class="fig">10,000</span><span class="lab">units per day · resets midnight America/Los_Angeles</span></div>
+      <div class="stat"><span class="fig">5 est.</span><span class="lab">units per <code>liveChatMessages.list</code> call</span></div>
+      <div class="stat"><span class="fig">2,000</span><span class="lab">polls the day buys, est.</span></div>
+      <div class="stat"><span class="fig">~43s</span><span class="lab">interval that survives to the reset, est.</span></div>
+    </div>
+
+    <div class="cadence">
+      <div class="lane">
+        <div class="lane-head">
+          <span class="who">YouTube's advised cadence · <code>~5s</code></span>
+          <span class="out">quota gone at 2h47m</span>
+        </div>
+        <div class="track a" role="img" aria-label="Polling every 5 seconds spends the estimated 10,000-unit daily budget after about 2 hours 47 minutes, roughly 12 percent of a 24-hour day.">
+          <span class="fill" style="width:11.6%"></span>
+        </div>
+        <span class="mark">▲ 2h47m — the rest of the stream runs blind</span>
+      </div>
+      <div class="lane">
+        <div class="lane-head">
+          <span class="who">yc's budget floor · <code>~43s</code></span>
+          <span class="out">lasts to the reset</span>
+        </div>
+        <div class="track b" role="img" aria-label="Polling every 43 seconds spreads the same estimated 10,000-unit budget across the full 24 hours, so reading survives to the daily reset.">
+          <span class="fill" style="width:100%"></span>
+        </div>
+        <span class="mark">▲ still reading at 23h59m</span>
+      </div>
+    </div>
+
+    <div class="term term-mini" role="img" aria-label="yc's status bar reading: 28 second interval, 8,850 of 10,000 estimated units spent, 12 percent left, about 1 hour 45 minutes remaining, mode STRETCHED.">
+      <div class="term-bar" aria-hidden="true">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="term-title">yc — quota meter and cadence</span>
+      </div>
+      <div class="term-status" aria-hidden="true">⟳ 28s · 8,850/10,000 est · <span class="warnc">12% left</span> · <span class="dim">~1h45m</span> · <i class="chip">STRETCHED</i></div>
+    </div>
+
+    <div class="meter" role="progressbar" aria-valuemin="0" aria-valuemax="10000" aria-valuenow="8850"
+         aria-valuetext="8,850 of 10,000 estimated units spent; 12 percent left" aria-label="Estimated daily quota">
+      <span class="bar" aria-hidden="true"><i style="width:88.5%"></i></span>
+      <span class="read" aria-hidden="true">8,850 / 10,000 est · 12% left</span>
+    </div>
+
+    <p class="note" style="margin-top:1.2rem">
+      <strong>STRETCHED is not a warning that yc is misbehaving</strong> — it means yc is deliberately
+      polling slower than YouTube allows, so the day lasts. The mode label names why the loop is
+      running at the cadence it is running at, every frame.
+    </p>
+
+    <ul class="quota-facts">
+      <li><strong>A reserve, held back by default (10%)</strong> — so sending and moderation still work after reading has stopped.</li>
+      <li><strong><code>--session-hours N</code></strong> — tell yc how long you plan to stream and it spends the budget over exactly that window.</li>
+      <li><strong><code>--follow-server-cadence</code></strong> — opt out of stretching and poll at the server's advised interval, budget be damned.</li>
+      <li><strong><kbd>ctrl+r</kbd></strong> — override a quota-paused session and reconnect anyway.</li>
+    </ul>
+
+    <div class="calc">
+      <h3>Cadence calculator</h3>
+      <p class="sub">Same arithmetic yc runs at startup. Every figure is an estimate.</p>
+      <label for="hrs">Session length: <output id="hrsOut" for="hrs">24</output> hours</label>
+      <input type="range" min="1" max="24" value="24" step="1" id="hrs"
+             aria-describedby="calcOut">
+      <div class="calc-out" id="calcOut" aria-live="polite">
+        <div><output id="outPolls">2,000 est.</output><span>polls the budget buys</span></div>
+        <div><output id="outInterval">43s est.</output><span>interval that spans the session</span></div>
+        <div><output id="outSpend">10,000 est.</output><span>units spent by the end</span></div>
+      </div>
+      <p class="clamp" id="calcClamp"></p>
+    </div>
+
+    <p class="note" style="margin-top:1.6rem">
+      <strong>The honesty contract.</strong> Google publishes no unit cost for any live-chat method.
+      Every figure on this page is community-observed and marked <code>est.</code> — yc's ledger is an
+      estimate, not an invoice. The Google Cloud Console is the only authority on what you have
+      actually spent. Details in
+      <a href="https://github.com/worxbend/yc/blob/main/docs/quota.md">docs/quota.md</a>.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ features ============================ -->
+<section id="features" aria-labelledby="features-h">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">Why yc</span>
+      <h2 id="features-h">Built for people who already live in a terminal</h2>
+      <p>Every surface is keyboard-reachable, resize-aware, and designed to stay readable when chat is moving fast.</p>
+    </div>
+
+    <div class="grid">
+      <article class="card">
+        <span class="ico" aria-hidden="true">⟳</span>
+        <h3>A quota meter in the status bar</h3>
+        <p>The budget, the estimate, and the effective cadence on every frame — plus the projected exhaustion time and the reset boundary. You never have to guess how much day is left.</p>
+      </article>
+      <article class="card">
+        <span class="ico" aria-hidden="true">⏱</span>
+        <h3>Budget-aware poll pacing</h3>
+        <p><code>pollingIntervalMillis</code> is an absolute floor yc never polls beneath; above it, the interval is whatever makes the day last. ±10% jitter, backoff on <code>rateLimitExceeded</code>, and a reserve so sends survive.</p>
+      </article>
+      <article class="card">
+        <span class="ico" aria-hidden="true">🔑</span>
+        <h3>Two credential modes, both first class</h3>
+        <p>An API key reads any public live chat with no OAuth at all; <code>yc login</code> runs a Google installed-app flow (loopback + PKCE) for sending. Missing capabilities disable controls <em>with a reason</em> instead of hiding them.</p>
+      </article>
+      <article class="card">
+        <span class="ico" aria-hidden="true">🎨</span>
+        <h3>58 built-in themes</h3>
+        <p>53 dark — including the house <code>yc</code> preset and 24 vibrant near-black palettes — and 5 light, plus a custom hex palette. <kbd>ctrl+t</kbd> previews live.</p>
+      </article>
+      <article class="card">
+        <span class="ico" aria-hidden="true">🧩</span>
+        <h3>Three message layouts</h3>
+        <p><code>inline</code> for density, <code>grouped</code> for an author header with the run collapsed beneath, <code>compact</code> for text only. Swap at runtime with <kbd>ctrl+g</kbd>, or set <code>message_layout</code> to keep it.</p>
+      </article>
+      <article class="card">
+        <span class="ico" aria-hidden="true">@</span>
+        <h3>@mention autocomplete</h3>
+        <p>Completes from the people yc has actually seen speak — YouTube reports no presence, so there is no member list to fake. Prefix matches outrank substring matches; <kbd>tab</kbd> accepts.</p>
+      </article>
+      <article class="card">
+        <span class="ico" aria-hidden="true">◈</span>
+        <h3>Every live-chat event, normalized</h3>
+        <p>Super Chats, Super Stickers, gifts, memberships, milestones, gifting bursts, polls, bans, tombstones, members-only mode, chat ended — and an unknown <code>snippet.type</code> degrades into a readable row instead of a crash.</p>
+      </article>
+      <article class="card">
+        <span class="ico" aria-hidden="true">🔒</span>
+        <h3>Secrets stay redacted</h3>
+        <p>Access tokens, refresh tokens, client secrets, API keys, OAuth codes, state, PKCE verifiers, and authorization URLs are kept out of output, logs, errors, and diagnostics by design.</p>
+      </article>
+      <article class="card">
+        <span class="ico" aria-hidden="true">🧪</span>
+        <h3>Mock mode, zero setup</h3>
+        <p>The whole UI with no credentials, no network, and no quota. Good for trying yc, taking screenshots, or debugging your terminal before a stream starts.</p>
+      </article>
+      <article class="card">
+        <span class="ico" aria-hidden="true">🩺</span>
+        <h3>Honest diagnostics</h3>
+        <p><code>yc doctor</code> runs 15 checks and reports what it verified <em>and</em> what it could not; <code>yc quota</code> prints today's estimated ledger without spending a unit.</p>
+      </article>
+    </div>
+
+    <p class="note" style="margin-top:1.6rem">
+      <strong>Standing disclosure: nothing here has been validated against a real YouTube account.</strong>
+      Every claim above is backed by tests, mock transports, and recorded fixtures — not by a live
+      broadcast. What has actually been run, and what has not, is tracked in
+      <a href="https://github.com/worxbend/yc/blob/main/docs/manual-validation.md">docs/manual-validation.md</a>.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ screenshots ============================ -->
+<section id="shots" aria-labelledby="shots-h">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">Screenshots</span>
+      <h2 id="shots-h">Real frames, not mockups</h2>
+      <p>Every image below is generated by rendering yc's actual <code>View()</code> output and converting the terminal buffer to SVG, so it cannot drift from what the app prints.</p>
+    </div>
+
+    <div class="shots">
+      <input type="radio" name="shot" id="s1" checked>
+      <input type="radio" name="shot" id="s2">
+      <input type="radio" name="shot" id="s3">
+      <input type="radio" name="shot" id="s4">
+      <div class="tabs">
+        <label for="s1">Grouped layout</label>
+        <label for="s2">Inline layout</label>
+        <label for="s3">Quota meter</label>
+        <label for="s4">Theme picker</label>
+      </div>
+      <div class="panelbox">
+        <figure class="shot">
+          <img src="assets/screenshots/chat-grouped.svg" width="1145" height="646" loading="lazy"
+               alt="Grouped layout: each author gets a header row, with their consecutive messages collapsed beneath it and tinted by that author's stable colour.">
+          <figcaption><strong>Grouped layout</strong> — one header per author, consecutive messages collapsed underneath, tinted by that author's stable colour. Theme: <code>claude</code>.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="assets/screenshots/chat-inline.svg" width="1145" height="646" loading="lazy"
+               alt="Inline layout: every message on a single self-describing row with timestamp, badges, author name and text.">
+          <figcaption><strong>Inline layout</strong> — the dense classic view, every row self-describing. Theme: <code>tokyo-night</code>.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="assets/screenshots/quota-status-bar.svg" width="1145" height="646" loading="lazy"
+               alt="The status bar carrying the estimated quota ledger, the effective polling interval, the projected time remaining, and the STRETCHED cadence marker.">
+          <figcaption><strong>Quota meter and cadence</strong> — the estimated ledger, the effective interval, and the <code>STRETCHED</code> marker. Theme: <code>catppuccin-mocha</code>.</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="assets/screenshots/theme-picker.svg" width="1145" height="646" loading="lazy"
+               alt="The full-screen theme picker listing every preset beside a swatch strip of its own palette, with one entry highlighted for live preview.">
+          <figcaption><strong>Theme picker</strong> (<kbd>ctrl+t</kbd>) — every preset beside a swatch strip of its own palette, previewed live as you move. Theme: <code>gruvbox</code>.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ themes ============================ -->
+<section id="themes" aria-labelledby="themes-h">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">Themes</span>
+      <h2 id="themes-h">Fifty-eight presets, or bring your own hex</h2>
+      <p><kbd>ctrl+t</kbd> previews live and <kbd>enter</kbd> applies for that run; set <code>theme_name</code> in config to keep it. Every swatch below is the real palette value, in the order Background, Surface, Foreground, Accent, Success, Warning, Error.</p>
+    </div>
+
+    <div class="themes">
+      <div class="theme" title="Background #0b0708, Surface #150e10, Foreground #f4eef0, Accent #ff2d46, Success #5ce0a0, Warning #ffb340, Error #ff7a6b"><div class="name">yc <span class="tag">house</span></div><div class="sw" aria-hidden="true"><span style="background:#0b0708"></span><span style="background:#150e10"></span><span style="background:#f4eef0"></span><span style="background:#ff2d46"></span><span style="background:#5ce0a0"></span><span style="background:#ffb340"></span><span style="background:#ff7a6b"></span></div></div>
+      <div class="theme" title="Background #1a1523, Surface #241d30, Foreground #f2ede4, Accent #d97757, Success #7fbf8e, Warning #e0a72e, Error #e0685a"><div class="name">claude <span class="tag">default</span></div><div class="sw" aria-hidden="true"><span style="background:#1a1523"></span><span style="background:#241d30"></span><span style="background:#f2ede4"></span><span style="background:#d97757"></span><span style="background:#7fbf8e"></span><span style="background:#e0a72e"></span><span style="background:#e0685a"></span></div></div>
+      <div class="theme" title="Background #0d1117, Surface #161b22, Foreground #e6edf3, Accent #3fb950, Success #3fb950, Warning #d29922, Error #f85149"><div class="name">codex</div><div class="sw" aria-hidden="true"><span style="background:#0d1117"></span><span style="background:#161b22"></span><span style="background:#e6edf3"></span><span style="background:#3fb950"></span><span style="background:#3fb950"></span><span style="background:#d29922"></span><span style="background:#f85149"></span></div></div>
+      <div class="theme" title="Background #1a1b26, Surface #24283b, Foreground #c0caf5, Accent #7aa2f7, Success #9ece6a, Warning #e0af68, Error #f7768e"><div class="name">tokyo-night</div><div class="sw" aria-hidden="true"><span style="background:#1a1b26"></span><span style="background:#24283b"></span><span style="background:#c0caf5"></span><span style="background:#7aa2f7"></span><span style="background:#9ece6a"></span><span style="background:#e0af68"></span><span style="background:#f7768e"></span></div></div>
+      <div class="theme" title="Background #1e1e2e, Surface #313244, Foreground #cdd6f4, Accent #cba6f7, Success #a6e3a1, Warning #f9e2af, Error #f38ba8"><div class="name">catppuccin-mocha</div><div class="sw" aria-hidden="true"><span style="background:#1e1e2e"></span><span style="background:#313244"></span><span style="background:#cdd6f4"></span><span style="background:#cba6f7"></span><span style="background:#a6e3a1"></span><span style="background:#f9e2af"></span><span style="background:#f38ba8"></span></div></div>
+      <div class="theme" title="Background #282828, Surface #32302f, Foreground #ebdbb2, Accent #fe8019, Success #b8bb26, Warning #fabd2f, Error #fb4934"><div class="name">gruvbox</div><div class="sw" aria-hidden="true"><span style="background:#282828"></span><span style="background:#32302f"></span><span style="background:#ebdbb2"></span><span style="background:#fe8019"></span><span style="background:#b8bb26"></span><span style="background:#fabd2f"></span><span style="background:#fb4934"></span></div></div>
+      <div class="theme" title="Background #07060d, Surface #100c1c, Foreground #eae6ff, Accent #ff2bd6, Success #3df5c4, Warning #ffc531, Error #ff4d6d"><div class="name">neon-tokyo</div><div class="sw" aria-hidden="true"><span style="background:#07060d"></span><span style="background:#100c1c"></span><span style="background:#eae6ff"></span><span style="background:#ff2bd6"></span><span style="background:#3df5c4"></span><span style="background:#ffc531"></span><span style="background:#ff4d6d"></span></div></div>
+      <div class="theme" title="Background #262335, Surface #2a2139, Foreground #f0eff1, Accent #ff7edb, Success #72f1b8, Warning #fede5d, Error #fe4450"><div class="name">synthwave-84</div><div class="sw" aria-hidden="true"><span style="background:#262335"></span><span style="background:#2a2139"></span><span style="background:#f0eff1"></span><span style="background:#ff7edb"></span><span style="background:#72f1b8"></span><span style="background:#fede5d"></span><span style="background:#fe4450"></span></div></div>
+      <div class="theme" title="Background #050505, Surface #0f0f0a, Foreground #f4f4e8, Accent #fcee0a, Success #00f0ff, Warning #ff9f1c, Error #ff003c"><div class="name">cyberpunk</div><div class="sw" aria-hidden="true"><span style="background:#050505"></span><span style="background:#0f0f0a"></span><span style="background:#f4f4e8"></span><span style="background:#fcee0a"></span><span style="background:#00f0ff"></span><span style="background:#ff9f1c"></span><span style="background:#ff003c"></span></div></div>
+      <div class="theme" title="Background #000000, Surface #050f05, Foreground #c8ffc8, Accent #00ff41, Success #00ff41, Warning #b6ff00, Error #ff5f56"><div class="name">matrix</div><div class="sw" aria-hidden="true"><span style="background:#000000"></span><span style="background:#050f05"></span><span style="background:#c8ffc8"></span><span style="background:#00ff41"></span><span style="background:#00ff41"></span><span style="background:#b6ff00"></span><span style="background:#ff5f56"></span></div></div>
+      <div class="theme" title="Background #0b0406, Surface #160a0e, Foreground #f6e3e6, Accent #ff3b52, Success #59d99d, Warning #ffab4a, Error #ff5c6c"><div class="name">blood-moon</div><div class="sw" aria-hidden="true"><span style="background:#0b0406"></span><span style="background:#160a0e"></span><span style="background:#f6e3e6"></span><span style="background:#ff3b52"></span><span style="background:#59d99d"></span><span style="background:#ffab4a"></span><span style="background:#ff5c6c"></span></div></div>
+      <div class="theme" title="Background #0a0308, Surface #150610, Foreground #ffe0ec, Accent #f50057, Success #4de3a8, Warning #ffbf47, Error #ff5c7a"><div class="name">ruby</div><div class="sw" aria-hidden="true"><span style="background:#0a0308"></span><span style="background:#150610"></span><span style="background:#ffe0ec"></span><span style="background:#f50057"></span><span style="background:#4de3a8"></span><span style="background:#ffbf47"></span><span style="background:#ff5c7a"></span></div></div>
+      <div class="theme" title="Background #0b0503, Surface #160a05, Foreground #ffe4d6, Accent #ff3d00, Success #8fd97f, Warning #ffab2e, Error #ff6347"><div class="name">magma</div><div class="sw" aria-hidden="true"><span style="background:#0b0503"></span><span style="background:#160a05"></span><span style="background:#ffe4d6"></span><span style="background:#ff3d00"></span><span style="background:#8fd97f"></span><span style="background:#ffab2e"></span><span style="background:#ff6347"></span></div></div>
+      <div class="theme" title="Background #0a0803, Surface #141005, Foreground #fff3d4, Accent #ffcf33, Success #a8e05f, Warning #ffe066, Error #ff6b52"><div class="name">bullion</div><div class="sw" aria-hidden="true"><span style="background:#0a0803"></span><span style="background:#141005"></span><span style="background:#fff3d4"></span><span style="background:#ffcf33"></span><span style="background:#a8e05f"></span><span style="background:#ffe066"></span><span style="background:#ff6b52"></span></div></div>
+      <div class="theme" title="Background #eff1f5, Surface #e6e9ef, Foreground #4c4f69, Accent #8839ef, Success #40a02b, Warning #df8e1d, Error #d20f39"><div class="name">catppuccin-latte <span class="tag">light</span></div><div class="sw" aria-hidden="true"><span style="background:#eff1f5"></span><span style="background:#e6e9ef"></span><span style="background:#4c4f69"></span><span style="background:#8839ef"></span><span style="background:#40a02b"></span><span style="background:#df8e1d"></span><span style="background:#d20f39"></span></div></div>
+      <div class="theme" title="Background #ffffff, Surface #f6f8fa, Foreground #24292f, Accent #0969da, Success #1a7f37, Warning #9a6700, Error #cf222e"><div class="name">github-light <span class="tag">light</span></div><div class="sw" aria-hidden="true"><span style="background:#ffffff"></span><span style="background:#f6f8fa"></span><span style="background:#24292f"></span><span style="background:#0969da"></span><span style="background:#1a7f37"></span><span style="background:#9a6700"></span><span style="background:#cf222e"></span></div></div>
+    </div>
+
+    <p class="themes-more">
+      …plus 42 more, including the full Catppuccin, Rosé Pine and Ayu families, Everforest,
+      Kanagawa, Night Owl, Palenight, Oceanic Next, Nightfox, Zenburn, Cobalt2, Horizon, Nord,
+      Dracula, Monokai, One Dark, Solarized, btop, and mono.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ install ============================ -->
+<section id="install" aria-labelledby="install-h">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">Install</span>
+      <h2 id="install-h">Running in about thirty seconds</h2>
+      <p>Try it with no credentials first — mock mode needs no Google project, no key, and no network.</p>
+    </div>
+
+    <div class="steps">
+      <div>
+        <h3><span class="n">01</span>Try it — no credentials</h3>
+        <div class="code-wrap">
+          <pre class="code"><span class="c"># the full UI against scripted mock chat</span>
+<span class="p">$</span> go run ./cmd/yc chat --mock</pre>
+          <button class="copy" type="button" data-copy="go run ./cmd/yc chat --mock"
+                  aria-label="Copy command: go run ./cmd/yc chat --mock">Copy</button>
+        </div>
+
+        <h3><span class="n">02</span>Install it</h3>
+        <div class="inst">
+          <input type="radio" name="inst" id="i1" checked>
+          <input type="radio" name="inst" id="i2">
+          <input type="radio" name="inst" id="i3">
+          <input type="radio" name="inst" id="i4">
+          <div class="tabs">
+            <label for="i1">curl</label>
+            <label for="i2">Download + verify</label>
+            <label for="i3">Docker</label>
+            <label for="i4">From source</label>
+          </div>
+          <div class="instpanels">
+            <div>
+              <div class="code-wrap">
+                <pre class="code"><span class="c"># downloads, verifies the checksum, installs to ~/.local/bin</span>
+<span class="p">$</span> curl --proto '=https' --tlsv1.2 -sSf \
+    https://github.com/worxbend/yc/releases/latest/download/install.sh | bash</pre>
+                <button class="copy" type="button"
+                        data-copy="curl --proto '=https' --tlsv1.2 -sSf https://github.com/worxbend/yc/releases/latest/download/install.sh | bash"
+                        aria-label="Copy the curl install command">Copy</button>
+              </div>
+            </div>
+            <div>
+              <div class="code-wrap">
+                <pre class="code"><span class="c"># arch is amd64 or arm64</span>
+<span class="p">$</span> base=https://github.com/worxbend/yc/releases/latest/download
+<span class="p">$</span> curl -sSLO "$base/yc_linux_amd64"
+<span class="p">$</span> curl -sSLO "$base/yc_linux_amd64.sha256"
+<span class="p">$</span> sha256sum -c yc_linux_amd64.sha256
+<span class="p">$</span> install -m 0755 yc_linux_amd64 ~/.local/bin/yc</pre>
+                <button class="copy" type="button"
+                        data-copy='base=https://github.com/worxbend/yc/releases/latest/download
+curl -sSLO "$base/yc_linux_amd64"
+curl -sSLO "$base/yc_linux_amd64.sha256"
+sha256sum -c yc_linux_amd64.sha256
+install -m 0755 yc_linux_amd64 ~/.local/bin/yc'
+                        aria-label="Copy the download and checksum verification commands">Copy</button>
+              </div>
+            </div>
+            <div>
+              <div class="code-wrap">
+                <pre class="code"><span class="c"># no Go toolchain needed on the host</span>
+<span class="p">$</span> docker build -t yc:local .
+<span class="p">$</span> docker run --rm -it yc:local chat --mock</pre>
+                <button class="copy" type="button"
+                        data-copy='docker build -t yc:local .
+docker run --rm -it yc:local chat --mock'
+                        aria-label="Copy the Docker build and run commands">Copy</button>
+              </div>
+            </div>
+            <div>
+              <div class="code-wrap">
+                <pre class="code"><span class="c"># Go 1.26 or newer</span>
+<span class="p">$</span> git clone https://github.com/worxbend/yc.git
+<span class="p">$</span> cd yc
+<span class="p">$</span> go build -o yc ./cmd/yc
+<span class="p">$</span> ./yc chat --mock</pre>
+                <button class="copy" type="button"
+                        data-copy='git clone https://github.com/worxbend/yc.git
+cd yc
+go build -o yc ./cmd/yc
+./yc chat --mock'
+                        aria-label="Copy the build-from-source commands">Copy</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p class="note">
+          <strong>Linux amd64 and arm64.</strong> There are no macOS or Windows builds — build from
+          source, or use the container.
+        </p>
+      </div>
+
+      <div>
+        <h3><span class="n">03</span>Connect to real YouTube chat</h3>
+        <p class="note" style="margin-bottom:1rem">
+          <strong>Bring your own Google Cloud project.</strong> yc ships with no built-in application
+          and no API key. Create a project, enable YouTube Data API v3, and give yc either an API key
+          (read-only) or a Desktop OAuth client ID — walkthrough in
+          <a href="https://github.com/worxbend/yc/blob/main/docs/register-google-app.md">docs/register-google-app.md</a>.
+        </p>
+
+        <table class="modes">
+          <caption class="sr-only">The two credential modes and what each one can do</caption>
+          <thead>
+            <tr><th scope="col">Mode</th><th scope="col">Can</th><th scope="col">Cannot</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>API key</td>
+              <td>Read any public live chat. No OAuth, no browser, no consent screen.</td>
+              <td>Send, delete, time out, or ban.</td>
+            </tr>
+            <tr>
+              <td>OAuth</td>
+              <td>Read, send, and moderate as the signed-in account.</td>
+              <td>Nothing yc supports — but it needs a Desktop client and a consent screen.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="code-wrap">
+          <pre class="code"><span class="c"># read-only: any public live chat</span>
+<span class="p">$</span> export YC_YOUTUBE_API_KEY="&lt;api key from Google Cloud&gt;"
+<span class="p">$</span> yc chat --video dQw4w9WgXcQ
+
+<span class="c"># read + send: installed-app OAuth (loopback + PKCE)</span>
+<span class="p">$</span> export YC_GOOGLE_CLIENT_ID="&lt;desktop-app client id&gt;"
+<span class="p">$</span> yc login
+<span class="p">$</span> yc doctor
+<span class="p">$</span> yc chat --channel @somechannel</pre>
+          <button class="copy" type="button"
+                  data-copy='export YC_GOOGLE_CLIENT_ID="<desktop-app client id>"
+yc login
+yc doctor
+yc chat --channel @somechannel'
+                  aria-label="Copy the OAuth login and chat commands">Copy</button>
+        </div>
+
+        <p class="note">
+          <code>yc login</code> never prints or logs the access token, refresh token, authorization
+          code, OAuth state, PKCE verifier, authorization URL, client secret, or API key. Every
+          placeholder above is an obviously fake angle-bracket marker, and that is the same rule the
+          code enforces on itself.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ keys ============================ -->
+<section id="keys" aria-labelledby="keys-h">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">Keyboard</span>
+      <h2 id="keys-h">Everything is a keystroke away</h2>
+      <p>Every binding comes from one table in <code>internal/app/keymap.go</code>, which also generates the footer, the help overlay, and the command palette. A coverage test fails when a handled <code>ctrl</code> key is missing from it.</p>
+    </div>
+
+    <div class="table-wrap">
+      <table class="keys">
+        <caption class="sr-only">yc key bindings and their actions</caption>
+        <thead><tr><th scope="col">Key</th><th scope="col">Action</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>alt+1</kbd> <kbd>alt+2</kbd> <kbd>alt+3</kbd></td><td>Switch the tab bar between Chat, Stream Info, and the quota ledger</td></tr>
+          <tr><td><kbd>ctrl+p</kbd></td><td>Open or close the command palette</td></tr>
+          <tr><td><kbd>ctrl+t</kbd></td><td>Full-screen theme page — preview with <kbd>up</kbd>/<kbd>down</kbd>, <kbd>enter</kbd> applies for this run, <kbd>esc</kbd> reverts</td></tr>
+          <tr><td><kbd>ctrl+e</kbd></td><td>Searchable emoji picker — filter by typing, <kbd>enter</kbd> inserts</td></tr>
+          <tr><td><kbd>ctrl+g</kbd></td><td>Cycle the message layout: inline → grouped → compact (this run only)</td></tr>
+          <tr><td><kbd>ctrl+b</kbd></td><td>Cycle badge rendering: glyph → text → off (this run only)</td></tr>
+          <tr><td><kbd>ctrl+y</kbd></td><td>Toggle the tinted chip behind emoji</td></tr>
+          <tr><td><kbd>ctrl+n</kbd></td><td>Toggle full names (<code>DisplayName (handle)</code>)</td></tr>
+          <tr><td><kbd>i</kbd> <kbd>o</kbd> <kbd>a</kbd></td><td>Focus the composer and start typing</td></tr>
+          <tr><td><kbd>esc</kbd></td><td>Leave the composer (draft kept); from chat, close inspect, cancel a reply, or close an overlay</td></tr>
+          <tr><td><kbd>j</kbd> <kbd>k</kbd></td><td>Select the next/previous message, or move the sidebar highlight</td></tr>
+          <tr><td><kbd>pgup</kbd> <kbd>pgdn</kbd></td><td>Scroll chat</td></tr>
+          <tr><td><kbd>r</kbd></td><td>Reply to the selected message</td></tr>
+          <tr><td><kbd>K</kbd> / <kbd>space</kbd> <kbd>i</kbd></td><td>Open or close the selected-message inspect panel</td></tr>
+          <tr><td><kbd>@</kbd> + <kbd>tab</kbd></td><td>Complete a chatter's name from the live roster</td></tr>
+          <tr><td><kbd>d</kbd> <kbd>t</kbd> <kbd>b</kbd></td><td>Delete, time out, ban — each armed, confirmed, and bounded</td></tr>
+          <tr><td><kbd>space</kbd> <kbd>e</kbd></td><td>Show or hide the chats sidebar</td></tr>
+          <tr><td><kbd>space</kbd> <kbd>c</kbd></td><td>Open the chat picker</td></tr>
+          <tr><td><kbd>space</kbd> <kbd>a</kbd></td><td>Show or hide the activity column</td></tr>
+          <tr><td><kbd>space</kbd> <kbd>x</kbd></td><td>Close the active chat</td></tr>
+          <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Switch the active chat</td></tr>
+          <tr><td><kbd>&lt;</kbd> <kbd>&gt;</kbd> <kbd>=</kbd></td><td>Resize the pane you are in; <kbd>=</kbd> resets both side panes</td></tr>
+          <tr><td><kbd>tab</kbd></td><td>Cycle focus between chat, the composer, and the sidebar</td></tr>
+          <tr><td><kbd>1</kbd>–<kbd>4</kbd> / <kbd>0</kbd></td><td>Toggle / reset local view filters</td></tr>
+          <tr><td><kbd>?</kbd></td><td>Toggle expanded help</td></tr>
+          <tr><td><kbd>ctrl+l</kbd></td><td>Clear the active chat's local history — press twice, the first press asks</td></tr>
+          <tr><td><kbd>ctrl+r</kbd></td><td>Reconnect, and the way to override a quota-paused or ended session</td></tr>
+          <tr><td><kbd>enter</kbd></td><td>Send from the composer, or run the highlighted entry in an open picker</td></tr>
+          <tr><td><kbd>q</kbd> / <kbd>ctrl+c</kbd></td><td>Quit</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="keys-foot">Mouse support is on by default but currently covers wheel scrolling only. Every workflow is reachable from the keyboard.</p>
+  </div>
+</section>
+
+<!-- ============================ docs ============================ -->
+<section id="docs" aria-labelledby="docs-h">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">Documentation</span>
+      <h2 id="docs-h">Read the source of truth</h2>
+      <p>The <code>docs/</code> directory is authoritative; this page is the summary.</p>
+    </div>
+
+    <div class="doclist">
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/install.md"><span class="txt"><strong>Install</strong>Verified installer, manual download, go install, Docker, source</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/quickstart.md"><span class="txt"><strong>Quickstart</strong>Run mock chat, configure a live chat, learn the keys</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/register-google-app.md"><span class="txt"><strong>Google app setup</strong>Project, API v3, key or Desktop OAuth client</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/quota.md"><span class="txt"><strong>Quota</strong>The 10,000-unit day, call costs, pacing, how to stretch it</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/auth.md"><span class="txt"><strong>Authentication</strong>Credential sources, login, refresh, redaction</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/config.md"><span class="txt"><strong>Configuration</strong>Precedence, every key, secret handling</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/keybindings.md"><span class="txt"><strong>Keybindings</strong>Every key in every context, generated from the keymap</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/themes.md"><span class="txt"><strong>Themes</strong>All 58 presets, nine palette roles, the custom hex format</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/events.md"><span class="txt"><strong>Events</strong>Every snippet.type yc understands, and how each renders</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/moderation.md"><span class="txt"><strong>Moderation</strong>Delete, time out, ban: capability, confirmation, refusal</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/faq.md"><span class="txt"><strong>FAQ</strong>The questions that come before the manual</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/architecture.md"><span class="txt"><strong>Architecture</strong>Package boundaries and runtime data flow</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/troubleshooting.md"><span class="txt"><strong>Troubleshooting</strong>Symptoms and fixes, starting from <code>yc doctor</code></span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/docker.md"><span class="txt"><strong>Docker</strong>Build and run without baking secrets into the image</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/security.md"><span class="txt"><strong>Security model</strong>Threat model, trust boundaries, redaction guarantees</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/development.md"><span class="txt"><strong>Development</strong>Implementation state, toolchain, quality gates, testing</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/code-style.md"><span class="txt"><strong>Code style</strong>Package ownership, rendering, redaction, comments, tests</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/release.md"><span class="txt"><strong>Release</strong>Cutting a tag: the dry run, the workflows, the artifacts</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/docs/manual-validation.md"><span class="txt"><strong>Manual validation</strong>What has actually been run, and what has not</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/tree/main/docs/adr"><span class="txt"><strong>ADRs</strong>The five decisions that shaped yc</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/CHANGELOG.md"><span class="txt"><strong>Changelog</strong>Every release, and what moved in it</span><span class="arw" aria-hidden="true">→</span></a>
+      <a class="doc" href="https://github.com/worxbend/yc/blob/main/CONTRIBUTING.md"><span class="txt"><strong>Contributing</strong>House style, the test bar, how to send a change</span><span class="arw" aria-hidden="true">→</span></a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <nav aria-label="Footer">
+      <a href="https://github.com/worxbend/yc">GitHub</a>
+      <a href="https://github.com/worxbend/yc/blob/main/docs/index.md">Docs</a>
+      <a href="https://github.com/worxbend/yc/blob/main/docs/quickstart.md">Quickstart</a>
+      <a href="https://github.com/worxbend/yc/blob/main/docs/quota.md">Quota</a>
+      <a href="https://github.com/worxbend/yc/blob/main/docs/troubleshooting.md">Troubleshooting</a>
+      <a href="https://github.com/worxbend/yc/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/worxbend/yc/releases">Releases</a>
+    </nav>
+    <div>MIT licensed · built with Go and Bubble Tea · <a href="https://obs.worxbend.com/">worxbend streaming tools</a></div>
+  </div>
+</footer>
+
+<p class="sr-only" role="status" aria-live="polite" id="copy-status"></p>
+
+<script>
+/* ============================================================================
+   Everything below is optional. The page is complete and readable with
+   JavaScript disabled: the tab strips are real radio buttons, the typewriter
+   line has a screen-reader twin, and the terminal frame renders its final
+   state from markup the demo only re-renders.
+   ========================================================================= */
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var mq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  var reduced = function () { return !!(mq && mq.matches); };
+
+  /* ---------------------------------------------------------------- theme */
+  (function theme() {
+    var btn = $('themeToggle'), icon = $('themeIcon'), label = $('themeLabel');
+    if (!btn) return;
+    var ORDER = ['auto', 'light', 'dark'];
+    var META = {
+      auto:  { icon: '◐', label: 'Auto',  name: 'follow system' },
+      light: { icon: '☀', label: 'Light', name: 'light' },
+      dark:  { icon: '☾', label: 'Dark',  name: 'dark' }
+    };
+    var mode = 'auto';
+    try {
+      var saved = localStorage.getItem('yc-theme');
+      if (saved === 'light' || saved === 'dark') mode = saved;
+    } catch (e) { /* storage unavailable */ }
+
+    function apply() {
+      if (mode === 'auto') document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', mode);
+      icon.textContent = META[mode].icon;
+      label.textContent = META[mode].label;
+      btn.setAttribute('aria-label', 'Colour theme: ' + META[mode].name + '. Activate to change.');
+    }
+    apply();
+
+    btn.addEventListener('click', function () {
+      mode = ORDER[(ORDER.indexOf(mode) + 1) % ORDER.length];
+      try {
+        if (mode === 'auto') localStorage.removeItem('yc-theme');
+        else localStorage.setItem('yc-theme', mode);
+      } catch (e) { /* storage unavailable; the choice still applies for this visit */ }
+      apply();
+    });
+  })();
+
+  /* ----------------------------------------------------------------- copy */
+  (function copyButtons() {
+    var status = $('copy-status');
+
+    async function write(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* fall through */ }
+      }
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    document.addEventListener('click', function (ev) {
+      var btn = ev.target.closest ? ev.target.closest('.copy') : null;
+      if (!btn) return;
+      /* data-copy is the source of truth: scraping textContent would drag the
+         "$" prompts and the comment lines in with it. */
+      var text = btn.getAttribute('data-copy') || '';
+      write(text).then(function (ok) {
+        if (ok) {
+          btn.textContent = 'Copied';
+          btn.classList.add('ok');
+          if (status) status.textContent = 'Copied: ' + text.split('\n')[0];
+          setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('ok'); }, 1600);
+        } else {
+          btn.textContent = 'Press Ctrl+C';
+          if (status) status.textContent = 'Copy failed — the command is selected, press Control or Command C.';
+          var pre = btn.parentNode.querySelector('.code');
+          if (pre && window.getSelection && document.createRange) {
+            var range = document.createRange();
+            range.selectNodeContents(pre);
+            var sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+          setTimeout(function () { btn.textContent = 'Copy'; }, 2600);
+        }
+      });
+    });
+  })();
+
+  /* ------------------------------------------------------------ typewriter */
+  var typewriter = (function () {
+    var out = $('typeOut'), caret = $('typeCaret');
+    var LINE = 'yc chat --channel @terminalrenaissance';
+    /* Array.from, not split(''): the codebase's grapheme rule applies here too,
+       so a surrogate pair is never cut in half mid-frame. */
+    var chars = Array.from(LINE);
+    return {
+      full: function () { if (out) out.textContent = LINE; },
+      play: function () {
+        if (!out) return;
+        var i = 0, last = 0;
+        function tick(now) {
+          if (now - last > 38) { last = now; i += 1; out.textContent = chars.slice(0, i).join(''); }
+          if (i < chars.length) requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      },
+      caret: caret
+    };
+  })();
+
+  /* ---------------------------------------------------------- cadence calc */
+  (function calculator() {
+    var slider = $('hrs');
+    if (!slider) return;
+    var hrsOut = $('hrsOut'), polls = $('outPolls'), interval = $('outInterval'),
+        spend = $('outSpend'), clamp = $('calcClamp');
+    var UNITS = 10000, COST = 5, FLOOR = 5;
+
+    function comma(n) { return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+    function recompute() {
+      var hours = parseInt(slider.value, 10);
+      var p = Math.floor(UNITS / COST);
+      var raw = (hours * 3600) / p;
+      var clamped = raw < FLOOR;
+      var secs = Math.max(FLOOR, Math.round(raw));
+      var used = clamped ? Math.min(UNITS, Math.round((hours * 3600) / FLOOR) * COST) : UNITS;
+
+      hrsOut.textContent = String(hours);
+      polls.textContent = comma(p) + ' est.';
+      interval.textContent = secs + 's est.';
+      spend.textContent = comma(used) + ' est.';
+      clamp.textContent = clamped
+        ? 'Clamped to the server floor — a shorter session cannot spend the budget any faster than YouTube allows.'
+        : '';
+    }
+
+    slider.addEventListener('input', recompute);
+    recompute();
+  })();
+
+  /* ------------------------------------------------------------- TUI demo */
+  (function demo() {
+    var term = $('term');
+    if (!term) return;
+
+    var rows = $('tRows'), act = $('tAct'), chats = $('tChats'), side = $('tSide'),
+        picker = $('tPicker'), opts = $('tOpts'), pickerHead = $('tPickerHead'),
+        draft = $('tDraft'), composer = $('tComposer'), status = $('tStatus'),
+        chatName = $('tChatName'), sideCount = $('tSideCount'), keycaps = $('tKeys'),
+        sp = $('tSp'), stepEls = $('tSteps').children,
+        toggle = $('demoToggle'), note = $('demoNote');
+
+    var PICKS = [
+      'Terminal Renaissance — live build · live',
+      'Ratatui Office Hours · live',
+      'Go Weekly — release notes · upcoming',
+      'Bubble Tea Jam · ended'
+    ];
+    var STOP = {};
+    var run = 0, playing = false, visible = true;
+
+    function guard(id) { if (id !== run || !playing) throw STOP; }
+    function wait(ms, id) {
+      return new Promise(function (res, rej) {
+        setTimeout(function () {
+          try { guard(id); res(); } catch (e) { rej(e); }
+        }, ms);
+      });
+    }
+    function el(tag, cls, text) {
+      var n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text != null) n.textContent = text;
+      return n;
+    }
+    function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+    function step(i) {
+      for (var k = 0; k < stepEls.length; k++) stepEls[k].classList.toggle('on', k === i);
+    }
+    function keys(list) {
+      clear(keycaps);
+      for (var i = 0; i < list.length; i++) keycaps.appendChild(el('span', null, list[i]));
+      keycaps.classList.add('on');
+    }
+    function keysOff() { keycaps.classList.remove('on'); }
+
+    /* Every status line the demo shows is the shape the real status bar emits:
+       interval, estimated ledger, remaining percent, projection, mode. */
+    function setStatus(interval, used, pct, left, mode, modeClass) {
+      clear(status);
+      status.appendChild(document.createTextNode('⟳ ' + interval + ' · ' + used + '/10,000 est · '));
+      status.appendChild(el('span', pct <= 15 ? 'warnc' : 'okc', pct + '% left'));
+      status.appendChild(document.createTextNode(' · '));
+      status.appendChild(el('span', 'dim', left));
+      if (mode) {
+        status.appendChild(document.createTextNode(' · '));
+        status.appendChild(el('i', modeClass || 'chip', mode));
+      }
+    }
+    function idleStatus(text) { clear(status); status.appendChild(document.createTextNode(text)); }
+
+    function chatRow(cls, who, text, money) {
+      var r = el('div', 'row ' + cls);
+      r.appendChild(el('span', 't', '21:0' + (rows.children.length % 9) + ' '));
+      if (money) { r.appendChild(el('span', 'money', money)); r.appendChild(document.createTextNode(' ')); }
+      r.appendChild(el('span', 'who', who + ': '));
+      r.appendChild(document.createTextNode(text));
+      rows.appendChild(r);
+      while (rows.children.length > 8) rows.removeChild(rows.firstChild);
+    }
+    function actRow(text) {
+      act.appendChild(el('div', 'act-row', text));
+      while (act.children.length > 8) act.removeChild(act.firstChild);
+    }
+    function chatEntry(name, active) {
+      var r = el('div', 'chat-row' + (active ? ' on' : ''), (active ? '> ' : '  ') + name);
+      chats.appendChild(r);
+    }
+    function showOpts(sel) {
+      clear(opts);
+      for (var i = 0; i < PICKS.length; i++) {
+        opts.appendChild(el('div', 'opt' + (i === sel ? ' on' : ''), PICKS[i]));
+      }
+    }
+    function placeholder(text) {
+      clear(draft);
+      draft.appendChild(el('span', 'ph', text));
+      draft.appendChild(el('span', 't-caret'));
+    }
+    async function type(text, id) {
+      clear(draft);
+      var span = el('span');
+      var caret = el('span', 't-caret');
+      draft.appendChild(span);
+      draft.appendChild(caret);
+      var chars = Array.from(text), acc = '';
+      for (var i = 0; i < chars.length; i++) {
+        acc += chars[i];
+        span.textContent = acc;
+        await wait(38, id);
+      }
+    }
+
+    function reset() {
+      clear(rows); clear(act); clear(chats); clear(opts); keysOff();
+      var empty = el('div', 'term-empty');
+      empty.appendChild(el('b', null, 'No chats open.'));
+      empty.appendChild(el('div', null, 'space c or /chats to open one'));
+      empty.appendChild(el('div', null, 'ctrl+p for the command palette'));
+      rows.appendChild(empty);
+      side.hidden = true;
+      picker.hidden = true;
+      composer.classList.remove('focus');
+      chatName.textContent = '';
+      sideCount.textContent = '01';
+      sp.textContent = 'not connected';
+      idleStatus('idle · no chat open · 0/10,000 est spent');
+      placeholder('/chats to open a live chat…');
+    }
+
+    /* The finished frame, drawn statically. This is what a reduced-motion
+       reader sees, and it is a complete picture rather than a degraded one. */
+    function finalFrame() {
+      clear(rows); clear(act); clear(chats); clear(opts); keysOff();
+      side.hidden = false;
+      picker.hidden = true;
+      composer.classList.remove('focus');
+      chatName.textContent = ' · Terminal Renaissance';
+      sideCount.textContent = '01';
+      sp.textContent = 'Terminal Renaissance — live build';
+      chatEntry('Terminal Renaissance', true);
+      chatRow('a', 'rowan', 'the quota meter is the killer feature honestly');
+      chatRow('b', 'juno', 'wait it stretches the interval by itself?');
+      chatRow('sc', 'bigfan', 'loving the quota meter', '$10.00');
+      chatRow('mem', 'petra', 'became a member — Tier 1');
+      chatRow('a', 'rowan', 'and it tells you the arithmetic, no guessing');
+      chatRow('me', 'you', 'exactly — 43s is what makes the day last');
+      actRow('21:02 · joined Terminal Renaissance');
+      actRow('21:04 ◈ Super Chat · $10.00');
+      actRow('21:05 ✦ new member · Tier 1');
+      actRow('21:06 ⟳ interval 12s → 28s');
+      actRow('21:07 ⟳ interval 28s → 43s · STRETCHED');
+      setStatus('43s', '8,850', 12, '~1h45m', 'STRETCHED');
+      placeholder('Message Terminal Renaissance…');
+      step(5);
+    }
+
+    async function sequence(id) {
+      reset();
+      step(0);
+      await wait(2200, id);
+
+      step(1);
+      composer.classList.add('focus');
+      await type('/chats', id);
+      await wait(400, id);
+      keys(['space', 'c']);
+      await wait(700, id);
+      keysOff();
+      placeholder('');
+      showOpts(0);
+      pickerHead.textContent = 'Open chat: searching broadcasts…';
+      picker.hidden = false;
+      await wait(700, id);
+      pickerHead.textContent = 'Open chat (enter=open, esc=cancel)';
+      await wait(600, id);
+
+      step(2);
+      keys(['enter']);
+      await wait(500, id);
+      keysOff();
+      picker.hidden = false;
+      picker.hidden = true;
+      composer.classList.remove('focus');
+      clear(rows);
+      chatName.textContent = ' · Terminal Renaissance';
+      sp.textContent = 'Terminal Renaissance — live build';
+      chatEntry('Terminal Renaissance', true);
+      side.hidden = false;
+      setStatus('12s', '1,240', 88, '~5h10m', 'SERVER', 'chip');
+      placeholder('Message Terminal Renaissance…');
+      actRow('21:02 · joined Terminal Renaissance');
+      var script = [
+        ['a', 'rowan', 'the quota meter is the killer feature honestly'],
+        ['b', 'juno', 'wait it stretches the interval by itself?'],
+        ['a', 'rowan', 'yeah, and it shows you the arithmetic']
+      ];
+      for (var s = 0; s < script.length; s++) {
+        chatRow(script[s][0], script[s][1], script[s][2]);
+        await wait(700, id);
+      }
+
+      step(3);
+      chatRow('sc', 'bigfan', 'loving the quota meter', '$10.00');
+      actRow('21:04 ◈ Super Chat · $10.00');
+      await wait(900, id);
+      chatRow('mem', 'petra', 'became a member — Tier 1');
+      actRow('21:05 ✦ new member · Tier 1');
+      await wait(1100, id);
+
+      step(4);
+      setStatus('28s', '5,600', 44, '~3h20m', 'STRETCHED');
+      actRow('21:06 ⟳ interval 12s → 28s');
+      await wait(1300, id);
+      setStatus('43s', '8,850', 12, '~1h45m', 'STRETCHED');
+      actRow('21:07 ⟳ interval 28s → 43s · STRETCHED');
+      await wait(1600, id);
+
+      step(5);
+      keys(['i']);
+      await wait(480, id);
+      keysOff();
+      composer.classList.add('focus');
+      await type('exactly — 43s is what makes the day last', id);
+      await wait(400, id);
+      keys(['enter']);
+      await wait(380, id);
+      keysOff();
+      chatRow('me', 'you', 'exactly — 43s is what makes the day last');
+      placeholder('Message Terminal Renaissance…');
+      await wait(700, id);
+      keys(['esc']);
+      await wait(420, id);
+      keysOff();
+      composer.classList.remove('focus');
+      await wait(2600, id);
+    }
+
+    async function loop() {
+      var id = run;
+      try {
+        while (true) {
+          await sequence(id);
+          guard(id);
+        }
+      } catch (e) {
+        if (e !== STOP) throw e;
+      }
+    }
+
+    function play() {
+      if (playing) return;
+      playing = true;
+      run++;
+      toggle.textContent = 'Pause';
+      loop();
+    }
+    function pause() {
+      playing = false;
+      run++;
+      keysOff();
+      toggle.textContent = 'Play';
+    }
+
+    toggle.addEventListener('click', function () {
+      if (playing) { pause(); note.textContent = 'Paused.'; }
+      else { note.textContent = 'Loops automatically.'; finalFrame(); play(); }
+    });
+
+    function startReduced() {
+      typewriter.full();
+      if (typewriter.caret) typewriter.caret.style.visibility = 'hidden';
+      finalFrame();
+      playing = false;
+      toggle.textContent = 'Play';
+      note.textContent = 'Animation off — reduced motion.';
+    }
+    function startMotion() {
+      if (typewriter.caret) typewriter.caret.style.visibility = '';
+      typewriter.play();
+      reset();
+      step(0);
+      play();
+      note.textContent = 'Loops automatically.';
+    }
+
+    if (reduced()) startReduced(); else startMotion();
+
+    /* A reader flipping the OS setting mid-visit is obeyed without a reload. */
+    if (mq) {
+      var onChange = function (e) { if (e.matches) { pause(); startReduced(); } else { startMotion(); } };
+      if (mq.addEventListener) mq.addEventListener('change', onChange);
+      else if (mq.addListener) mq.addListener(onChange);
+    }
+
+    /* Stop the loop when it scrolls away: no background rAF for a whole visit. */
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (entries) {
+        var was = visible;
+        visible = entries[0].isIntersecting;
+        if (reduced()) return;
+        if (visible && !was && toggle.textContent === 'Pause') play();
+        else if (!visible && playing) { playing = false; run++; keysOff(); }
+      }, { threshold: 0.25 }).observe(term);
+    }
+  })();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "id": "msg-supersticker-2",
+  "snippet": {
+    "type": "superStickerEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:02:30Z",
+    "superStickerDetails": {
+      "superStickerMetadata": {
+        "stickerId": "sticker-43",
+        "altText": "a dog with a hat",
+        "language": "de"
+      },
+      "amountMicros": "3000000",
+      "currency": "EUR",
+      "amountDisplayString": "€3.00",
+      "tier": 4
+    }
+  },
+  "authorDetails": {"channelId": "UCauthor0000000000000004", "displayName": "Sticker Fan Two"}
+}

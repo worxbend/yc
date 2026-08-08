@@ -1,0 +1,14 @@
+{
+  "id": "msg-milestone-1",
+  "snippet": {
+    "type": "memberMilestoneChatEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:04:00Z",
+    "memberMilestoneChatDetails": {
+      "memberLevelName": "Supporter",
+      "memberMonth": 14,
+      "userComment": "fourteen months!"
+    }
+  },
+  "authorDetails": {"channelId": "UCauthor0000000000000007", "displayName": "Long Member", "isChatSponsor": true}
+}

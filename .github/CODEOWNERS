@@ -1,0 +1,22 @@
+# Every path is reviewed by @worxbend. The lines below are not narrower rules,
+# they are a map: the areas where a mistake is expensive and a review should
+# slow down.
+
+*                       @worxbend
+
+# Credentials, redaction, and the OAuth flow.
+/internal/auth/         @worxbend
+/internal/storage/      @worxbend
+/internal/debuglog/     @worxbend
+/SECURITY.md            @worxbend
+
+# Transport, poll pacing, and the quota ledger. A bug here spends a real,
+# non-replenishing daily allowance.
+/internal/youtube/      @worxbend
+
+# Supply chain, CI, release, and anything that can publish.
+/go.mod                 @worxbend
+/go.sum                 @worxbend
+/.github/               @worxbend
+/scripts/               @worxbend
+/Dockerfile             @worxbend

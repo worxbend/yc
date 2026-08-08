@@ -1,0 +1,116 @@
+name: Bug report
+description: Something in yc behaves differently than documented.
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Before you paste anything
+
+        **Never paste a credential into this form.** That means no OAuth access
+        token, no refresh token, no Google client secret, no YouTube API key,
+        no OAuth authorization code, no `state` value, no PKCE verifier, and no
+        authorization URL — an authorization URL carries your client ID and can
+        carry a code.
+
+        `yc` is built so you should not need to. `yc doctor` reports credential
+        *presence*, never credential *content*, and the debug log
+        (`yc chat --debug-log`) is written through a redacting logger at mode
+        `0600`. If a real secret does appear in any yc output, that is itself
+        the bug — please report it privately through
+        [SECURITY.md](https://github.com/worxbend/yc/blob/main/SECURITY.md)
+        instead of opening this issue.
+
+        If a value looks even slightly like a secret, replace it with
+        `REDACTED` before submitting. Skim your paste one more time after the
+        preview renders.
+
+  - type: checkboxes
+    id: redaction
+    attributes:
+      label: Redaction check
+      options:
+        - label: I have removed every token, secret, API key, OAuth code, and authorization URL from this report.
+          required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: What did you see, and what did you expect instead?
+      placeholder: |
+        Expected: the quota bar shows the remaining estimate.
+        Actual: the quota bar is blank after resizing below 80 columns.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: >
+        The most useful report starts from `yc chat --mock`, which needs no
+        Google account, no network, and no quota. If the bug only appears on a
+        live chat, say so and describe the chat generically (busy, members-only,
+        just ended) rather than linking it.
+      value: |
+        1. `yc chat --mock`
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Does it reproduce in mock mode?
+      options:
+        - "Yes, with `yc chat --mock`"
+        - "No, only against a live chat"
+        - "Not applicable (not a chat UI bug)"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: yc version
+      description: Output of `yc --version`.
+      placeholder: "yc 0.1.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: >
+        OS and version, terminal emulator and version, `$TERM`, terminal size,
+        multiplexer if any, and Go version if you built from source.
+      placeholder: |
+        OS: Debian 13
+        Terminal: foot 1.20 (tmux 3.5)
+        TERM: xterm-256color
+        Size: 130x36
+        Go: go1.26.4
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`yc doctor` output"
+      description: >
+        Optional, and safe to include — `yc doctor` reports whether a
+        credential is present, never what it is. Read it once before pasting
+        anyway.
+      render: text
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: >
+        Screenshots, a redacted debug-log excerpt, or a note about what you had
+        already ruled out.

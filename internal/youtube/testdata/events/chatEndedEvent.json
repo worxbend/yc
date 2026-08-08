@@ -1,0 +1,9 @@
+{
+  "id": "msg-chatended-1",
+  "snippet": {
+    "type": "chatEndedEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:12:00Z",
+    "hasDisplayContent": false
+  }
+}

@@ -1,0 +1,16 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/worxbend/yc/security/advisories/new
+    about: >
+      Report privately, never in a public issue. This covers anything that
+      could expose a token, refresh token, client secret, API key, OAuth code,
+      or PKCE verifier. See SECURITY.md for the full policy and scope.
+  - name: Security policy
+    url: https://github.com/worxbend/yc/blob/main/SECURITY.md
+    about: What is in scope, how to report, and what to expect after you do.
+  - name: Setup, auth, and quota questions
+    url: https://github.com/worxbend/yc/blob/main/docs/troubleshooting.md
+    about: >
+      Registering a Google app, logging in, reading the quota estimate, and the
+      errors people hit most. Check here before filing a bug.

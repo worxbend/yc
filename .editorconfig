@@ -1,0 +1,76 @@
+# https://editorconfig.org
+#
+# These settings describe what the repository already contains: gofmt's tabs in
+# Go files, two-space YAML, and no trailing whitespace anywhere. CI enforces the
+# last one on every tracked file, so an editor that honours this file keeps you
+# out of a red run.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# gofmt owns Go formatting. indent_size is set for display width only; gofmt
+# writes hard tabs and will rewrite anything else.
+[*.go]
+indent_style = tab
+indent_size = 4
+
+[go.mod]
+indent_style = tab
+indent_size = 4
+
+[go.sum]
+indent_style = tab
+indent_size = 4
+
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+[*.toml]
+indent_style = space
+indent_size = 2
+
+# Every script in scripts/ is tab-indented, which is what `shfmt` produces by
+# default. Setting space here would have an editor reformat all five on first
+# save and turn a one-line change into a whole-file diff.
+[*.{sh,bash}]
+indent_style = tab
+indent_size = 4
+
+[Dockerfile*]
+indent_style = tab
+indent_size = 4
+
+[Makefile]
+indent_style = tab
+indent_size = 4
+
+# Trailing whitespace stays banned in Markdown too: yc uses a backslash or a
+# blank line for a hard break, never two invisible spaces.
+#
+# Prose is hand-wrapped near 80 columns by convention, but tables and long URLs
+# are not, so length stays off rather than letting an editor reflow a table into
+# nonsense.
+[*.md]
+indent_style = space
+indent_size = 2
+max_line_length = off
+
+[*.{html,css,js}]
+indent_style = space
+indent_size = 2
+
+[*.svg]
+indent_style = space
+indent_size = 2
+
+[*.example]
+indent_style = space
+indent_size = 2

@@ -1,0 +1,63 @@
+# Local development compose file for yc.
+#
+# Every service builds the same image and differs only in the command. Real
+# credentials come from your ignored local .env (copy .env.example), never from
+# a tracked file and never from the image.
+#
+# Interactive chat needs a real TTY, which is why the chat services set
+# stdin_open and tty and are meant for `docker compose run`, not `up`.
+
+services:
+  # Zero credentials, zero network, zero quota. Start here.
+  mock:
+    build: .
+    image: yc:local
+    command: ["chat", "--mock"]
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./.local/yc-config:/config
+      - ./.local/yc-cache:/cache
+
+  # Offline diagnostics. Safe to run with or without credentials.
+  doctor:
+    build: .
+    image: yc:local
+    command: ["doctor"]
+    environment:
+      YC_GOOGLE_CLIENT_ID: ${YC_GOOGLE_CLIENT_ID:-}
+      YC_YOUTUBE_API_KEY: ${YC_YOUTUBE_API_KEY:-}
+    volumes:
+      - ./.local/yc-config:/config
+      - ./.local/yc-cache:/cache
+
+  # Today's estimated quota ledger. Spends nothing.
+  quota:
+    build: .
+    image: yc:local
+    command: ["quota"]
+    environment:
+      YC_GOOGLE_CLIENT_ID: ${YC_GOOGLE_CLIENT_ID:-}
+      YC_YOUTUBE_API_KEY: ${YC_YOUTUBE_API_KEY:-}
+    volumes:
+      - ./.local/yc-config:/config
+      - ./.local/yc-cache:/cache
+
+  # Live chat. Needs YC_CHAT_TARGET plus either an API key (read-only) or an
+  # OAuth token in your local .env.
+  live:
+    build: .
+    image: yc:local
+    command: ["chat", "--chat", "${YC_CHAT_TARGET:-}"]
+    stdin_open: true
+    tty: true
+    environment:
+      YC_GOOGLE_CLIENT_ID: ${YC_GOOGLE_CLIENT_ID:-}
+      YC_GOOGLE_CLIENT_SECRET: ${YC_GOOGLE_CLIENT_SECRET:-}
+      YC_GOOGLE_ACCESS_TOKEN: ${YC_GOOGLE_ACCESS_TOKEN:-}
+      YC_GOOGLE_REFRESH_TOKEN: ${YC_GOOGLE_REFRESH_TOKEN:-}
+      YC_YOUTUBE_API_KEY: ${YC_YOUTUBE_API_KEY:-}
+      YC_YOUTUBE_CHANNEL_ID: ${YC_YOUTUBE_CHANNEL_ID:-}
+    volumes:
+      - ./.local/yc-config:/config
+      - ./.local/yc-cache:/cache

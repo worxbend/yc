@@ -1,0 +1,14 @@
+{
+  "id": "msg-giftreceived-1",
+  "snippet": {
+    "type": "giftMembershipReceivedEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:05:10Z",
+    "giftMembershipReceivedDetails": {
+      "memberLevelName": "Supporter",
+      "gifterChannelId": "UCauthor0000000000000008",
+      "associatedMembershipGiftingMessageId": "msg-gifting-1"
+    }
+  },
+  "authorDetails": {"channelId": "UCauthor0000000000000009", "displayName": "Lucky Recipient"}
+}

@@ -1,0 +1,9 @@
+{
+  "id": "msg-text-1",
+  "snippet": {
+    "type": "tombstone",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:13:00Z",
+    "hasDisplayContent": false
+  }
+}

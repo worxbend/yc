@@ -1,0 +1,67 @@
+name: Feature request
+description: Propose a behavior yc does not have yet.
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `yc` is deliberately small: few dependencies, no image rendering path,
+        no background daemon, and a hard budget on YouTube Data API quota. A
+        proposal is much easier to say yes to when it explains how it fits
+        inside those limits. See
+        [docs/index.md](https://github.com/worxbend/yc/blob/main/docs/index.md)
+        for what already exists and
+        [docs/quota.md](https://github.com/worxbend/yc/blob/main/docs/quota.md)
+        for why the quota constraint shapes so much of the design.
+
+        Do not include tokens, secrets, API keys, or authorization URLs here
+        either.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that yc makes hard or impossible today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: >
+        What should yc do instead? Keyboard-first specifics help: which key,
+        which pane, what the status line says, what happens at 62 columns.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: quota
+    attributes:
+      label: Quota impact
+      description: >
+        Does this need additional YouTube Data API calls? The daily allowance
+        is 10,000 units and does not replenish early.
+      options:
+        - "None — UI, rendering, config, or docs only"
+        - "Some — needs extra API calls, described below"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: >
+        Existing flags, config keys, themes, or workflows you tried first, and
+        why they were not enough.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This does not require rendering images in the terminal (an explicit non-goal).
+        - label: I have read the current behavior status in docs/development.md.

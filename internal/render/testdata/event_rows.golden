@@ -1,0 +1,370 @@
+=== text / inline / w=32
+|[B]  20:00 Bob: hello chat, how |
+|                is everyone |
+|                doing tonight|
+=== text / inline / w=72
+|[B]  20:00 Bob: hello chat, how is everyone doing tonight|
+=== text / grouped / w=32
+|[B]  Bob 20:00|
+|  hello chat, how is everyone |
+|  doing tonight|
+=== text / grouped / w=72
+|[B]  Bob 20:00|
+|   hello chat, how is everyone doing tonight|
+=== text / compact / w=32
+|Bob: hello chat, how is |
+|     everyone doing tonight|
+=== text / compact / w=72
+|Bob: hello chat, how is everyone doing tonight|
+=== text_owner_verified / inline / w=32
+|[SN] 20:00 ◉ ✓ Studio Nine: |
+|                starting in five|
+=== text_owner_verified / inline / w=72
+|[SN] 20:00 ◉ ✓ Studio Nine: starting in five|
+=== text_owner_verified / grouped / w=32
+|[SN] Studio Nine ◉ ✓ 20:00|
+|  starting in five|
+=== text_owner_verified / grouped / w=72
+|[SN] Studio Nine ◉ ✓ 20:00|
+|   starting in five|
+=== text_owner_verified / compact / w=32
+|Studio Nine: starting in five|
+=== text_owner_verified / compact / w=72
+|Studio Nine: starting in five|
+=== super_chat / inline / w=32
+|[B]  20:00 Bob:  $5.00  thanks |
+|                for the stream|
+=== super_chat / inline / w=72
+|[B]  20:00 Bob:  $5.00  thanks for the stream|
+=== super_chat / grouped / w=32
+|[B]  Bob 20:00|
+|   $5.00  thanks for the stream|
+=== super_chat / grouped / w=72
+|[B]  Bob 20:00|
+|    $5.00  thanks for the stream|
+=== super_chat / compact / w=32
+|Bob:  $5.00  thanks for the |
+|     stream|
+=== super_chat / compact / w=72
+|Bob:  $5.00  thanks for the stream|
+=== super_chat_top_tier / inline / w=32
+|[CD] 20:00 ★ Carol Danvers: |
+|                 500.00 USD |
+=== super_chat_top_tier / inline / w=72
+|[CD] 20:00 ★ Carol Danvers:  500.00 USD |
+=== super_chat_top_tier / grouped / w=32
+|[CD] Carol Danvers ★ 20:00|
+|   500.00 USD |
+=== super_chat_top_tier / grouped / w=72
+|[CD] Carol Danvers ★ 20:00|
+|    500.00 USD |
+=== super_chat_top_tier / compact / w=32
+|Carol Danvers:  500.00 USD |
+=== super_chat_top_tier / compact / w=72
+|Carol Danvers:  500.00 USD |
+=== super_sticker / inline / w=32
+|[B]  20:00 Bob:  €2.00  |
+|                sticker: a cat |
+|                waving a tiny |
+|                flag|
+=== super_sticker / inline / w=72
+|[B]  20:00 Bob:  €2.00  sticker: a cat waving a tiny flag|
+=== super_sticker / grouped / w=32
+|[B]  Bob 20:00|
+|   €2.00  sticker: a cat waving |
+|  a tiny flag|
+=== super_sticker / grouped / w=72
+|[B]  Bob 20:00|
+|    €2.00  sticker: a cat waving a tiny flag|
+=== super_sticker / compact / w=32
+|Bob:  €2.00  sticker: a cat |
+|     waving a tiny flag|
+=== super_sticker / compact / w=72
+|Bob:  €2.00  sticker: a cat waving a tiny flag|
+=== gift / inline / w=32
+|[B]  20:00 Bob:  ◆ 250 jewels  |
+|                Star Shower x3|
+=== gift / inline / w=72
+|[B]  20:00 Bob:  ◆ 250 jewels  Star Shower x3|
+=== gift / grouped / w=32
+|[B]  Bob 20:00|
+|   ◆ 250 jewels  Star Shower x3|
+=== gift / grouped / w=72
+|[B]  Bob 20:00|
+|    ◆ 250 jewels  Star Shower x3|
+=== gift / compact / w=32
+|Bob:  ◆ 250 jewels  Star Shower |
+|     x3|
+=== gift / compact / w=72
+|Bob:  ◆ 250 jewels  Star Shower x3|
+=== new_sponsor / inline / w=32
+|[CD] 20:00 ★ Carol Danvers: |
+|                 ★ new member  |
+|                Comet Crew|
+=== new_sponsor / inline / w=72
+|[CD] 20:00 ★ Carol Danvers:  ★ new member  Comet Crew|
+=== new_sponsor / grouped / w=32
+|[CD] Carol Danvers ★ 20:00|
+|   ★ new member  Comet Crew|
+=== new_sponsor / grouped / w=72
+|[CD] Carol Danvers ★ 20:00|
+|    ★ new member  Comet Crew|
+=== new_sponsor / compact / w=32
+|Carol Danvers:  ★ new member  |
+|               Comet Crew|
+=== new_sponsor / compact / w=72
+|Carol Danvers:  ★ new member  Comet Crew|
+=== member_upgrade / inline / w=32
+|[CD] 20:00 ★ Carol Danvers: |
+| ★ member upgrade  Comet Captain|
+=== member_upgrade / inline / w=72
+|[CD] 20:00 ★ Carol Danvers:  ★ member upgrade  Comet Captain|
+=== member_upgrade / grouped / w=32
+|[CD] Carol Danvers ★ 20:00|
+|   ★ member upgrade  Comet |
+|  Captain|
+=== member_upgrade / grouped / w=72
+|[CD] Carol Danvers ★ 20:00|
+|    ★ member upgrade  Comet Captain|
+=== member_upgrade / compact / w=32
+|Carol Danvers: |
+| ★ member upgrade  Comet Captain|
+=== member_upgrade / compact / w=72
+|Carol Danvers:  ★ member upgrade  Comet Captain|
+=== member_milestone / inline / w=32
+|[CD] 20:00 ★ Carol Danvers: |
+|                 ★ member 14 mo |
+|                Comet Crew |
+|                still the best |
+|                chat on the |
+|                platform|
+=== member_milestone / inline / w=72
+|[CD] 20:00 ★ Carol Danvers:  ★ member 14 mo  Comet Crew still the best |
+|                            chat on the platform|
+=== member_milestone / grouped / w=32
+|[CD] Carol Danvers ★ 20:00|
+|   ★ member 14 mo  Comet Crew |
+|  still the best chat on the |
+|  platform|
+=== member_milestone / grouped / w=72
+|[CD] Carol Danvers ★ 20:00|
+|    ★ member 14 mo  Comet Crew still the best chat on the platform|
+=== member_milestone / compact / w=32
+|Carol Danvers:  ★ member 14 mo  |
+|               Comet Crew still |
+|               the best chat on |
+|               the platform|
+=== member_milestone / compact / w=72
+|Carol Danvers:  ★ member 14 mo  Comet Crew still the best chat on the |
+|               platform|
+=== membership_gifting / inline / w=32
+|[CD] 20:00 ★ Carol Danvers: |
+| ♥ 5 gift memberships  Comet |
+|                Crew|
+=== membership_gifting / inline / w=72
+|[CD] 20:00 ★ Carol Danvers:  ♥ 5 gift memberships  Comet Crew|
+=== membership_gifting / grouped / w=32
+|[CD] Carol Danvers ★ 20:00|
+|   ♥ 5 gift memberships  Comet |
+|  Crew|
+=== membership_gifting / grouped / w=72
+|[CD] Carol Danvers ★ 20:00|
+|    ♥ 5 gift memberships  Comet Crew|
+=== membership_gifting / compact / w=32
+|Carol Danvers: |
+| ♥ 5 gift memberships  Comet |
+|               Crew|
+=== membership_gifting / compact / w=72
+|Carol Danvers:  ♥ 5 gift memberships  Comet Crew|
+=== gift_membership_received / inline / w=32
+|[B]  20:00 Bob:  ♥ gift member  |
+|                Comet Crew|
+=== gift_membership_received / inline / w=72
+|[B]  20:00 Bob:  ♥ gift member  Comet Crew|
+=== gift_membership_received / grouped / w=32
+|[B]  Bob 20:00|
+|   ♥ gift member  Comet Crew|
+=== gift_membership_received / grouped / w=72
+|[B]  Bob 20:00|
+|    ♥ gift member  Comet Crew|
+=== gift_membership_received / compact / w=32
+|Bob:  ♥ gift member  Comet Crew|
+=== gift_membership_received / compact / w=72
+|Bob:  ♥ gift member  Comet Crew|
+=== user_banned / inline / w=32
+|[MD] 20:00 ⚔ mod_dana: [notice] |
+|                Bob was timed |
+|                out for 5m|
+=== user_banned / inline / w=72
+|[MD] 20:00 ⚔ mod_dana: [notice] Bob was timed out for 5m|
+=== user_banned / grouped / w=32
+|[MD] mod_dana ⚔ 20:00|
+|  [notice] Bob was timed out |
+|  for 5m|
+=== user_banned / grouped / w=72
+|[MD] mod_dana ⚔ 20:00|
+|   [notice] Bob was timed out for 5m|
+=== user_banned / compact / w=32
+|mod_dana: [notice] Bob was |
+|          timed out for 5m|
+=== user_banned / compact / w=72
+|mod_dana: [notice] Bob was timed out for 5m|
+=== message_deleted / inline / w=32
+|[B]  20:00 Bob: [message |
+|                deleted]|
+=== message_deleted / inline / w=72
+|[B]  20:00 Bob: [message deleted]|
+=== message_deleted / grouped / w=32
+|[B]  Bob 20:00|
+|  [message deleted]|
+=== message_deleted / grouped / w=72
+|[B]  Bob 20:00|
+|   [message deleted]|
+=== message_deleted / compact / w=32
+|Bob: [message deleted]|
+=== message_deleted / compact / w=72
+|Bob: [message deleted]|
+=== message_deleted_event / inline / w=32
+|[MD] 20:00 ⚔ mod_dana: [message |
+|                deleted]|
+=== message_deleted_event / inline / w=72
+|[MD] 20:00 ⚔ mod_dana: [message deleted]|
+=== message_deleted_event / grouped / w=32
+|[MD] mod_dana ⚔ 20:00|
+|  [message deleted]|
+=== message_deleted_event / grouped / w=72
+|[MD] mod_dana ⚔ 20:00|
+|   [message deleted]|
+=== message_deleted_event / compact / w=32
+|mod_dana: [message deleted]|
+=== message_deleted_event / compact / w=72
+|mod_dana: [message deleted]|
+=== tombstone / inline / w=32
+|20:00 [message deleted]|
+=== tombstone / inline / w=72
+|20:00 [message deleted]|
+=== tombstone / grouped / w=32
+|20:00 [message deleted]|
+=== tombstone / grouped / w=72
+|20:00 [message deleted]|
+=== tombstone / compact / w=32
+|[message deleted]|
+=== tombstone / compact / w=72
+|[message deleted]|
+=== sponsor_only_started / inline / w=32
+|20:00 [notice] members-only |
+|      mode on|
+=== sponsor_only_started / inline / w=72
+|20:00 [notice] members-only mode on|
+=== sponsor_only_started / grouped / w=32
+|20:00 [notice] members-only |
+|      mode on|
+=== sponsor_only_started / grouped / w=72
+|20:00 [notice] members-only mode on|
+=== sponsor_only_started / compact / w=32
+|[notice] members-only mode on|
+=== sponsor_only_started / compact / w=72
+|[notice] members-only mode on|
+=== sponsor_only_ended / inline / w=32
+|20:00 [notice] members-only |
+|      mode off|
+=== sponsor_only_ended / inline / w=72
+|20:00 [notice] members-only mode off|
+=== sponsor_only_ended / grouped / w=32
+|20:00 [notice] members-only |
+|      mode off|
+=== sponsor_only_ended / grouped / w=72
+|20:00 [notice] members-only mode off|
+=== sponsor_only_ended / compact / w=32
+|[notice] members-only mode off|
+=== sponsor_only_ended / compact / w=72
+|[notice] members-only mode off|
+=== chat_ended / inline / w=32
+|20:00 [notice] live chat ended|
+=== chat_ended / inline / w=72
+|20:00 [notice] live chat ended|
+=== chat_ended / grouped / w=32
+|20:00 [notice] live chat ended|
+=== chat_ended / grouped / w=72
+|20:00 [notice] live chat ended|
+=== chat_ended / compact / w=32
+|[notice] live chat ended|
+=== chat_ended / compact / w=72
+|[notice] live chat ended|
+=== poll / inline / w=32
+|20:00 [notice] poll which map |
+|      next?|
+=== poll / inline / w=72
+|20:00 [notice] poll which map next?|
+=== poll / grouped / w=32
+|20:00 [notice] poll which map |
+|      next?|
+=== poll / grouped / w=72
+|20:00 [notice] poll which map next?|
+=== poll / compact / w=32
+|[notice] poll which map next?|
+=== poll / compact / w=72
+|[notice] poll which map next?|
+=== fan_funding / inline / w=32
+|[B]  20:00 Bob:  £3.00  an |
+|                old-style tip|
+=== fan_funding / inline / w=72
+|[B]  20:00 Bob:  £3.00  an old-style tip|
+=== fan_funding / grouped / w=32
+|[B]  Bob 20:00|
+|   £3.00  an old-style tip|
+=== fan_funding / grouped / w=72
+|[B]  Bob 20:00|
+|    £3.00  an old-style tip|
+=== fan_funding / compact / w=32
+|Bob:  £3.00  an old-style tip|
+=== fan_funding / compact / w=72
+|Bob:  £3.00  an old-style tip|
+=== message_retracted / inline / w=32
+|[B]  20:00 Bob: [message |
+|                deleted]|
+=== message_retracted / inline / w=72
+|[B]  20:00 Bob: [message deleted]|
+=== message_retracted / grouped / w=32
+|[B]  Bob 20:00|
+|  [message deleted]|
+=== message_retracted / grouped / w=72
+|[B]  Bob 20:00|
+|   [message deleted]|
+=== message_retracted / compact / w=32
+|Bob: [message deleted]|
+=== message_retracted / compact / w=72
+|Bob: [message deleted]|
+=== invalid_type / inline / w=32
+|[B]  20:00 Bob: |
+=== invalid_type / inline / w=72
+|[B]  20:00 Bob: |
+=== invalid_type / grouped / w=32
+|[B]  Bob 20:00|
+|  |
+=== invalid_type / grouped / w=72
+|[B]  Bob 20:00|
+|   |
+=== invalid_type / compact / w=32
+|Bob: |
+=== invalid_type / compact / w=72
+|Bob: |
+=== unknown / inline / w=32
+|[B]  20:00 Bob: a brand new |
+|                event nobody |
+|                has shipped |
+|                support for|
+=== unknown / inline / w=72
+|[B]  20:00 Bob: a brand new event nobody has shipped support for|
+=== unknown / grouped / w=32
+|[B]  Bob 20:00|
+|  a brand new event nobody has |
+|  shipped support for|
+=== unknown / grouped / w=72
+|[B]  Bob 20:00|
+|   a brand new event nobody has shipped support for|
+=== unknown / compact / w=32
+|Bob: a brand new event nobody |
+|     has shipped support for|
+=== unknown / compact / w=72
+|Bob: a brand new event nobody has shipped support for|

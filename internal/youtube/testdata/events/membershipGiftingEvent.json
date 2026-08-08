@@ -1,0 +1,10 @@
+{
+  "id": "msg-gifting-1",
+  "snippet": {
+    "type": "membershipGiftingEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:05:00Z",
+    "membershipGiftingDetails": {"giftMembershipsCount": 5, "giftMembershipsLevelName": "Supporter"}
+  },
+  "authorDetails": {"channelId": "UCauthor0000000000000008", "displayName": "Gifter", "isChatModerator": true}
+}

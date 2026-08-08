@@ -1,0 +1,10 @@
+{
+  "id": "msg-retracted-1",
+  "snippet": {
+    "type": "messageRetractedEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:09:30Z",
+    "messageRetractedDetails": {"retractedMessageId": "msg-text-1"}
+  },
+  "authorDetails": {"channelId": "UCauthor0000000000000001", "displayName": "Regular Viewer"}
+}

@@ -1,0 +1,10 @@
+{
+  "id": "msg-deleted-1",
+  "snippet": {
+    "type": "messageDeletedEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:09:00Z",
+    "messageDeletedDetails": {"deletedMessageId": "msg-text-1"}
+  },
+  "authorDetails": {"channelId": "UCmod0000000000000000001", "displayName": "Mod Squad", "isChatModerator": true}
+}

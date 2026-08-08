@@ -1,0 +1,21 @@
+{
+  "id": "msg-supersticker-1",
+  "snippet": {
+    "type": "superStickerEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:02:00Z",
+    "hasDisplayContent": true,
+    "superStickerDetails": {
+      "superStickerMetadata": {
+        "stickerId": "sticker-42",
+        "altText": "a cat waving a flag",
+        "altTextLanguage": "en"
+      },
+      "amountMicros": "2000000",
+      "currency": "EUR",
+      "amountDisplayString": "€2.00",
+      "tier": 2
+    }
+  },
+  "authorDetails": {"channelId": "UCauthor0000000000000003", "displayName": "Sticker Fan"}
+}

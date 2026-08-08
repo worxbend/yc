@@ -1,0 +1,19 @@
+{
+  "id": "msg-banned-1",
+  "snippet": {
+    "type": "userBannedEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:10:00Z",
+    "userBannedDetails": {
+      "bannedUserDetails": {
+        "channelId": "UCspam0000000000000000001",
+        "channelUrl": "https://www.youtube.com/channel/UCspam0000000000000000001",
+        "displayName": "Spam Bot",
+        "profileImageUrl": "https://yt3.example/spam.jpg"
+      },
+      "banType": "temporary",
+      "banDurationSeconds": "300"
+    }
+  },
+  "authorDetails": {"channelId": "UCmod0000000000000000001", "displayName": "Mod Squad", "isChatModerator": true}
+}

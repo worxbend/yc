@@ -1,0 +1,19 @@
+{
+  "id": "msg-poll-1",
+  "snippet": {
+    "type": "pollEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:08:00Z",
+    "pollDetails": {
+      "status": "active",
+      "metadata": {
+        "questionText": "which theme next?",
+        "options": [
+          {"optionText": "kanagawa", "tally": "128"},
+          {"optionText": "rose-pine", "tally": "97"}
+        ]
+      }
+    }
+  },
+  "authorDetails": {"channelId": "UCowner00000000000000001", "displayName": "Streamer", "isChatOwner": true}
+}

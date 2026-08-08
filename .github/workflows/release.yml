@@ -1,0 +1,321 @@
+name: Release
+
+# A v* tag is the only thing that publishes. The job runs the same
+# credential-free quality gate as CI, builds the two supported Linux targets
+# through scripts/release-dry-run.sh, verifies their checksums, and attaches
+# the binaries, their per-file digests, an aggregate checksums.txt, and the
+# installer to a GitHub Release.
+#
+# workflow_dispatch builds and uploads the same artifacts as a workflow
+# artifact without creating or touching a release, so the pipeline can be
+# rehearsed without cutting a version.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+# Creating a release and uploading assets needs write access to contents.
+# Nothing here needs packages, id-token, or any other scope.
+permissions:
+  contents: read
+
+# One release run per tag. A tag is never re-pushed under normal use, so an
+# in-flight run is not cancelled: cancelling half-way through an upload would
+# leave a release with a partial asset set.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: auto
+      TERM: xterm-256color
+      # No release check may reach Google or read a maintainer's credentials.
+      YC_GOOGLE_CLIENT_ID: ""
+      YC_GOOGLE_CLIENT_SECRET: ""
+      YC_GOOGLE_ACCESS_TOKEN: ""
+      YC_GOOGLE_REFRESH_TOKEN: ""
+      YC_GOOGLE_REDIRECT_URL: ""
+      YC_YOUTUBE_API_KEY: ""
+      YC_YOUTUBE_CHANNEL_ID: ""
+      GOOGLE_CLIENT_ID: ""
+      GOOGLE_CLIENT_SECRET: ""
+      GOOGLE_ACCESS_TOKEN: ""
+      GOOGLE_REFRESH_TOKEN: ""
+      GOOGLE_REDIRECT_URL: ""
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Isolate config, cache, and state directories
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/yc-xdg"
+          mkdir -p "$root/config" "$root/cache" "$root/state" "$root/data"
+          {
+            echo "XDG_CONFIG_HOME=$root/config"
+            echo "XDG_CACHE_HOME=$root/cache"
+            echo "XDG_STATE_HOME=$root/state"
+            echo "XDG_DATA_HOME=$root/data"
+          } >> "$GITHUB_ENV"
+
+      - name: Module files are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Formatting
+        run: |
+          set -euo pipefail
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt would rewrite these files:"
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Unit tests
+        run: go test ./...
+
+      - name: Race tests
+        run: go test -race ./...
+
+      - name: Vulnerability scan
+        run: go tool govulncheck ./...
+
+      - name: Static analysis
+        run: go tool staticcheck ./...
+
+      - name: Shell scripts
+        run: |
+          set -euo pipefail
+          # install.sh is the file a user pipes into a shell. It does not ship
+          # unless bash parses it and shellcheck is happy with it.
+          bash -n scripts/install.sh
+          bash -n scripts/release-dry-run.sh
+          if ! command -v shellcheck > /dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends shellcheck
+          fi
+          shellcheck -x scripts/install.sh scripts/release-dry-run.sh
+
+      - name: Installer behaviour
+        run: |
+          set -euo pipefail
+          # Parsing is not the bar. The installer this release is about to
+          # publish has to actually install: 41 tests against a local HTTPS
+          # release server, covering both architectures, checksum mismatch,
+          # transport downgrade, and refusal on unsupported platforms. A
+          # release whose installer cannot install is worse than no release.
+          bash scripts/install_test.sh
+          bash scripts/shell_lint_test.sh
+
+  release:
+    name: Build and publish
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      # Only this job writes: it creates the release and uploads the assets.
+      contents: write
+    env:
+      GOTOOLCHAIN: auto
+      TERM: xterm-256color
+      YC_GOOGLE_CLIENT_ID: ""
+      YC_GOOGLE_CLIENT_SECRET: ""
+      YC_GOOGLE_ACCESS_TOKEN: ""
+      YC_GOOGLE_REFRESH_TOKEN: ""
+      YC_GOOGLE_REDIRECT_URL: ""
+      YC_YOUTUBE_API_KEY: ""
+      YC_YOUTUBE_CHANNEL_ID: ""
+      GOOGLE_CLIENT_ID: ""
+      GOOGLE_CLIENT_SECRET: ""
+      GOOGLE_ACCESS_TOKEN: ""
+      GOOGLE_REFRESH_TOKEN: ""
+      GOOGLE_REDIRECT_URL: ""
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          # git describe needs the tags; the dry-run falls back to them when
+          # no explicit version is passed.
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Resolve release version
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            tag="$(git describe --tags --always --dirty)"
+          fi
+          # A tag is written v0.1.0; the binary reports 0.1.0.
+          version="${tag#v}"
+          case "$version" in
+            ""|*[[:space:]]*)
+              echo "refusing to build an empty or malformed version: '$tag'"
+              exit 1
+              ;;
+          esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "building yc $version from $tag"
+
+      - name: Build, checksum, and smoke release artifacts
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # --skip-docker: the container image is not a release asset. CI
+          # builds and smokes the image separately.
+          scripts/release-dry-run.sh \
+            --out "$RUNNER_TEMP/yc-release" \
+            --version "$RELEASE_VERSION" \
+            --targets "linux/amd64 linux/arm64" \
+            --skip-docker
+
+      - name: Stage the installer beside the binaries
+        run: |
+          set -euo pipefail
+          release_dir="$RUNNER_TEMP/yc-release"
+          cp scripts/install.sh "$release_dir/install.sh"
+          # The installer is the one asset a user cannot checksum before
+          # running, so publish a digest they can check by hand first, and
+          # cover it in the aggregate file too.
+          (
+            cd "$release_dir"
+            sha256sum install.sh > install.sh.sha256
+            sha256sum -c --quiet install.sh.sha256
+            sha256sum install.sh >> checksums.txt
+            sha256sum -c --quiet checksums.txt
+          )
+
+      - name: Verify the asset set is complete
+        run: |
+          set -euo pipefail
+          release_dir="$RUNNER_TEMP/yc-release"
+          missing=0
+          for asset in \
+            yc_linux_amd64 yc_linux_amd64.sha256 \
+            yc_linux_arm64 yc_linux_arm64.sha256 \
+            checksums.txt install.sh install.sh.sha256
+          do
+            if [ ! -s "$release_dir/$asset" ]; then
+              echo "missing or empty release asset: $asset"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          echo "release assets:"
+          ls -l "$release_dir"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: yc-release-${{ steps.version.outputs.version }}
+          path: ${{ runner.temp }}/yc-release/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          release_dir="$RUNNER_TEMP/yc-release"
+
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --title "yc $RELEASE_TAG" \
+              --verify-tag \
+              --generate-notes
+          fi
+
+          # --clobber so a re-run replaces assets instead of failing.
+          gh release upload "$RELEASE_TAG" \
+            "$release_dir/yc_linux_amd64" \
+            "$release_dir/yc_linux_amd64.sha256" \
+            "$release_dir/yc_linux_arm64" \
+            "$release_dir/yc_linux_arm64.sha256" \
+            "$release_dir/checksums.txt" \
+            "$release_dir/install.sh" \
+            "$release_dir/install.sh.sha256" \
+            --clobber
+
+      - name: Prepend install and verification instructions to the notes
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          release_dir="$RUNNER_TEMP/yc-release"
+          notes="$RUNNER_TEMP/release-notes.md"
+
+          # A re-run must not stack a second copy of the preamble.
+          if gh release view "$RELEASE_TAG" --json body --jq .body |
+            head -n 1 | grep -qx '## Install'; then
+            echo "release notes already carry the install preamble; leaving them alone"
+            exit 0
+          fi
+
+          {
+            echo "## Install"
+            echo
+            echo '```sh'
+            echo "curl --proto '=https' --tlsv1.2 -sSf \\"
+            echo "  https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/install.sh | bash"
+            echo '```'
+            echo
+            echo "Linux amd64 and arm64 only. Other platforms build from source:"
+            echo "\`go install github.com/${GITHUB_REPOSITORY}/cmd/yc@${RELEASE_TAG}\`."
+            echo
+            echo "## Verify"
+            echo
+            echo "Every asset below is covered by \`checksums.txt\`:"
+            echo
+            echo '```'
+            cat "$release_dir/checksums.txt"
+            echo '```'
+            echo
+            echo "\`\`\`sh"
+            echo "sha256sum -c --ignore-missing checksums.txt"
+            echo "\`\`\`"
+            echo
+            echo "---"
+            echo
+          } > "$notes"
+
+          gh release view "$RELEASE_TAG" --json body --jq .body >> "$notes"
+          gh release edit "$RELEASE_TAG" --notes-file "$notes"

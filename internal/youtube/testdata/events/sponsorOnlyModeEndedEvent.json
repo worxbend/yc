@@ -1,0 +1,9 @@
+{
+  "id": "msg-sponsoronly-2",
+  "snippet": {
+    "type": "sponsorOnlyModeEndedEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:11:30Z"
+  },
+  "authorDetails": {"channelId": "UCowner00000000000000001", "displayName": "Streamer", "isChatOwner": true}
+}

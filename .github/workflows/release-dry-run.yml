@@ -1,0 +1,117 @@
+name: Release dry run
+
+# The release pipeline without the release. Run it by hand from the Actions tab
+# before tagging, or after changing the Dockerfile, the release script, or
+# anything that affects packaging. It publishes nothing: the artifacts land as
+# a workflow artifact and expire.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version stamped into the binary (default: git describe)"
+        required: false
+        type: string
+        default: ""
+      skip_docker:
+        description: "Skip the Docker image build and container smokes"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-dry-run-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dry-run:
+    name: Build and smoke release artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: auto
+      TERM: xterm-256color
+      # The script clears these itself; pinning them here means the job never
+      # depends on a runner-level or organization-level value either.
+      YC_GOOGLE_CLIENT_ID: ""
+      YC_GOOGLE_CLIENT_SECRET: ""
+      YC_GOOGLE_ACCESS_TOKEN: ""
+      YC_GOOGLE_REFRESH_TOKEN: ""
+      YC_GOOGLE_REDIRECT_URL: ""
+      YC_YOUTUBE_API_KEY: ""
+      YC_YOUTUBE_CHANNEL_ID: ""
+      GOOGLE_CLIENT_ID: ""
+      GOOGLE_CLIENT_SECRET: ""
+      GOOGLE_ACCESS_TOKEN: ""
+      GOOGLE_REFRESH_TOKEN: ""
+      GOOGLE_REDIRECT_URL: ""
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Lint the release scripts
+        run: |
+          set -euo pipefail
+          bash -n scripts/install.sh
+          bash -n scripts/release-dry-run.sh
+          if ! command -v shellcheck > /dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends shellcheck
+          fi
+          shellcheck -x scripts/install.sh scripts/release-dry-run.sh
+
+      - name: Run the release dry run
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          SKIP_DOCKER: ${{ inputs.skip_docker }}
+        run: |
+          set -euo pipefail
+          args=(--out "$RUNNER_TEMP/yc-release" --targets "linux/amd64 linux/arm64")
+          if [ -n "$INPUT_VERSION" ]; then
+            args+=(--version "$INPUT_VERSION")
+          fi
+          if [ "$SKIP_DOCKER" = "true" ]; then
+            args+=(--skip-docker)
+          fi
+          scripts/release-dry-run.sh "${args[@]}"
+
+      - name: Rehearse the installer's credential-free paths
+        run: |
+          set -euo pipefail
+          # No release may exist yet, so only the paths that touch neither the
+          # network nor the disk are exercised here.
+          bash scripts/install.sh --help > /dev/null
+          bash scripts/install.sh --dry-run
+          bash scripts/install.sh --dry-run --version v0.0.0 --bin-dir "$RUNNER_TEMP/yc-bin"
+          if [ -e "$RUNNER_TEMP/yc-bin" ]; then
+            echo "--dry-run created $RUNNER_TEMP/yc-bin; it must not write anything"
+            exit 1
+          fi
+          bash scripts/install.sh --uninstall --bin-dir "$RUNNER_TEMP/yc-bin"
+          status=0
+          bash scripts/install.sh --version 'not/a/tag' --dry-run || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "the installer accepted a malformed release tag"
+            exit 1
+          fi
+
+      - name: Upload dry-run artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: yc-release-dry-run
+          path: ${{ runner.temp }}/yc-release/
+          if-no-files-found: error
+          retention-days: 7

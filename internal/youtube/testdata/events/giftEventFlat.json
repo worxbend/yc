@@ -1,0 +1,19 @@
+{
+  "id": "msg-gift-flat",
+  "snippet": {
+    "type": "giftEvent",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:06:00Z",
+    "giftDetails": {
+      "giftName": "Confetti",
+      "giftUrl": "https://yt3.example/gift.png",
+      "giftDuration": "3.5s",
+      "altText": "a burst of confetti",
+      "language": "en",
+      "jewelsAmount": 120,
+      "hasVisualEffect": true,
+      "comboCount": 2
+    }
+  },
+  "authorDetails": {"channelId": "UCauthor0000000000000010", "displayName": "Gift Sender"}
+}

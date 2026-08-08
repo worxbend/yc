@@ -1,0 +1,10 @@
+{
+  "id": "msg-future-1",
+  "snippet": {
+    "type": "someEventYouTubeAddedTomorrow",
+    "liveChatId": "live-chat-1",
+    "publishedAt": "2026-08-08T20:15:00Z",
+    "displayMessage": "something new happened in chat"
+  },
+  "authorDetails": {"channelId": "UCauthor0000000000000014", "displayName": "Time Traveller"}
+}

@@ -1,0 +1,462 @@
+name: CI
+
+# The repository-native gate from docs/development.md, run on a clean checkout.
+# Everything here is credential-free and quota-free: no step may reach Google,
+# and no step may depend on a maintainer's local config, credential file, or
+# quota ledger.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same ref supersedes the older run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Go quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: auto
+      TERM: xterm-256color
+      # Every credential variable yc reads is pinned empty. An empty value is
+      # a supported "unset" for config precedence, so this is a real clear and
+      # not a value the config layer might accept.
+      YC_GOOGLE_CLIENT_ID: ""
+      YC_GOOGLE_CLIENT_SECRET: ""
+      YC_GOOGLE_ACCESS_TOKEN: ""
+      YC_GOOGLE_REFRESH_TOKEN: ""
+      YC_GOOGLE_REDIRECT_URL: ""
+      YC_YOUTUBE_API_KEY: ""
+      YC_YOUTUBE_CHANNEL_ID: ""
+      GOOGLE_CLIENT_ID: ""
+      GOOGLE_CLIENT_SECRET: ""
+      GOOGLE_ACCESS_TOKEN: ""
+      GOOGLE_REFRESH_TOKEN: ""
+      GOOGLE_REDIRECT_URL: ""
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Runs before setup-go so the Go build cache lands inside the isolated
+      # XDG tree and setup-go caches the same directory it will later fill.
+      - name: Isolate config, cache, and state directories
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/yc-xdg"
+          mkdir -p "$root/config" "$root/cache" "$root/state" "$root/data"
+          {
+            echo "XDG_CONFIG_HOME=$root/config"
+            echo "XDG_CACHE_HOME=$root/cache"
+            echo "XDG_STATE_HOME=$root/state"
+            echo "XDG_DATA_HOME=$root/data"
+          } >> "$GITHUB_ENV"
+
+      # The env block above pins the credential variables. This sweep catches
+      # any other YC_* or YOUTUBE_* setting that a runner image, an org-level
+      # variable, or a future config key might introduce, so smoke output stays
+      # a function of the checkout alone.
+      - name: Clear every remaining yc environment variable
+        run: |
+          set -euo pipefail
+          env | sed -n 's/^\(YC_[A-Za-z0-9_]*\)=.*/\1/p' | sort -u |
+            while read -r name; do
+              printf '%s=\n' "$name" >> "$GITHUB_ENV"
+            done
+          env | sed -n 's/^\(YOUTUBE_[A-Za-z0-9_]*\)=.*/\1/p' | sort -u |
+            while read -r name; do
+              printf '%s=\n' "$name" >> "$GITHUB_ENV"
+            done
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          # Caches the module cache and the build cache, keyed on go.sum.
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Report toolchain
+        run: |
+          go version
+          go env GOCACHE GOMODCACHE
+
+      - name: Module files are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Formatting
+        run: |
+          set -euo pipefail
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt would rewrite these files:"
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Unit tests
+        run: go test ./...
+
+      - name: Race tests
+        run: go test -race ./...
+
+      - name: Vulnerability scan
+        run: go tool govulncheck ./...
+
+      - name: Static analysis
+        run: go tool staticcheck ./...
+
+      - name: Build linux/amd64
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
+        run: go build -trimpath -o "$RUNNER_TEMP/yc-linux-amd64" ./cmd/yc
+
+      - name: Build linux/arm64
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: arm64
+        run: go build -trimpath -o "$RUNNER_TEMP/yc-linux-arm64" ./cmd/yc
+
+      - name: Credential-free CLI smoke checks
+        run: |
+          set -euo pipefail
+          yc="$RUNNER_TEMP/yc-linux-amd64"
+          "$yc" --help
+          "$yc" --version
+          "$yc" doctor
+          "$yc" config show
+          "$yc" config path
+          "$yc" quota
+          "$yc" profile list
+          "$yc" login --dry-run
+          # The shell renders one frame and exits when stdin closes. The
+          # timeout is a backstop so a regression that blocks on input fails
+          # the job instead of hanging it for the full job timeout.
+          timeout 60 "$yc" chat --mock < /dev/null
+          timeout 60 "$yc" chat --mock --chat one --chat two < /dev/null
+          timeout 60 "$yc" chat --mock --chats one,two < /dev/null
+
+      - name: Live chat refuses to start without credentials
+        run: |
+          set -euo pipefail
+          yc="$RUNNER_TEMP/yc-linux-amd64"
+          status=0
+          "$yc" chat --video dQw4w9WgXcQ < /dev/null || status=$?
+          if [ "$status" -ne 2 ]; then
+            echo "expected exit 2 for a credential-free live chat run, got $status"
+            exit 1
+          fi
+
+      - name: Credential leak scan
+        run: |
+          set -euo pipefail
+          # An obviously fake key-shaped marker must reach neither stdout, nor
+          # stderr, nor the debug log, and the debug log must be owner-only.
+          scan="$RUNNER_TEMP/leak-scan"
+          mkdir -p "$scan"
+          marker='AIzaSyTEST-not-a-real-key-000000000000000'
+          YC_YOUTUBE_API_KEY="$marker" \
+            timeout 60 "$RUNNER_TEMP/yc-linux-amd64" chat --mock \
+              --debug-log --debug-log-path "$scan/debug.log" \
+              < /dev/null > "$scan/out" 2> "$scan/err"
+          if grep -rq "$marker" "$scan"; then
+            echo "credential marker leaked into yc output"
+            grep -rln "$marker" "$scan" || true
+            exit 1
+          fi
+          mode=$(stat -c '%a' "$scan/debug.log")
+          if [ "$mode" != "600" ]; then
+            echo "debug log mode is $mode, expected 600"
+            exit 1
+          fi
+
+      - name: Package boundaries
+        run: |
+          set -euo pipefail
+          failed=0
+
+          report() {
+            echo "boundary violation: $1"
+            shift
+            printf '%s\n' "$@"
+            failed=1
+          }
+
+          direct_imports() {
+            go list -f '{{range .Imports}}{{.}}{{"\n"}}{{end}}' "$1"
+          }
+
+          # internal/youtube is transport. Nothing on its dependency graph may
+          # touch a terminal UI library.
+          hits=$(go list -deps ./internal/youtube | grep -i 'charmbracelet' || true)
+          if [ -n "$hits" ]; then
+            report "internal/youtube depends on Charm" "$hits"
+          fi
+
+          # internal/render styles rows but must never own the event loop.
+          hits=$(direct_imports ./internal/render | grep 'bubbletea' || true)
+          if [ -n "$hits" ]; then
+            report "internal/render imports Bubble Tea" "$hits"
+          fi
+
+          # internal/app consumes normalized models only: no Google API client,
+          # no HTTP, no YouTube Data API JSON shapes.
+          hits=$(direct_imports ./internal/app |
+            grep -E '^(net/http|net/http/.*|google\.golang\.org/.*|.*/youtube/v[0-9]+)$' || true)
+          if [ -n "$hits" ]; then
+            report "internal/app imports transport packages" "$hits"
+          fi
+
+          hits=$(grep -rn 'json:"' internal/app --include='*.go' |
+            grep -v '_test\.go' || true)
+          if [ -n "$hits" ]; then
+            report "internal/app declares wire types (JSON struct tags)" "$hits"
+          fi
+
+          # Bubble Tea Update and View stay pure: no filesystem, no network,
+          # no sleeps.
+          hits=$(grep -rnE 'os\.Open|os\.Create|http\.|ReadFile|WriteFile|time\.Sleep' \
+            internal/app --include='*.go' | grep -v '_test\.go' || true)
+          if [ -n "$hits" ]; then
+            report "internal/app performs direct I/O or sleeps" "$hits"
+          fi
+
+          exit "$failed"
+
+      - name: No trailing whitespace in tracked files
+        run: |
+          set -euo pipefail
+          # -r keeps a hypothetical empty file list from turning grep into a
+          # process that reads stdin and hangs the job.
+          hits=$(git ls-files -z |
+            xargs -0 -r grep -nIH '[ \t]$' || true)
+          if [ -n "$hits" ]; then
+            echo "trailing whitespace found:"
+            printf '%s\n' "$hits"
+            exit 1
+          fi
+
+      - name: Diff has no whitespace errors or conflict markers
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          zero_sha=0000000000000000000000000000000000000000
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            git diff --check "origin/${GITHUB_BASE_REF}...HEAD"
+          elif [ -n "${BEFORE_SHA:-}" ] && [ "$BEFORE_SHA" != "$zero_sha" ]; then
+            git diff --check "$BEFORE_SHA" "$GITHUB_SHA"
+          else
+            git diff-tree --check --no-commit-id --root -r "$GITHUB_SHA"
+          fi
+
+  shell:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck if the image lacks it
+        run: |
+          set -euo pipefail
+          if ! command -v shellcheck > /dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends shellcheck
+          fi
+          shellcheck --version
+
+      - name: Shellcheck
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(scripts/*.sh)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "no shell scripts to check yet"
+            exit 0
+          fi
+          printf 'checking %s\n' "${files[@]}"
+          # -x follows sourced files; every script must be clean at the
+          # default (style) severity, not merely free of errors.
+          shellcheck -x "${files[@]}"
+
+      - name: Scripts are executable and have a shebang
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          failed=0
+          for file in scripts/*.sh; do
+            if [ ! -x "$file" ]; then
+              echo "$file is not executable"
+              failed=1
+            fi
+            if ! head -n 1 "$file" | grep -q '^#!'; then
+              echo "$file has no shebang"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+  docs:
+    name: Documentation links
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Relative links and heading anchors only. External URLs are deliberately
+      # not fetched: a third-party outage must not fail an unrelated pull
+      # request, and no CI step should make outbound requests on a fork's
+      # behalf.
+      - name: Check relative markdown links and anchors
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          import sys
+
+          LINK = re.compile(r"(?<!!)\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\s*\)")
+          HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+          FENCE = re.compile(r"^\s*(```|~~~)")
+          EXTERNAL = re.compile(r"^(https?:|mailto:|tel:|ftp:|//)")
+          # README pins stable ids with <a id="..."></a> so an emoji in a
+          # heading cannot change a link target.
+          HTML_ANCHOR = re.compile(r'<a\s[^>]*?(?:id|name)="([^"]+)"', re.I)
+
+          def slug(text):
+              text = re.sub(r"`([^`]*)`", r"\1", text)
+              text = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", text)
+              text = re.sub(r"[*_~]", "", text)
+              text = text.strip().lower()
+              text = re.sub(r"[^\w\- ]", "", text)
+              return text.replace(" ", "-")
+
+          def anchors(path):
+              from_headings = set()
+              explicit = set()
+              fenced = False
+              with open(path, encoding="utf-8") as handle:
+                  for line in handle:
+                      if FENCE.match(line):
+                          fenced = not fenced
+                          continue
+                      if fenced:
+                          continue
+                      for found in HTML_ANCHOR.findall(line):
+                          explicit.add(found.lower())
+                      match = HEADING.match(line)
+                      if not match:
+                          continue
+                      base = slug(match.group(2))
+                      candidate = base
+                      index = 1
+                      while candidate in from_headings:
+                          candidate = "%s-%d" % (base, index)
+                          index += 1
+                      from_headings.add(candidate)
+              return from_headings | explicit
+
+          def prose(path):
+              lines = []
+              fenced = False
+              with open(path, encoding="utf-8") as handle:
+                  for number, line in enumerate(handle, 1):
+                      if FENCE.match(line):
+                          fenced = not fenced
+                          continue
+                      if not fenced:
+                          lines.append((number, line))
+              return lines
+
+          roots = ["README.md", "CHANGELOG.md", "CONTRIBUTING.md",
+                   "SECURITY.md", "docs"]
+          files = []
+          for root in roots:
+              if os.path.isfile(root):
+                  files.append(root)
+              elif os.path.isdir(root):
+                  for base, dirs, names in os.walk(root):
+                      dirs[:] = [d for d in dirs if d != ".git"]
+                      files.extend(os.path.join(base, n)
+                                   for n in names if n.endswith(".md"))
+
+          cache = {}
+          problems = []
+          for path in sorted(set(files)):
+              for number, line in prose(path):
+                  for target in LINK.findall(line):
+                      if EXTERNAL.match(target):
+                          continue
+                      relative, _, anchor = target.partition("#")
+                      if relative:
+                          resolved = os.path.normpath(
+                              os.path.join(os.path.dirname(path), relative))
+                      else:
+                          resolved = path
+                      if not os.path.exists(resolved):
+                          problems.append(
+                              "%s:%d broken link target %s" % (path, number, target))
+                          continue
+                      if anchor and resolved.endswith(".md"):
+                          if resolved not in cache:
+                              cache[resolved] = anchors(resolved)
+                          if anchor.lower() not in cache[resolved]:
+                              problems.append(
+                                  "%s:%d missing anchor %s" % (path, number, target))
+
+          for problem in problems:
+              print(problem)
+          print("checked %d markdown files" % len(set(files)))
+          sys.exit(1 if problems else 0)
+          PY
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # This blocks. The image and every smoke below were built and run on a
+    # Docker host during the release gate, so a failure here is a regression,
+    # not an unknown. docs/docker.md records that evidence.
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build --build-arg VERSION=ci -t yc:ci .
+
+      - name: Smoke the image without credentials
+        run: |
+          set -euo pipefail
+          docker run --rm yc:ci --help
+          # The image must carry the version it was stamped with. Without the
+          # assertion an unstamped build reports "yc dev" and nothing notices.
+          version=$(docker run --rm yc:ci --version)
+          [ "$version" = "yc ci" ] || {
+            echo "image reports '$version', want 'yc ci'"
+            exit 1
+          }
+          docker run --rm yc:ci doctor
+          docker run --rm yc:ci config show
+          docker run --rm yc:ci chat --mock
