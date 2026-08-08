@@ -242,12 +242,16 @@ grep -rnE 'os\.Open|os\.Create|http\.|ReadFile|WriteFile|time\.Sleep' \
   internal/app --include='*.go' | grep -v '_test\.go'              # must be empty
 
 # 2. no trailing whitespace in any tracked file
-git ls-files -z | xargs -0 -r grep -nIH '[ \t]$'                   # must be empty
+# [[:blank:]], not [ \t]: in a bracket expression \t is a literal backslash
+# and t, so '[ \t]$' also matches every line ending in "t".
+git ls-files -z | xargs -0 -r grep -nIH '[[:blank:]]$'             # must be empty
 
 # 3. no whitespace errors or conflict markers in the diff
 git diff --check origin/main...HEAD
 
 # 4. shell scripts
+#    CI pins shellcheck v0.11.0. Which checks fire varies between releases, so
+#    an older local shellcheck can report findings CI does not, and vice versa.
 shellcheck -x scripts/*.sh
 
 # 5. every relative doc link and anchor resolves

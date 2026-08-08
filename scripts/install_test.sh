@@ -562,6 +562,11 @@ assert_same_bytes() {
 
 # assert_nothing_installed also catches the staging file install.sh writes
 # before its rename, which a failed run must never leave behind.
+#
+# The directory argument is optional and every current caller relies on the
+# default. shellcheck before 0.10 reports that as SC2120/SC2119; keep the
+# override so the script lints clean on every shellcheck the CI image ships.
+# shellcheck disable=SC2120
 assert_nothing_installed() {
 	local dir=${1:-$bin_dir} leftovers
 	[ -d "$dir" ] || return 0
@@ -569,6 +574,8 @@ assert_nothing_installed() {
 	[ -z "$leftovers" ] || fail "expected $dir to be empty, found: $leftovers"
 }
 
+# Optional directory argument, as above.
+# shellcheck disable=SC2120
 assert_no_staging_file() {
 	local dir=${1:-$bin_dir} leftovers
 	[ -d "$dir" ] || return 0
