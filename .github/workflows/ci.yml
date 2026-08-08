@@ -247,8 +247,13 @@ jobs:
           set -euo pipefail
           # -r keeps a hypothetical empty file list from turning grep into a
           # process that reads stdin and hangs the job.
+          #
+          # [[:blank:]] rather than [ \t]: inside a POSIX bracket expression
+          # \t is a literal backslash and t, so '[ \t]$' silently matches every
+          # line ending in "t" or "\". Some greps (ugrep) read it as a tab and
+          # appear to work, which is how the broken form survived local runs.
           hits=$(git ls-files -z |
-            xargs -0 -r grep -nIH '[ \t]$' || true)
+            xargs -0 -r grep -nIH '[[:blank:]]$' || true)
           if [ -n "$hits" ]; then
             echo "trailing whitespace found:"
             printf '%s\n' "$hits"
