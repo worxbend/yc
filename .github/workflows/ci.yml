@@ -45,7 +45,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -80,7 +80,7 @@ jobs:
             done
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           # Caches the module cache and the build cache, keyed on go.sum.
@@ -275,7 +275,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Pinned rather than taken from the runner image: shellcheck changes which
       # checks fire between releases, so an unpinned version means CI can fail on
@@ -329,7 +329,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Relative links and heading anchors only. External URLs are deliberately
       # not fetched: a third-party outage must not fail an unrelated pull
@@ -447,7 +447,7 @@ jobs:
     # not an unknown. docs/docker.md records that evidence.
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build image
         run: docker build --build-arg VERSION=ci -t yc:ci .
