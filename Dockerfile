@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-ARG GO_VERSION=1.26.4
+ARG GO_VERSION=1.26.5
 
 # VERSION is stamped into the binary so `docker run yc --version` reports the
 # release it was built from. Without it an image built from a tagged tree still

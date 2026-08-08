@@ -82,7 +82,7 @@ evidence than any of it.
 
 Environment:
 
-- Host: Linux amd64, Go `go1.26.5`, module `go 1.26` / `toolchain go1.26.4`.
+- Host: Linux amd64, Go `go1.26.5`, module `go 1.26` / `toolchain go1.26.5`.
 - Isolated `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` under `mktemp -d`, with every
   `YC_*` and `GOOGLE_*` credential variable cleared.
 - YouTube mode: `--mock` and offline diagnostics only. No live chat connection

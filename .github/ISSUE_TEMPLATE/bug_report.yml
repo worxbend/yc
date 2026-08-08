@@ -93,7 +93,7 @@ body:
         Terminal: foot 1.20 (tmux 3.5)
         TERM: xterm-256color
         Size: 130x36
-        Go: go1.26.4
+        Go: go1.26.5
     validations:
       required: true
 
