@@ -308,3 +308,81 @@ func TestFakeChatClientCloseIsIdempotent(t *testing.T) {
 		t.Fatalf("err = %v, want ErrFakeChatClientClosed", err)
 	}
 }
+
+// parkedFactory blocks the run loop inside the transport factory, which is the
+// one moment when a session has been started but has published nothing for
+// stop() or restart() to act on. Both regression tests below drive that window
+// deliberately; before the publish handshake existed, landing in it left the
+// session fanning in a transport nobody would ever close.
+func parkedFactory() (factory func(youtube.ChatTarget) (LiveChatTransport, error), entered <-chan struct{}, release func()) {
+	in := make(chan struct{}, 1)
+	gate := make(chan struct{})
+	var once sync.Once
+	return func(youtube.ChatTarget) (LiveChatTransport, error) {
+		select {
+		case in <- struct{}{}:
+		default:
+		}
+		<-gate
+		return newFakeTransport(), nil
+	}, in, func() { once.Do(func() { close(gate) }) }
+}
+
+func TestLiveChatClientCloseDuringInitialConnectDoesNotHang(t *testing.T) {
+	factory, entered, release := parkedFactory()
+	client, err := NewLiveChatClient(LiveChatConfig{
+		Factory: factory,
+		Targets: []youtube.ChatTarget{{Raw: "demo", LiveChatID: "live-chat"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	<-entered // the run loop is inside the factory; no transport is published
+
+	closed := make(chan error, 1)
+	go func() { closed <- client.Close() }()
+	release() // the transport is published while Close is already tearing down
+
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("Close hung: a transport published after stop() was never closed")
+	}
+}
+
+func TestLiveChatClientReconnectDuringInitialConnectStillRebuilds(t *testing.T) {
+	var mu sync.Mutex
+	built := 0
+	inner, entered, release := parkedFactory()
+	client, err := NewLiveChatClient(LiveChatConfig{
+		Factory: func(target youtube.ChatTarget) (LiveChatTransport, error) {
+			mu.Lock()
+			built++
+			mu.Unlock()
+			return inner(target)
+		},
+		Targets: []youtube.ChatTarget{{Raw: "demo", LiveChatID: "live-chat"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	<-entered
+	if err := client.Reconnect(context.Background()); err != nil {
+		t.Fatalf("Reconnect: %v", err)
+	}
+	release()
+
+	// A reconnect that arrives before the first transport is published must
+	// still produce a replacement rather than being silently dropped.
+	waitFor(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return built >= 2
+	})
+}

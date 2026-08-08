@@ -604,6 +604,17 @@ type liveChatSession struct {
 	target youtube.ChatTarget
 
 	transport LiveChatTransport
+	// stopped records that stop() has already run. Cancelling the context is
+	// not enough on its own: stop() closes whichever transport is published at
+	// the moment it runs, so a transport published afterwards would never be
+	// closed by anyone. See publishTransport.
+	stopped bool
+	// pendingRestart records a restart that arrived before there was a
+	// transport to close. Like stop(), restart() acts on whatever is published
+	// when it runs, so a restart during the initial connect would otherwise be
+	// dropped and leave the session fanning in a transport nobody asked it to
+	// keep. See publishTransport.
+	pendingRestart bool
 	// explicitRestart marks a cycle the user asked for, so a manual
 	// reconnect starts at the bottom of the ladder rather than inheriting
 	// the backoff of whatever failed before it.
@@ -675,11 +686,54 @@ func (s *liveChatSession) setTransport(transport LiveChatTransport) {
 	s.mu.Unlock()
 }
 
+// publishOutcome tells the run loop what to do with a transport it just built.
+type publishOutcome int
+
+const (
+	// publishAccepted means the transport is live and may be started.
+	publishAccepted publishOutcome = iota
+	// publishStopped means the session was stopped while the transport was
+	// being built; the caller closes it and returns.
+	publishStopped
+	// publishSuperseded means a restart arrived while the transport was being
+	// built; the caller closes it and builds a replacement.
+	publishSuperseded
+)
+
+// publishTransport stores a freshly built transport and reports whether the
+// caller may keep it.
+//
+// stop() and restart() both act on whatever transport is published at the
+// instant they run. The run loop checks for cancellation before it builds a
+// transport, so either call can land in the window between that check and the
+// publish, find nil, and do nothing — leaving the run loop to fan in streams
+// that nobody will ever close. forward() then blocks forever: Close() hangs on
+// its WaitGroup, and a reconnect silently wedges the chat instead of rebuilding
+// it. Publishing and the flag checks share one lock hold so the window cannot
+// reopen between them.
+func (s *liveChatSession) publishTransport(transport LiveChatTransport) publishOutcome {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopped {
+		return publishStopped
+	}
+	if s.pendingRestart {
+		s.pendingRestart = false
+		return publishSuperseded
+	}
+	s.transport = transport
+	return publishAccepted
+}
+
 // stop cancels the session and closes its transport. Cancellation comes first
 // so the transport's own context-aware work stops before it is torn down.
 func (s *liveChatSession) stop() {
 	s.cancel()
-	if transport := s.currentTransport(); transport != nil {
+	s.mu.Lock()
+	s.stopped = true
+	transport := s.transport
+	s.mu.Unlock()
+	if transport != nil {
 		_ = transport.Close()
 	}
 }
@@ -709,6 +763,9 @@ func (s *liveChatSession) restart() {
 	// an in-place restart never reaches the run loop at all.
 	s.mu.Lock()
 	s.explicitRestart = true
+	// A restart with nothing published yet is recorded rather than dropped:
+	// the run loop is mid-build and will honour it as soon as it publishes.
+	s.pendingRestart = transport == nil && !s.stopped
 	s.mu.Unlock()
 	if transport != nil {
 		_ = transport.Close()
@@ -742,7 +799,14 @@ func (s *liveChatSession) run() {
 			continue
 		}
 
-		s.setTransport(transport)
+		switch s.publishTransport(transport) {
+		case publishStopped:
+			_ = transport.Close()
+			return
+		case publishSuperseded:
+			_ = transport.Close()
+			continue
+		}
 		if err := transport.Start(s.ctx); err != nil {
 			s.setTransport(nil)
 			_ = transport.Close()
