@@ -248,6 +248,8 @@ git ls-files -z | xargs -0 -r grep -nIH '[ \t]$'                   # must be emp
 git diff --check origin/main...HEAD
 
 # 4. shell scripts
+#    CI pins shellcheck v0.11.0. Which checks fire varies between releases, so
+#    an older local shellcheck can report findings CI does not, and vice versa.
 shellcheck -x scripts/*.sh
 
 # 5. every relative doc link and anchor resolves
