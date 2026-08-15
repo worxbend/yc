@@ -1,0 +1,45 @@
+# golangci-lint v2 configuration.
+#
+# This is the repository's lint gate. CI runs it via the official
+# golangci-lint-action; locally, install golangci-lint and run:
+#
+#   golangci-lint run ./...
+#
+# The linter set below layers on top of the tools the repo already runs
+# (go vet, staticcheck, govulncheck): errcheck catches silently dropped
+# errors, revive and gocritic catch style and correctness smells, gosec
+# scans for common security mistakes, misspell catches typos in comments
+# and strings, and unparam finds parameters no caller ever varies.
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - revive
+    - gocritic
+    - gosec
+    - misspell
+    - unparam
+  settings:
+    misspell:
+      locale: US
+      ignore-rules:
+        # "spectre" is a theme name users reference in their config files,
+        # not prose; renaming it would break existing configurations.
+        - spectre
+  exclusions:
+    rules:
+      # Test helpers legitimately ignore cleanup errors (defer f.Close(),
+      # os.Remove of temp fixtures) and construct fixed file modes; gosec's
+      # file-permission and error-handling rules would demand noise-only
+      # changes there. Production code keeps the full rule set.
+      - path: _test\.go
+        linters:
+          - gosec
+
+formatters:
+  enable:
+    - gofmt
