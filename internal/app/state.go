@@ -100,7 +100,7 @@ type chatState struct {
 	localEchoes map[string]struct{}
 
 	// seenIDs and seenOrder are the bounded ring of message IDs this chat has
-	// already filed, and the only defence against a re-delivered backlog.
+	// already filed, and the only defense against a re-delivered backlog.
 	//
 	// The poller dedupes within one session, but its ring dies with it: ctrl+r
 	// and the reconnect ladder both build a fresh transport, which primes with

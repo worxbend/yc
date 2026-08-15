@@ -148,7 +148,7 @@ func splitFragmentsUnicode(text string) []MessageFragment {
 // matchToken tries the anchored token patterns against the remainder of the
 // message. Mentions and URLs only start at a word boundary so an address inside
 // a word is not mistaken for one; a shortcode may start anywhere, because
-// YouTube emits them flush against neighbouring text.
+// YouTube emits them flush against neighboring text.
 func matchToken(remainder, cluster string, atWordStart bool) (string, FragmentType, bool) {
 	switch {
 	case atWordStart && cluster == "@":

@@ -140,7 +140,7 @@ func TestSecretFormattingDistinguishesUnsetFromHidden(t *testing.T) {
 	}
 
 	// The JSON and text encoders are separate paths, and a struct with a
-	// Secret field is exactly what gets marshalled into a debug record.
+	// Secret field is exactly what gets marshaled into a debug record.
 	encoded, err := set.MarshalJSON()
 	if err != nil {
 		t.Fatalf("MarshalJSON error = %v", err)

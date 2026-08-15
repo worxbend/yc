@@ -307,7 +307,7 @@ func TestTerminalBackgroundSequenceIsGatedOnInteractivity(t *testing.T) {
 // The quota tab must never present an estimate as a fact.
 func TestQuotaTabLabelsItsFiguresAsEstimates(t *testing.T) {
 	model := newViewModel(t, 100, 30)
-	joined := strings.Join(model.quotaLedgerLines(96), "\n")
+	joined := strings.Join(model.quotaLedgerLines(), "\n")
 	if !strings.Contains(joined, "estimate") {
 		t.Fatalf("quota tab omits the estimate disclaimer:\n%s", joined)
 	}
@@ -322,7 +322,7 @@ func TestQuotaTabLabelsItsFiguresAsEstimates(t *testing.T) {
 func TestQuotaTabWithoutALedgerExplainsItself(t *testing.T) {
 	model := newViewModel(t, 100, 30)
 	model.quotaKnown = false
-	joined := strings.Join(model.quotaLedgerLines(96), "\n")
+	joined := strings.Join(model.quotaLedgerLines(), "\n")
 	if !strings.Contains(joined, "No quota ledger yet") {
 		t.Fatalf("missing ledger is unexplained:\n%s", joined)
 	}
@@ -333,7 +333,7 @@ func TestQuotaTabWithoutALedgerExplainsItself(t *testing.T) {
 func TestStreamInfoTabDoesNotPrintTheLiveChatID(t *testing.T) {
 	model := newViewModel(t, 100, 30)
 	model.activeChatState().target.LiveChatID = "Cg0KC3NlY3JldC1pZC0x"
-	joined := strings.Join(model.streamInfoLines(96), "\n")
+	joined := strings.Join(model.streamInfoLines(), "\n")
 	if strings.Contains(joined, "Cg0KC3NlY3JldC1pZC0x") {
 		t.Fatalf("stream info printed the live chat ID:\n%s", joined)
 	}

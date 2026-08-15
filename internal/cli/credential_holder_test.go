@@ -358,7 +358,7 @@ func TestCredentialHolderRefreshHonorsTheCallerContext(t *testing.T) {
 	<-started
 
 	// Wait until the first caller owns the in-flight slot, then arrive with an
-	// already-cancelled context.
+	// already-canceled context.
 	deadline := time.After(2 * time.Second)
 	for {
 		holder.mu.Lock()
@@ -430,7 +430,7 @@ func TestStartRefreshLoopDeclinesWhenItCannotSchedule(t *testing.T) {
 	}
 }
 
-// A cancelled context must stop the loop rather than leaving a goroutine
+// A canceled context must stop the loop rather than leaving a goroutine
 // refreshing a session nobody is watching.
 func TestStartRefreshLoopStopsOnContextCancellation(t *testing.T) {
 	refresher := &scriptedRefresher{}

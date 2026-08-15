@@ -88,7 +88,7 @@ type ClientConfig struct {
 	// exchange rather than one per in-flight call - Google rotates a refresh
 	// token as it consumes it, so the second concurrent exchange would fail
 	// and read as a revoked grant. A nil hook means a 401 is terminal, which
-	// is the correct behaviour for a key-only read and for any caller that
+	// is the correct behavior for a key-only read and for any caller that
 	// has no refresh token.
 	//
 	// It must not return a token: the transport re-reads credentials per
@@ -212,7 +212,7 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 // This is not decoration. fmt reaches unexported fields by reflection and
 // cannot call String on them, so a %v or %+v of a *Client would print the
 // credential source verbatim and defeat auth.Secret's redaction entirely. The
-// only reliable defence is for the outermost value to format itself.
+// only reliable defense is for the outermost value to format itself.
 func (c *Client) String() string { return "youtube.Client{}" }
 
 // GoString mirrors String for %#v.

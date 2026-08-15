@@ -397,13 +397,13 @@ func TestAStaleEpochRetriesWithoutExchanging(t *testing.T) {
 	}
 }
 
-// A caller that is already cancelled must not dispatch at all: the whole point
+// A caller that is already canceled must not dispatch at all: the whole point
 // of the ctx check at the top of doJSON is that a quit keystroke stops spending
 // quota immediately rather than after one more round trip.
 func TestACancelledCallerNeitherDispatchesNorRefreshes(t *testing.T) {
 	source := &refreshingCredentials{token: auth.NewSecret(expiredTestToken)}
 	client := newAuthTestClient(t, ClientConfig{Credentials: source}, func(http.ResponseWriter, *http.Request) {
-		t.Error("a request was dispatched for a cancelled caller")
+		t.Error("a request was dispatched for a canceled caller")
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -413,11 +413,11 @@ func TestACancelledCallerNeitherDispatchesNorRefreshes(t *testing.T) {
 		t.Fatalf("error = %v, want context.Canceled", err)
 	}
 	if got := source.refreshCount(); got != 0 {
-		t.Fatalf("refreshes = %d, want none for a cancelled caller", got)
+		t.Fatalf("refreshes = %d, want none for a canceled caller", got)
 	}
 }
 
-// When the caller's context is cancelled while the exchange is running, the
+// When the caller's context is canceled while the exchange is running, the
 // error reported is the cancellation and not a credential verdict. Telling a
 // user who just quit that their sign-in expired would send them to `yc login`
 // over their own keystroke.
@@ -468,6 +468,6 @@ func TestCancellationDuringTheExchangeIsReportedAsCancellation(t *testing.T) {
 			t.Fatalf("error = %q, want no credential blame for the user's own quit", err)
 		}
 	case <-time.After(10 * time.Second):
-		t.Fatal("the request never returned after its context was cancelled")
+		t.Fatal("the request never returned after its context was canceled")
 	}
 }

@@ -137,7 +137,7 @@ func TestNoCommandCanPrintACredential(t *testing.T) {
 			// Everything that accepts --config and --debug-log gets them, so
 			// the redaction covers the logging path too.
 			full := append([]string(nil), args...)
-			if args[0] != "--help" && !(args[0] == "config" && args[1] == "path") {
+			if args[0] != "--help" && (args[0] != "config" || args[1] != "path") {
 				full = append(full, "--config", cfgPath)
 			}
 			switch args[0] {
@@ -292,7 +292,7 @@ func TestCredentialBearingFieldsUseANonPrintingType(t *testing.T) {
 	}
 }
 
-// Startup errors carry two layers of defence: the config-level display
+// Startup errors carry two layers of defense: the config-level display
 // redaction and every secret the process actually holds.
 func TestSafeStartupErrorRemovesEveryConfiguredCredential(t *testing.T) {
 	cfg := config.Default()

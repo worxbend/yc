@@ -30,15 +30,15 @@ func FuzzSanitizeUserText(f *testing.F) {
 		"\x1bP+q544e\x1b\\",
 		"\u009b31mone-byte CSI",
 		"\u009d0;ownedone-byte OSC",
-		"bidi ‮gnihtemos‬ order",
-		"isolate ⁦right⁩ text",
-		"marks ‎ltr‏ rtl",
+		"bidi \u202egnihtemos\u202c order",
+		"isolate \u2066right\u2069 text",
+		"marks \u200eltr\u200f rtl",
 		"line\none\nbreaks",
 		"bell\a tab\t del\x7f",
 		"lone escape \x1b at large",
 		"truncated \x1b[ sequence",
 		"\xff\xfe invalid utf-8 \x80",
-		"emoji \U0001F468‍\U0001F469‍\U0001F467 family",
+		"emoji \U0001F468\u200d\U0001F469\u200d\U0001F467 family",
 	}
 	for _, seed := range seeds {
 		f.Add(seed)

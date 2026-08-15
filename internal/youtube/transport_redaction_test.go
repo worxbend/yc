@@ -111,7 +111,7 @@ func TestTransportCancellationStaysClassifiable(t *testing.T) {
 	var out any
 	callErr := client.doJSON(ctx, http.MethodGet, EndpointMessagesList, "liveChat/messages", nil, nil, &out)
 	if !errors.Is(callErr, context.Canceled) {
-		t.Errorf("a cancelled call must remain context.Canceled, got %v", callErr)
+		t.Errorf("a canceled call must remain context.Canceled, got %v", callErr)
 	}
 }
 

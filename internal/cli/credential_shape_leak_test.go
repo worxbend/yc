@@ -151,7 +151,7 @@ func TestNoCommandPrintsAnythingShapedLikeACredential(t *testing.T) {
 			switch args[0] {
 			case "--help", "help", "version", "--version":
 			default:
-				if !(args[0] == "config" && len(args) > 1 && args[1] == "path") {
+				if args[0] != "config" || len(args) <= 1 || args[1] != "path" {
 					full = append(full, "--config", cfgPath)
 				}
 			}

@@ -26,7 +26,7 @@ import (
 // features breaking at once.
 //
 // credential_holder.go carries compile-time assertions for the interface
-// itself. These are the behavioural half: the wiring actually fires for the
+// itself. These are the behavioral half: the wiring actually fires for the
 // value production passes, and the exchange it triggers is the holder's own.
 
 // staticRefresher hands back one fixed token per call and counts the calls.

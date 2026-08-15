@@ -65,12 +65,11 @@ func (e redactedError) Is(target error) bool {
 // the original error's text is redacted and its identity is deliberately
 // dropped so nothing downstream can unwrap back to a transport error holding a
 // request URL.
-func safeError(action string, err error, redactor Redactor, matches ...error) error {
+func safeError(action string, err error, redactor Redactor) error {
 	if err == nil {
 		return nil
 	}
-	matched := make([]error, 0, len(matches)+1)
-	matched = append(matched, matches...)
+	var matched []error
 	switch {
 	case errors.Is(err, context.Canceled):
 		matched = append(matched, context.Canceled)

@@ -230,7 +230,7 @@ func ClassifyAPIError(statusCode int, reason, status, errorInfoReason string) er
 // Retryable reports whether an error should be retried on the backoff ladder
 // rather than ending the session.
 //
-// A cancelled context is never retryable: the caller asked yc to stop, and
+// A canceled context is never retryable: the caller asked yc to stop, and
 // retrying would keep spending quota after the user closed the chat.
 func Retryable(err error) bool {
 	if err == nil {
@@ -303,7 +303,7 @@ func newSafeError(detail string, cause error) error {
 //
 // So the transport error's text is stripped of its URL, redacted, and rebuilt;
 // its identity is dropped. Only the context sentinels survive, because callers
-// distinguish "the user cancelled" from "the network failed".
+// distinguish "the user canceled" from "the network failed".
 func transportCause(err error, redact func(string) string) error {
 	if err == nil {
 		return nil

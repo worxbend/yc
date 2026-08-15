@@ -42,7 +42,7 @@ func (r *reconnectableTransport) reconnectCount() int {
 func (r *reconnectableTransport) isClosed() bool {
 	r.fakeTransport.mu.Lock()
 	defer r.fakeTransport.mu.Unlock()
-	return r.fakeTransport.closed
+	return r.closed
 }
 
 // TestReconnectRestartsTheTransportInPlaceWhenItCan pins the cheap path.

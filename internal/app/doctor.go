@@ -16,6 +16,7 @@ import (
 // DoctorStatus is a single diagnostic outcome.
 type DoctorStatus string
 
+// The three severities a doctor check can report.
 const (
 	DoctorStatusOK   DoctorStatus = "ok"
 	DoctorStatusWarn DoctorStatus = "warn"

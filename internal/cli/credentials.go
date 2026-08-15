@@ -271,7 +271,7 @@ func credentialFileDoctorCheck(status credentialLoadStatus) app.DoctorCheck {
 		// credential store's failures are the ones most likely to quote file
 		// contents. config.RedactDisplayValue only knows credential shapes, so
 		// the record's own secrets are removed by value as well - the same
-		// two-layer defence safeStartupError applies on the startup path.
+		// two-layer defense safeStartupError applies on the startup path.
 		detail := config.RedactDisplayValue(status.Record.Redactor().Redact(status.Err.Error()))
 		return app.DoctorCheck{
 			Name:   label,

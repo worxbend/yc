@@ -231,7 +231,7 @@ func TestSelectionAndReplyMode(t *testing.T) {
 		t.Fatal("the selected message should be resolvable for the inspect panel")
 	}
 
-	// esc unwinds one step: the reply is cancelled, the cursor is kept.
+	// esc unwinds one step: the reply is canceled, the cursor is kept.
 	model = press(t, model, key(tea.KeyEsc))
 	model = press(t, model, key(tea.KeyEsc))
 	if model.activeChatState().replyTo != nil {
@@ -293,7 +293,7 @@ func TestThemePickerPreviewsAndCancelRestores(t *testing.T) {
 	}
 	model = press(t, model, key(tea.KeyEsc))
 	if model.theme != original {
-		t.Fatal("cancelling the theme picker must restore the palette it opened with")
+		t.Fatal("canceling the theme picker must restore the palette it opened with")
 	}
 }
 

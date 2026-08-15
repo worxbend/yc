@@ -349,7 +349,7 @@ type countingRefresher struct {
 	token   auth.Secret
 }
 
-func (r *countingRefresher) Refresh(ctx context.Context, refreshToken auth.Secret) (auth.TokenSet, error) {
+func (r *countingRefresher) Refresh(ctx context.Context, _ auth.Secret) (auth.TokenSet, error) {
 	r.calls.Add(1)
 	select {
 	case <-r.release:

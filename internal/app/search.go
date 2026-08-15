@@ -21,6 +21,8 @@ import (
 // handleSearchKey owns the keyboard while the search input line is open. It is
 // modal in the same way the moderation duration prompt is: every key belongs
 // to the field, so typing "d" into a query cannot arm a deletion.
+//
+//nolint:unparam // every modal key handler shares the (model, cmd, consumed) shape, even when this one never issues a command
 func (m shellModel) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	state := m.activeChatState()
 	if state == nil || !state.searchInput {

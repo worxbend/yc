@@ -280,7 +280,7 @@ const (
 
 // expectedSentinelPolicy forces a decision for every sentinel. A new one added
 // without an entry fails the completeness check below, which is the point: the
-// poll loop's behaviour for an unclassified error is to end the session, and
+// poll loop's behavior for an unclassified error is to end the session, and
 // that should be a choice somebody made rather than a fallthrough nobody saw.
 var expectedSentinelPolicy = map[error]sentinelPolicy{
 	ErrTransient:       policyRetry,
@@ -350,7 +350,7 @@ func TestEverySentinelHasAPolicy(t *testing.T) {
 	}
 }
 
-// A cancelled context is never retryable however it is wrapped: the user asked
+// A canceled context is never retryable however it is wrapped: the user asked
 // yc to stop, and a ladder that kept climbing would keep spending quota after
 // the chat pane closed.
 func TestCancellationIsNeverRetryable(t *testing.T) {
@@ -362,7 +362,7 @@ func TestCancellationIsNeverRetryable(t *testing.T) {
 		newSafeError("liveChatMessages.list: request failed", errors.Join(ErrTransient, context.Canceled)),
 	} {
 		if Retryable(err) {
-			t.Errorf("Retryable(%v) = true, want false for a cancelled caller", err)
+			t.Errorf("Retryable(%v) = true, want false for a canceled caller", err)
 		}
 	}
 	if Retryable(nil) || Terminal(nil) {
@@ -371,7 +371,7 @@ func TestCancellationIsNeverRetryable(t *testing.T) {
 }
 
 // TestAPIErrorLabelPrefersTheMostSpecificChannelToo mirrors the classification
-// order in what the user is shown, so the label and the behaviour cannot
+// order in what the user is shown, so the label and the behavior cannot
 // disagree.
 func TestAPIErrorLabelPrefersTheMostSpecificChannel(t *testing.T) {
 	err := &APIError{

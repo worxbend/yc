@@ -78,8 +78,13 @@ type PollerConfig struct {
 // PollerState is the poll loop's lifecycle.
 type PollerState string
 
+// The poll loop states, roughly in the order a healthy session moves
+// through them.
 const (
-	PollerIdle      PollerState = "idle"
+	// PollerIdle is the state before Start and after Close.
+	PollerIdle PollerState = "idle"
+	// PollerResolving covers target resolution: turning the user's chat
+	// reference into a live chat ID.
 	PollerResolving PollerState = "resolving"
 	// PollerPriming is the first list call, sent without a page token. It
 	// returns recent history at once, which is emitted with Historical set.
@@ -284,7 +289,7 @@ func (p *Poller) Send(ctx context.Context, request SendRequest) (SendResult, err
 }
 
 // Reconnect cancels the current session and starts a new one, resuming from the
-// retained page token rather than re-priming. The old context is cancelled and
+// retained page token rather than re-priming. The old context is canceled and
 // the old streams drained before the replacement exists.
 //
 // This is the restart path, not rebuilding the poller, because everything worth
@@ -408,7 +413,7 @@ func (p *Poller) closeAllStreams() {
 // --- the poll loop ---------------------------------------------------------
 
 // run is the whole state machine. It returns only when the session context is
-// cancelled: a terminal condition parks instead of returning, because the
+// canceled: a terminal condition parks instead of returning, because the
 // adapter above treats a closed stream as "retry this chat", and retrying a
 // chat that has ended spends quota to be told so again.
 func (p *Poller) run(ctx context.Context, pageToken string) {
@@ -516,7 +521,7 @@ func (p *Poller) run(ctx context.Context, pageToken string) {
 		// A success decays the ladder one step rather than clearing it, so a
 		// flapping connection does not slam straight back to full cadence.
 		if backoff > backoffFloor {
-			backoff = backoff / backoffStep
+			backoff /= backoffStep
 			if backoff < backoffFloor {
 				backoff = backoffFloor
 			}
@@ -801,14 +806,14 @@ func (p *Poller) handleListError(
 	}
 }
 
-// climb advances the backoff multiplier, capped so the resulting interval never
-// exceeds cap.
-func climb(backoff float64, base, cap time.Duration) float64 {
+// climb advances the backoff multiplier, capped so the resulting interval
+// never exceeds ceiling.
+func climb(backoff float64, base, ceiling time.Duration) float64 {
 	if base <= 0 {
 		base = defaultMinInterval
 	}
 	next := backoff * backoffStep
-	if limit := float64(cap) / float64(base); next > limit {
+	if limit := float64(ceiling) / float64(base); next > limit {
 		next = limit
 	}
 	if next < backoffFloor {
@@ -1127,13 +1132,13 @@ func NextInterval(serverFloor, budgetFloor, configMin, configMax time.Duration, 
 		if span <= 0 {
 			return floor
 		}
-		return floor + time.Duration(rand.Int64N(int64(span)+1))
+		return floor + time.Duration(rand.Int64N(int64(span)+1)) //nolint:gosec // jitter needs speed, not unpredictability
 	}
 
 	spread := time.Duration(float64(base) * pollJitterFraction)
 	interval := base
 	if spread > 0 {
-		interval = base - spread + time.Duration(rand.Int64N(int64(2*spread)+1))
+		interval = base - spread + time.Duration(rand.Int64N(int64(2*spread)+1)) //nolint:gosec // jitter needs speed, not unpredictability
 	}
 	if interval < floor {
 		interval = floor

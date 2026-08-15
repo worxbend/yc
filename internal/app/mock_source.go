@@ -79,17 +79,21 @@ func newMockChatClient(chatName string, interval time.Duration) *MockChatClient 
 	return client
 }
 
+// Messages returns the merged chat message stream.
 func (c *MockChatClient) Messages() <-chan youtube.Message { return c.messages }
 
+// ConnectionStates returns the merged connection lifecycle stream.
 func (c *MockChatClient) ConnectionStates() <-chan youtube.ConnectionState { return c.states }
 
+// Moderations returns the merged moderation event stream.
 func (c *MockChatClient) Moderations() <-chan youtube.ModerationEvent { return c.moderations }
 
+// RoomEvents returns the merged room-wide event stream.
 func (c *MockChatClient) RoomEvents() <-chan youtube.RoomEvent { return c.rooms }
 
 // Send echoes the message back on the message stream so the composer round trip
 // is exercised without credentials.
-func (c *MockChatClient) Send(ctx context.Context, request youtube.SendRequest) (youtube.SendResult, error) {
+func (c *MockChatClient) Send(ctx context.Context, _ youtube.SendRequest) (youtube.SendResult, error) {
 	if err := ctx.Err(); err != nil {
 		return youtube.SendResult{}, err
 	}

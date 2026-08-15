@@ -71,7 +71,7 @@ var shellTabs = []struct {
 }{
 	{tabChat, "Chat"},
 	{tabStreamInfo, "Stream Info"},
-	// Labelled for what the pane actually is. It used to read "Misc" while
+	// Labeled for what the pane actually is. It used to read "Misc" while
 	// the pane it renders is titled "Quota - estimated", so the one screen
 	// devoted to yc's defining constraint was the one screen no user could
 	// find from the tab bar.

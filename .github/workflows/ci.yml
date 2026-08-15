@@ -122,6 +122,15 @@ jobs:
       - name: Static analysis
         run: go tool staticcheck ./...
 
+      # Runs the linter set declared in .golangci.yml (errcheck, revive,
+      # gocritic, gosec, misspell, unparam, and friends). The action installs
+      # a pinned golangci-lint so the run matches what a contributor gets
+      # from the same version locally.
+      - name: Lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12
+
       - name: Build linux/amd64
         env:
           CGO_ENABLED: "0"

@@ -164,7 +164,7 @@ func drainMessages(poller *Poller) []Message {
 // unit plus a full page nobody needed.
 func TestReconnectResumesFromTheRetainedTokenWithoutReprinting(t *testing.T) {
 	harness := newReconnectHarness(t, ChatTarget{Raw: "dQw4w9WgXcQ", Kind: TargetVideoID, VideoID: "dQw4w9WgXcQ"},
-		func(call int, w http.ResponseWriter, r *http.Request) {
+		func(call int, w http.ResponseWriter, _ *http.Request) {
 			// Every page re-delivers m-overlap, which is exactly what a
 			// re-primed page does in practice.
 			fmt.Fprintf(w, `{"items":[%s,%s],"nextPageToken":"page-%d","pollingIntervalMillis":1000}`,
@@ -235,7 +235,7 @@ func TestReconnectRePrimesWhenTheRetainedTokenIsRejected(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			harness := newReconnectHarness(t, ChatTarget{Raw: "chat-1", Kind: TargetLiveChatID, LiveChatID: "chat-1"},
-				func(call int, w http.ResponseWriter, r *http.Request) {
+				func(call int, w http.ResponseWriter, _ *http.Request) {
 					switch call {
 					case 1:
 						fmt.Fprintf(w, `{"items":[%s],"nextPageToken":"stale-token","pollingIntervalMillis":1000}`,

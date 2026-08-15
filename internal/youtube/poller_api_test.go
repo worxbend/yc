@@ -159,7 +159,7 @@ func TestPollerReconnectResumesFromTheRetainedPageToken(t *testing.T) {
 }
 
 func TestPollerReconnectAfterCloseIsRefused(t *testing.T) {
-	harness := newPollHarness(t, PollerConfig{MinInterval: time.Hour}, func(call int, w http.ResponseWriter, r *http.Request) {
+	harness := newPollHarness(t, PollerConfig{MinInterval: time.Hour}, func(_ int, w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `{"items":[]}`)
 	})
 	if err := harness.poller.Close(); err != nil {
@@ -175,14 +175,14 @@ func TestPollerReconnectAfterCloseIsRefused(t *testing.T) {
 }
 
 func TestPollerReconnectHonorsACancelledContext(t *testing.T) {
-	harness := newPollHarness(t, PollerConfig{MinInterval: time.Hour}, func(call int, w http.ResponseWriter, r *http.Request) {
+	harness := newPollHarness(t, PollerConfig{MinInterval: time.Hour}, func(_ int, w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `{"items":[]}`)
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := harness.poller.Reconnect(ctx); !errors.Is(err, context.Canceled) {
-		t.Fatalf("Reconnect with a cancelled context = %v, want %v", err, context.Canceled)
+		t.Fatalf("Reconnect with a canceled context = %v, want %v", err, context.Canceled)
 	}
 }
 

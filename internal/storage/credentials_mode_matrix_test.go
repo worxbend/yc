@@ -170,14 +170,14 @@ func TestASymlinkAnywhereOnThePathIsRefused(t *testing.T) {
 	}
 
 	root := t.TempDir()
-	real := filepath.Join(root, "real", "yc")
-	if err := os.MkdirAll(real, CredentialDirMode); err != nil {
+	realDir := filepath.Join(root, "real", "yc")
+	if err := os.MkdirAll(realDir, CredentialDirMode); err != nil {
 		t.Fatalf("create real directory: %v", err)
 	}
-	if err := os.Chmod(real, CredentialDirMode); err != nil {
+	if err := os.Chmod(realDir, CredentialDirMode); err != nil {
 		t.Fatalf("chmod real directory: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(real, "credentials.json"), []byte(`{"version":1,"google":{}}`), CredentialFileMode); err != nil {
+	if err := os.WriteFile(filepath.Join(realDir, "credentials.json"), []byte(`{"version":1,"google":{}}`), CredentialFileMode); err != nil {
 		t.Fatalf("write credential file: %v", err)
 	}
 
@@ -263,7 +263,7 @@ func TestTheAtomicWriteNeverLeavesAReadableTemporary(t *testing.T) {
 }
 
 // yc creates the directory it needs, and does so at the right mode regardless
-// of the umask in force. MkdirAll honours the umask, so a 022 umask would
+// of the umask in force. MkdirAll honors the umask, so a 022 umask would
 // otherwise produce a 0755 directory that yc then refuses to use - a first run
 // that fails on a machine with entirely ordinary settings.
 func TestTheDirectoryIsCreatedTightRegardlessOfTheUmask(t *testing.T) {

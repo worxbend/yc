@@ -137,7 +137,7 @@ type FeatureConfig struct {
 }
 
 // QuotaConfig holds the poll-cadence and quota-accounting knobs. This block has
-// no twi analogue: it exists because the YouTube Data API's 10,000-unit daily
+// no twi analog: it exists because the YouTube Data API's 10,000-unit daily
 // allowance, spent at the server-advised cadence, is exhausted in under three
 // hours, so cadence is a budgeting decision rather than a preference.
 type QuotaConfig struct {
@@ -361,7 +361,7 @@ func applyFile(cfg *Config, path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	index := bindingIndex(cfg)
 	scanner := bufio.NewScanner(file)
@@ -607,7 +607,7 @@ func writeFilePrivate(path string, data []byte) error {
 		return err
 	}
 	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()

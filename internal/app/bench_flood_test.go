@@ -33,12 +33,13 @@ func BenchmarkChatFloodUpdate(b *testing.B) {
 	model, _ := benchModel(b, stressScrollback)
 	burst := stressBurst(1024)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		message := burst[i%len(burst)]
 		message.ID = fmt.Sprintf("bench-%d", i)
 		next, _ := model.Update(chatClientMessageMsg{message: message, ok: true})
 		model = next.(shellModel)
+		i++
 	}
 }
 
@@ -49,8 +50,7 @@ func BenchmarkChatViewWarmCache(b *testing.B) {
 	model, _ := benchModel(b, stressScrollback)
 	_ = model.View() // warm the cache once
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = model.View()
 	}
 }
@@ -61,8 +61,7 @@ func BenchmarkChatViewWarmCache(b *testing.B) {
 func BenchmarkChatViewColdCache(b *testing.B) {
 	model, _ := benchModel(b, stressScrollback)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		sharedRowCache = newChatRowCache()
 		_ = model.View()
 	}
@@ -78,12 +77,13 @@ func BenchmarkChatPipelineUpdateAndView(b *testing.B) {
 	burst := stressBurst(1024)
 	_ = model.View()
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
 		message := burst[i%len(burst)]
 		message.ID = fmt.Sprintf("bench-%d", i)
 		next, _ := model.Update(chatClientMessageMsg{message: message, ok: true})
 		model = next.(shellModel)
 		_ = model.View()
+		i++
 	}
 }

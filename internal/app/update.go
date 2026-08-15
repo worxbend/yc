@@ -184,7 +184,7 @@ func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// prompt is modal: while it is open every key belongs to the field, and a
 	// stray ctrl+T that swapped the theme mid-prompt would leave a confirmed
 	// ban armed behind a picker. An armed confirmation claims only its own
-	// key, esc, and enter, and lets everything else through after cancelling.
+	// key, esc, and enter, and lets everything else through after canceling.
 	if cmd, handled := m.handleModerationKey(msg); handled {
 		return m, cmd
 	}
@@ -533,6 +533,8 @@ func nextBadgeMode(mode render.BadgeMode) render.BadgeMode {
 // handleSidebarKey handles the chats sidebar while it has focus. It reports
 // whether the key was consumed so anything it does not claim keeps its usual
 // meaning.
+//
+//nolint:unparam // every modal key handler shares the (model, cmd, consumed) shape, even when this one never issues a command
 func (m shellModel) handleSidebarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	switch msg.Type {
 	case tea.KeyUp:
@@ -646,7 +648,7 @@ func (m shellModel) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyEsc:
 		if m.overlay.kind == overlayThemePicker {
-			// Cancelling a live preview must restore what was on screen when
+			// Canceling a live preview must restore what was on screen when
 			// it opened, not leave the last previewed palette applied.
 			m.theme = m.effectiveConfig.ResolveTheme()
 		}

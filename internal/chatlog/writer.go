@@ -52,7 +52,7 @@ type Options struct {
 	Now func() time.Time
 	// Redact scrubs every free-text field before it is written. Nil means
 	// no scrubbing. The normalized message model carries no credentials by
-	// construction; this is the second line of defence for a secret pasted
+	// construction; this is the second line of defense for a secret pasted
 	// into chat by the user themselves.
 	Redact func(string) string
 }

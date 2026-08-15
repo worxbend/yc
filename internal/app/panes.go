@@ -260,11 +260,11 @@ func isUnsafeLineRune(r rune) bool {
 // otherwise rewrite the visible text of the chrome around their own row.
 func isBidiOverride(r rune) bool {
 	switch r {
-	case '‎', '‏':
+	case '\u200e', '\u200f': // LRM, RLM
 		return true
-	case '‪', '‫', '‬', '‭', '‮':
+	case '\u202a', '\u202b', '\u202c', '\u202d', '\u202e': // LRE, RLE, PDF, LRO, RLO
 		return true
-	case '⁦', '⁧', '⁨', '⁩':
+	case '\u2066', '\u2067', '\u2068', '\u2069': // LRI, RLI, FSI, PDI
 		return true
 	default:
 		return false

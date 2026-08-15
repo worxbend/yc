@@ -23,6 +23,7 @@ const (
 // FragmentKind identifies the semantic role of a render fragment.
 type FragmentKind string
 
+// The semantic roles a rendered fragment can carry.
 const (
 	FragmentAvatar    FragmentKind = "avatar"
 	FragmentTimestamp FragmentKind = "timestamp"
@@ -275,6 +276,8 @@ type Options struct {
 
 // RenderOptions is an alias for Options. Both names appear in the design specs;
 // they are the same type so no consumer can pick the wrong one.
+//
+//nolint:revive // the alias intentionally repeats the package name; both spellings appear in the design specs and must stay interchangeable
 type RenderOptions = Options
 
 // DefaultOptions returns Options for width with the default palette, layout,
@@ -365,7 +368,7 @@ func groupedRows(msg youtube.Message, opts Options) []Row {
 	if !opts.ContinuesGroup {
 		header := groupedHeaderFragments(msg, opts)
 		headerRows, current, _ := appendWrappedFragments(nil, Row{}, 0, header, opts.Width, indent)
-		rows = append(headerRows, current)
+		rows = append(headerRows, current) //nolint:gocritic // headerRows is dead after this; rows deliberately continues it
 	}
 
 	content := messageContent(msg, opts)

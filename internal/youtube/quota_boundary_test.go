@@ -311,15 +311,15 @@ func TestEverySnapshotIsLabelledAnEstimate(t *testing.T) {
 	now := pacificTime(t, 2026, time.August, 8, 12, 0)
 	ledger := NewQuotaLedger(LedgerConfig{Now: fixedClock(&now)})
 	if !ledger.Snapshot().Estimated {
-		t.Fatal("a fresh snapshot is not labelled an estimate")
+		t.Fatal("a fresh snapshot is not labeled an estimate")
 	}
 	ledger.Charge(EndpointMessagesList)
 	if !ledger.Snapshot().Estimated {
-		t.Fatal("a charged snapshot is not labelled an estimate")
+		t.Fatal("a charged snapshot is not labeled an estimate")
 	}
 	var nilLedger *QuotaLedger
 	if !nilLedger.Snapshot().Estimated {
-		t.Fatal("the nil-ledger snapshot is not labelled an estimate")
+		t.Fatal("the nil-ledger snapshot is not labeled an estimate")
 	}
 	if got := nilLedger.Cost(EndpointMessagesList); got != 5 {
 		t.Fatalf("nil ledger Cost = %d, want the built-in table's figure", got)
@@ -357,7 +357,7 @@ func TestNoEndpointCanEverBeChargedNothing(t *testing.T) {
 
 // Prune must stop when its context does. The sweep runs with its own deadline
 // so a hung filesystem cannot keep a goroutine alive for the length of a
-// stream; that deadline only means anything if the loop honours it.
+// stream; that deadline only means anything if the loop honors it.
 func TestPruneStopsWhenItsContextExpires(t *testing.T) {
 	root := t.TempDir()
 	for day := 1; day <= 40; day++ {

@@ -1,0 +1,87 @@
+# golangci-lint v2 configuration.
+#
+# This is the repository's lint gate. CI runs it via the official
+# golangci-lint-action; locally, install golangci-lint and run:
+#
+#   golangci-lint run ./...
+#
+# The linter set below layers on top of the tools the repo already runs
+# (go vet, staticcheck, govulncheck): errcheck catches silently dropped
+# errors, revive and gocritic catch style and correctness smells, gosec
+# scans for common security mistakes, misspell catches typos in comments
+# and strings, and unparam finds parameters no caller ever varies.
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - revive
+    - gocritic
+    - gosec
+    - misspell
+    - unparam
+  settings:
+    errcheck:
+      # Terminal output: every Fprint* call in this codebase writes to the
+      # CLI's stdout/stderr (or a test's io.Writer). There is no way to
+      # report a failure to write the failure report, so checking these
+      # returns would only add noise.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    gosec:
+      excludes:
+        # G304 flags every os.Open/OpenFile whose path is a variable. yc is
+        # a local CLI whose job is opening the config, credential, cache,
+        # and log paths its own user named; there is no cross-trust-boundary
+        # path handling to protect.
+        - G304
+    misspell:
+      locale: US
+      ignore-rules:
+        # "spectre" is a theme name users reference in their config files,
+        # not prose; renaming it would break existing configurations.
+        - spectre
+  exclusions:
+    rules:
+      # Test helpers legitimately ignore cleanup errors (defer f.Close(),
+      # os.Remove of temp fixtures) and construct fixed file modes; gosec's
+      # file-permission and error-handling rules would demand noise-only
+      # changes there. Production code keeps the full rule set.
+      - path: _test\.go
+        linters:
+          - gosec
+      # Tests ignore cleanup errors on purpose (a failed Close in teardown
+      # surfaces as a test failure anyway), and test helpers keep uniform
+      # shapes even when one caller does not vary an argument.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - unparam
+      # Scripted test doubles (HTTP handlers, fake refreshers) implement
+      # fixed callback signatures; naming a parameter the stub happens not
+      # to read documents the shape better than a row of underscores.
+      - path: _test\.go
+        text: "unused-parameter"
+        linters:
+          - revive
+      # "for range ch {}" is the idiom for draining a channel to close;
+      # the empty body is the point.
+      - path: _test\.go
+        text: "empty-block"
+        linters:
+          - revive
+
+issues:
+  # Show everything: the defaults cap identical findings at three, which
+  # hides real work behind a green-looking run.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt

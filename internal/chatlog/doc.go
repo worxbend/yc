@@ -11,7 +11,7 @@
 // who said what, which is private even though it is not credential material.
 // Credentials themselves can never appear here by construction - the writer
 // only serializes chat-message fields - but every free-text field is still
-// passed through an injectable redactor as a second line of defence.
+// passed through an injectable redactor as a second line of defense.
 //
 // The writer rotates by size rather than by time, because a chat session's
 // length is unknowable up front: when the current file exceeds the configured

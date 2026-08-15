@@ -43,7 +43,7 @@ func TestSplitFragmentsASCIIFastPathMatchesSegmenter(t *testing.T) {
 func BenchmarkSplitFragmentsASCII(b *testing.B) {
 	text := "hey @someone check https://example.com and :smile: this plain tail of a message"
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = SplitFragments(text)
 	}
 }
@@ -51,7 +51,7 @@ func BenchmarkSplitFragmentsASCII(b *testing.B) {
 func BenchmarkSplitFragmentsUnicode(b *testing.B) {
 	text := "hey @someone 😀 check https://example.com and :smile: 日本語 tail of a message"
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = SplitFragments(text)
 	}
 }

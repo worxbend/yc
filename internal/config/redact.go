@@ -65,7 +65,7 @@ var credentialMarkers = []string{
 
 // RedactDisplayValue scans a non-secret, user-controlled value (a path, a
 // redirect URL) for credential-shaped markers and URL userinfo, replacing the
-// whole value when one is found. It is the last line of defence for values that
+// whole value when one is found. It is the last line of defense for values that
 // are not themselves secrets but can be made to carry one.
 func RedactDisplayValue(value string) string {
 	if value == "" {

@@ -518,7 +518,7 @@ func TestRefreshFailureNeverQuotesACredential(t *testing.T) {
 		key:   auth.NewSecret(key),
 		refresh: func(context.Context, int) (auth.Secret, error) {
 			// What a real exchange failure looks like: the endpoint it
-			// dialled, the grant it presented, and the token it was given.
+			// dialed, the grant it presented, and the token it was given.
 			return "", fmt.Errorf("Post \"https://oauth2.googleapis.com/token?key=%s\": invalid_grant for refresh_token=%s (previous access_token=%s, new access_token=%s)",
 				key, refreshTk, stale, renewed)
 		},
@@ -551,7 +551,7 @@ func TestRefreshHonorsTheCallerContext(t *testing.T) {
 
 	source := &refreshingCredentials{
 		token: auth.NewSecret(expiredTestToken),
-		refresh: func(ctx context.Context, call int) (auth.Secret, error) {
+		refresh: func(_ context.Context, call int) (auth.Secret, error) {
 			if call == 1 {
 				close(entered)
 				<-release

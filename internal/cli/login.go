@@ -205,7 +205,7 @@ func runLogin(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "open debug log: %s\n", config.RedactDisplayValue(err.Error()))
 		return ExitFailure
 	}
-	defer closeLog.Close()
+	defer func() { _ = closeLog.Close() }()
 
 	scopes := auth.LoginScopes()
 	if readOnly {
@@ -278,7 +278,7 @@ func performLogin(cfg config.Config, redirectURI string, scopes []auth.Scope, ti
 		fmt.Fprintf(stderr, "login callback unavailable: %s\n", safeStartupError(baseRedactor, err))
 		return ExitUsage
 	}
-	defer waiter.Close()
+	defer func() { _ = waiter.Close() }()
 
 	ctx, cancel := newLoginContext(timeout)
 	defer cancel()
@@ -686,7 +686,7 @@ func openBrowser(ctx context.Context, targetURL string) error {
 			attempted = append(attempted, candidate[0])
 			continue
 		}
-		cmd := exec.CommandContext(ctx, path, candidate[1:]...)
+		cmd := exec.CommandContext(ctx, path, candidate[1:]...) //nolint:gosec // candidates are a fixed table of local browser openers, resolved via LookPath
 		if err := cmd.Start(); err != nil {
 			return err
 		}

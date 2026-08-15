@@ -266,7 +266,7 @@ func (m *shellModel) scheduleQuotaTick() tea.Cmd {
 }
 
 // refreshQuota reads the optional quota and cadence capabilities. Both are
-// estimates by construction and are labelled as such wherever they are drawn.
+// estimates by construction and are labeled as such wherever they are drawn.
 func (m *shellModel) refreshQuota() {
 	if reporter, ok := m.client.(QuotaReporter); ok {
 		m.quota = reporter.Quota()
@@ -459,7 +459,7 @@ func (m *shellModel) applyConnectionState(state youtube.ConnectionState) {
 // credentialSafeDetail renders an error for the status line.
 //
 // Transport errors are already redacted at their own boundary; this is the
-// second line of defence, so a message that somehow carries a token-shaped
+// second line of defense, so a message that somehow carries a token-shaped
 // substring cannot reach a terminal that is often on stream.
 func credentialSafeDetail(err error) string {
 	if err == nil {

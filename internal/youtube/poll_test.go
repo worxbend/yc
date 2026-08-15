@@ -399,7 +399,7 @@ func newLedgerPoller(t *testing.T, ledger *QuotaLedger) *pollHarness {
 		Client:         client,
 		Target:         ChatTarget{Raw: "chat-1", Kind: TargetLiveChatID, LiveChatID: "chat-1"},
 		ReservePercent: 10,
-		Sleep:          func(ctx context.Context, d time.Duration) {},
+		Sleep:          func(_ context.Context, _ time.Duration) {},
 	})
 	if err != nil {
 		t.Fatalf("NewPoller error = %v", err)

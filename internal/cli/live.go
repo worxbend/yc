@@ -78,7 +78,7 @@ var newLiveChatClient = func(client *youtube.Client, cfg config.Config, targets 
 // One client means one quota ledger: the meter in the status bar counts the
 // chat poll, the metadata refresh, and the send path together, which is the
 // only way the number matches what the Cloud Console will show.
-func newYouTubeClient(cfg config.Config, credentials youtube.CredentialSource, ledger *youtube.QuotaLedger, logger debuglog.Logger) (*youtube.Client, error) {
+func newYouTubeClient(_ config.Config, credentials youtube.CredentialSource, ledger *youtube.QuotaLedger, logger debuglog.Logger) (*youtube.Client, error) {
 	return youtube.NewClient(youtube.ClientConfig{
 		Credentials: credentials,
 		HTTPClient:  youtube.NewAPIHTTPClient(chatHTTPTimeout),
@@ -140,7 +140,7 @@ func startLedgerPrune(ctx context.Context, logger debuglog.Logger) <-chan struct
 	go func() {
 		defer close(done)
 		// Detached from the caller's context on purpose: the prune is not
-		// worth cancelling, and inheriting a context the caller cancels on
+		// worth canceling, and inheriting a context the caller cancels on
 		// its own error path would leave the records behind on exactly the
 		// runs that never get another chance to tidy up.
 		pruneCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ledgerPruneTimeout)
@@ -213,7 +213,7 @@ func pollIntervalBounds(quota config.QuotaConfig) (minInterval, maxInterval time
 // several unexplained errors on unrelated surfaces. The ones a key can answer
 // stay wired, because read-only mode should still label chats by title and show
 // a viewer count.
-func newLiveClientOptions(cfg config.Config, client *youtube.Client, capability credentialCapability, logger debuglog.Logger, notifier app.SystemNotifier) app.ClientOptions {
+func newLiveClientOptions(_ config.Config, client *youtube.Client, capability credentialCapability, logger debuglog.Logger, notifier app.SystemNotifier) app.ClientOptions {
 	opts := app.ClientOptions{
 		SystemNotifier:    notifier,
 		DebugLogger:       logger,

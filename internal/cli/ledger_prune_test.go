@@ -119,6 +119,6 @@ func TestStartLedgerPruneOutlivesTheCallersContext(t *testing.T) {
 	awaitPrune(t, startLedgerPrune(ctx, debuglog.Logger{}))
 
 	if _, err := os.Stat(stale); err == nil {
-		t.Error("a cancelled caller context abandoned the sweep")
+		t.Error("a canceled caller context abandoned the sweep")
 	}
 }

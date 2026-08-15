@@ -102,7 +102,7 @@ func (c *Client) ListMessages(ctx context.Context, request ListRequest) (ListRes
 		SeenMessageIDs: request.SeenMessageIDs,
 	}
 	for _, item := range response.Items {
-		result.NormalizeResult.append(normalizeItem(item, opts))
+		result.append(normalizeItem(item, opts))
 	}
 	// activePollItem is a full message resource carried out of band, set
 	// while a poll is live. It is normalized for its poll state only: it is

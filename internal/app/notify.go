@@ -113,7 +113,7 @@ func (n desktopNotifier) Notify(ctx context.Context, notification SystemNotifica
 }
 
 func runDesktopNotificationCommand(ctx context.Context, path string, args ...string) error {
-	return exec.CommandContext(ctx, path, args...).Run()
+	return exec.CommandContext(ctx, path, args...).Run() //nolint:gosec // path comes from exec.LookPath over a fixed notifier list, never from chat
 }
 
 func desktopNotificationCommand(goos, title, body string) (string, []string, bool) {
@@ -163,7 +163,7 @@ $notifier.Show([Windows.UI.Notifications.ToastNotification]::new($xml))
 	encoded := utf16.Encode([]rune(script))
 	bytes := make([]byte, 0, len(encoded)*2)
 	for _, r := range encoded {
-		bytes = append(bytes, byte(r), byte(r>>8))
+		bytes = append(bytes, byte(r), byte(r>>8)) //nolint:gosec // deliberate UTF-16LE byte split; both halves of the uint16 are kept
 	}
 	return base64.StdEncoding.EncodeToString(bytes)
 }
@@ -192,7 +192,7 @@ func escapeNotificationXML(value string) string {
 // sanitizeNotificationText makes a value safe to hand to a shell-launched
 // notifier: redacted, control-character free, whitespace collapsed, bounded.
 //
-// The redaction pass is not theatre. A notification body is the one piece of
+// The redaction pass is not theater. A notification body is the one piece of
 // yc's output that leaves the terminal entirely and can be logged by a desktop
 // environment, so it gets the same treatment as the debug log.
 func sanitizeNotificationText(value string, limit int) string {
