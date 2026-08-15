@@ -55,6 +55,7 @@ go test ./...
 go test -race ./...
 go tool govulncheck ./...
 go tool staticcheck ./...
+golangci-lint run ./...
 go build -o /tmp/yc-validation ./cmd/yc
 go run ./cmd/yc --help
 go run ./cmd/yc chat --mock
@@ -63,6 +64,20 @@ go run ./cmd/yc config show
 go run ./cmd/yc quota
 git diff --check
 ```
+
+`golangci-lint` is the one tool in that list that is not a Go module `tool`
+directive: install it separately (the v2 line, matching what CI pins):
+
+```sh
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+```
+
+Its configuration lives in `.golangci.yml` at the repository root, which
+enables errcheck, revive, gocritic, gosec, misspell, and unparam on top of
+vet and staticcheck. The file documents every deliberate exclusion inline.
+If a finding is a false positive, silence it with a targeted
+`//nolint:<linter> // reason` on the offending line — never a bare `//nolint`
+and never without the reason.
 
 Use isolated `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` directories and clear all
 `YC_*` and `GOOGLE_*` variables. Do not let tests or smokes read your real local
