@@ -175,3 +175,30 @@ func TestTabBarContextCannotInjectEscapes(t *testing.T) {
 		})
 	}
 }
+
+// sanitizeContextValue must neutralize hostile input on its own, not by
+// leaning on the pane writers that happen to run later. C0 and DEL were
+// always replaced; a raw C1 introducer and a bidi override used to slip
+// through here and only die in fitLine, which made the safety of the tab bar
+// depend on an ordering the function's name does not promise.
+func TestSanitizeContextValueNeutralizesEveryControlFamily(t *testing.T) {
+	for _, hostile := range escapePayloads {
+		t.Run(hostile.name, func(t *testing.T) {
+			got := sanitizeContextValue(hostile.value)
+			for _, r := range got {
+				if unicode.IsControl(r) {
+					t.Errorf("control rune %U survived: %q", r, got)
+				}
+				if isBidiOverride(r) {
+					t.Errorf("bidi control %U survived: %q", r, got)
+				}
+			}
+			if !strings.Contains(got, "evil") || !strings.Contains(got, "name") {
+				t.Errorf("visible text was lost: %q", got)
+			}
+		})
+	}
+	if got := sanitizeContextValue("  a\x00b  "); got != "a�b" {
+		t.Errorf("got %q, want %q", got, "a�b")
+	}
+}

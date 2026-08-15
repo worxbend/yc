@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -466,12 +467,24 @@ func (m shellModel) tabBarContextParts() (string, string) {
 // sanitizeContextValue neutralizes control characters in a value that came from
 // an API response or a config file, so a hostile display name cannot emit its
 // own escape sequences into the tab bar.
+//
+// Controls become a visible replacement character rather than a space: a name
+// that tried to smuggle an escape should look tampered with, not quietly
+// shortened. That covers the C1 range too - a raw U+009B is a one-byte CSI on
+// some terminals and needs no ESC to introduce it. Bidirectional overrides are
+// dropped instead, matching flattenControlRunes: they are zero width, so
+// removal cannot disturb the width math, while replacing them would widen the
+// name by a cell per control.
 func sanitizeContextValue(value string) string {
 	return strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
+		switch {
+		case isBidiOverride(r):
+			return -1
+		case unicode.IsControl(r):
 			return '�'
+		default:
+			return r
 		}
-		return r
 	}, strings.TrimSpace(value))
 }
 
