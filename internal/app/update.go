@@ -230,6 +230,14 @@ func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEnd:
 		if m.focus != focusComposer {
 			m.activeChatState().scrollOffset = 0
+			m.clampScroll()
+		}
+	case tea.KeyCtrlD:
+		// Half-page scrolling mirrors vim: ctrl+d moves toward the newest
+		// messages, ctrl+u back into history. Outside the composer only -
+		// inside it ctrl+u keeps its "clear the line" meaning below.
+		if m.focus != focusComposer {
+			m.scrollBy(-clampMin(m.chatViewportHeight()/2, 1))
 		}
 	case tea.KeyCtrlL:
 		// Clearing discards the whole retained backlog and cannot be undone.
@@ -250,7 +258,9 @@ func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyCtrlU:
 		if m.focus == focusComposer {
 			m.activeChatState().composerText = ""
+			break
 		}
+		m.scrollBy(clampMin(m.chatViewportHeight()/2, 1))
 	case tea.KeyEsc:
 		// esc is "leave insert mode" first: from the composer it always
 		// returns to the chat view, keeping the draft intact.
@@ -358,6 +368,14 @@ func (m shellModel) handleRuneKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.selectMessage(1)
 	case r == 'k':
 		m.selectMessage(-1)
+	case r == 'g':
+		// g and G are vim's jumps: g to the oldest retained row, G back to
+		// the live bottom. The offset counts rows hidden below the viewport,
+		// so the top is the maximum offset and the bottom is zero.
+		m.activeChatState().scrollOffset = m.maxScrollOffset()
+	case r == 'G':
+		m.activeChatState().scrollOffset = 0
+		m.clampScroll()
 	case isInsertRune(r):
 		// i/o/a all enter the composer, matching vim's insert keys; the
 		// composer appends, so they differ only in muscle memory.

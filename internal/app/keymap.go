@@ -60,6 +60,8 @@ var keyBindings = []keyBinding{
 	{Keys: "esc", Description: "back to chat", Group: keyGroupChat},
 	{Keys: "j/k", Description: "select message", Group: keyGroupChat},
 	{Keys: "pgup/pgdn", Description: "scroll", Group: keyGroupChat},
+	{Keys: "ctrl+d/ctrl+u", Description: "half-page scroll", Group: keyGroupChat},
+	{Keys: "g/G", Description: "oldest/newest", Group: keyGroupChat},
 	{Keys: "r", Description: "reply", Group: keyGroupChat},
 	{Keys: "K", Description: "inspect", Group: keyGroupChat},
 	{Keys: "ctrl+e", Description: "emoji picker", Group: keyGroupChat},
