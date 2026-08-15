@@ -182,6 +182,20 @@ type SystemNotification struct {
 	EventID string
 }
 
+// ChatLogger persists normalized chat events to the user's opt-in chat log.
+//
+// It is declared here rather than importing internal/chatlog because the app
+// only needs "something that appends a message": the concrete writer, its
+// rotation policy, and its file format all stay behind this boundary, and
+// tests drive the shell with an in-memory fake.
+//
+// Append errors must be safe to render: the shell reports the first failure in
+// the status line and disables logging for the rest of the session, so an
+// error string reaches a terminal that is frequently on stream.
+type ChatLogger interface {
+	Append(message youtube.Message) error
+}
+
 // ClientOptions carries the optional collaborators the shell can run without.
 //
 // Every field is nil-able on purpose: `yc chat --mock` and credential-free runs
@@ -195,4 +209,5 @@ type ClientOptions struct {
 	SubscriptionLookup SubscriptionLookup
 	StreamInfoManager  StreamInfoManager
 	CategoryLookup     CategoryLookup
+	ChatLogger         ChatLogger
 }

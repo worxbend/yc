@@ -1208,6 +1208,7 @@ func (m shellModel) handleClientMessage(msg chatClientMessageMsg) (tea.Model, te
 		return m, nil
 	}
 	var cmds []tea.Cmd
+	m.logChatMessage(msg.message)
 	if cmd := m.enqueueMessage(msg.message); cmd != nil {
 		cmds = append(cmds, cmd)
 	}

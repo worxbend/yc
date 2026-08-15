@@ -184,6 +184,24 @@ An endpoint with no entry costs 1 unit, so an unmetered call still moves the
 ledger. `yc doctor` prints the table actually in force and how many entries your
 config overrode.
 
+## Chat Logging
+
+Opt-in archive of the chat itself, separate from debug logging: the debug log
+records what `yc` did, the chat log records what the chat said. Each session
+appends normalized events - one JSON object per line (JSON Lines) - so the
+files work with `jq`, spreadsheet imports, and `yc export superchats` without a
+custom parser. Raw YouTube API JSON never reaches disk, every free-text field
+passes through the credential redactor, and files are written `0600` in a
+`0700` directory. A write failure never interrupts chat: logging turns itself
+off for the session and says so once in the status line.
+
+| Key | Env | Default | Purpose |
+| --- | --- | --- | --- |
+| `chat_logging` | `YC_CHAT_LOG` | `false` | Enable the chat log. Off by default: writing chat to disk is a privacy decision, never a default. |
+| `chat_log_dir` | `YC_CHAT_LOG_DIR` | empty | Where log files go. Empty means `chatlog` under the cache directory. |
+| `chat_log_max_bytes` | `YC_CHAT_LOG_MAX_BYTES` | `10485760` | Rotate the current file once it exceeds this size (10 MB). |
+| `chat_log_max_files` | `YC_CHAT_LOG_MAX_FILES` | `5` | How many log files survive rotation, newest first, current file included. |
+
 ## Debug Logging
 
 | Key | Env | Default | Purpose |

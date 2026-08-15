@@ -98,6 +98,7 @@ Environment:
   YC_QUOTA_COST_BANS_INSERT, YC_QUOTA_COST_BANS_DELETE,
   YC_QUOTA_COST_VIDEOS_LIST, YC_QUOTA_COST_CHANNELS_LIST,
   YC_QUOTA_COST_SEARCH_LIST
+  YC_CHAT_LOG, YC_CHAT_LOG_DIR, YC_CHAT_LOG_MAX_BYTES, YC_CHAT_LOG_MAX_FILES
   YC_DEBUG_LOG, YC_DEBUG_LOG_PATH
 `
 
@@ -381,6 +382,13 @@ func runLiveChatSession(cfg config.Config, liveChatID string, stdout, stderr io.
 	}
 
 	options := newLiveClientOptions(cfg, client, capability, logger, app.NewDefaultSystemNotifier(stdout))
+	// The typed-nil check matters: assigning a nil *chatlog.Writer into the
+	// interface field would make it non-nil and send every message into a
+	// writer that no longer exists.
+	if chatLog := openChatLogWriter(cfg, logger); chatLog != nil {
+		defer chatLog.Close()
+		options.ChatLogger = chatLog
+	}
 	if err := runLiveChat(stdout, cfg, chatClient, options); err != nil {
 		logger.Log(ctx, "cli.chat.failed", debuglog.Err("error", err))
 		fmt.Fprintf(stderr, "live chat: %s\n", safeStartupError(redactor, err))

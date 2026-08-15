@@ -47,6 +47,7 @@ type Config struct {
 	DefaultChats []string      `toml:"default_chats" env:"YC_DEFAULT_CHATS"`
 	Features     FeatureConfig `toml:",inline" env:",inline"`
 	Quota        QuotaConfig   `toml:",inline" env:",inline"`
+	Logging      LoggingConfig `toml:",inline" env:",inline"`
 	Debug        DebugConfig   `toml:",inline" env:",inline"`
 }
 
@@ -175,6 +176,36 @@ type QuotaCostConfig struct {
 	SearchList   int `toml:"quota_cost_search_list" env:"YC_QUOTA_COST_SEARCH_LIST"`
 }
 
+// Chat log defaults. See internal/chatlog for the file format.
+const (
+	// DefaultChatLogMaxBytes rotates a chat log file at 10 MB, roughly a
+	// full day of very busy chat, so an ordinary session is one file.
+	DefaultChatLogMaxBytes = 10 << 20
+	// DefaultChatLogMaxFiles keeps the five newest log files.
+	DefaultChatLogMaxFiles = 5
+)
+
+// LoggingConfig controls the opt-in chat log: an append-only JSON Lines file
+// of normalized chat events, written per session and rotated by size.
+//
+// This is separate from DebugConfig on purpose. The debug log records what yc
+// did (requests, states, redacted errors) for bug reports; the chat log
+// records what the chat said, for the user's own archive and for
+// `yc export superchats`.
+type LoggingConfig struct {
+	// ChatLogEnabled turns chat logging on. Default off: writing chat to
+	// disk is a privacy decision the user has to make, never a default.
+	ChatLogEnabled bool `toml:"chat_logging" env:"YC_CHAT_LOG"`
+	// ChatLogDir overrides where log files are created. Empty means
+	// "chatlog" under the platform cache directory.
+	ChatLogDir string `toml:"chat_log_dir" env:"YC_CHAT_LOG_DIR"`
+	// ChatLogMaxBytes rotates the current file once it exceeds this size.
+	ChatLogMaxBytes int `toml:"chat_log_max_bytes" env:"YC_CHAT_LOG_MAX_BYTES"`
+	// ChatLogMaxFiles is how many rotated files are kept, newest first,
+	// current file included.
+	ChatLogMaxFiles int `toml:"chat_log_max_files" env:"YC_CHAT_LOG_MAX_FILES"`
+}
+
 // DebugConfig controls opt-in JSON-line diagnostics.
 type DebugConfig struct {
 	Enabled bool   `toml:"debug_logging" env:"YC_DEBUG_LOG"`
@@ -212,6 +243,10 @@ func Default() Config {
 			ScrollbackLimit:       DefaultScrollbackLimit,
 			StreamStatusMode:      "auto",
 			EmojiAutocompleteMode: "auto",
+		},
+		Logging: LoggingConfig{
+			ChatLogMaxBytes: DefaultChatLogMaxBytes,
+			ChatLogMaxFiles: DefaultChatLogMaxFiles,
 		},
 		Quota: QuotaConfig{
 			PollIntervalMode:    "auto",

@@ -161,6 +161,12 @@ type shellModel struct {
 	streamInfoManager  StreamInfoManager
 	categoryLookup     CategoryLookup
 
+	// chatLogger is the opt-in chat log. chatLogFailed latches the first
+	// write failure so a full disk degrades to one status notice rather
+	// than an error per message.
+	chatLogger    ChatLogger
+	chatLogFailed bool
+
 	// identity is the authenticated user's own channel. The local echo has no
 	// other source for the sender's display name and badges.
 	identity      youtube.Identity
@@ -280,6 +286,7 @@ func newLiveModel(cfg config.Config, client ChatClient, clock animation.Clock, o
 	model.subscriptionLookup = opts.SubscriptionLookup
 	model.streamInfoManager = opts.StreamInfoManager
 	model.categoryLookup = opts.CategoryLookup
+	model.chatLogger = opts.ChatLogger
 	model.sourceDetail = "youtube live chat"
 
 	// Every open chat starts in "connecting": the transport has not reported

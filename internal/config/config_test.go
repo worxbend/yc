@@ -297,11 +297,48 @@ func TestBindingsCoverEveryDocumentedKey(t *testing.T) {
 		"poll_interval_floor_ms", "poll_interval_ceiling_ms", "daily_quota_units",
 		"search_quota_calls", "quota_reserve_percent", "session_hours",
 		"follow_server_cadence", "allow_search", "quota_cost_list",
-		"quota_cost_search_list", "debug_logging", "debug_log_path",
+		"quota_cost_search_list", "chat_logging", "chat_log_dir",
+		"chat_log_max_bytes", "chat_log_max_files", "debug_logging",
+		"debug_log_path",
 	} {
 		if !seen[key] {
 			t.Errorf("config key %q has no binding", key)
 		}
+	}
+}
+
+func TestChatLoggingKeysLoadFromFileAndEnv(t *testing.T) {
+	path := writeConfigFile(t, strings.Join([]string{
+		`chat_logging = true`,
+		`chat_log_dir = "/tmp/example-logs"`,
+		`chat_log_max_bytes = 2048`,
+	}, "\n"))
+
+	cfg, err := Load([]string{
+		"YC_CHAT_LOG_MAX_FILES=7",
+	}, Overrides{ConfigPath: path})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if !cfg.Logging.ChatLogEnabled {
+		t.Error("chat_logging = true was not applied")
+	}
+	if cfg.Logging.ChatLogDir != "/tmp/example-logs" {
+		t.Errorf("chat_log_dir = %q", cfg.Logging.ChatLogDir)
+	}
+	if cfg.Logging.ChatLogMaxBytes != 2048 {
+		t.Errorf("chat_log_max_bytes = %d, want 2048", cfg.Logging.ChatLogMaxBytes)
+	}
+	if cfg.Logging.ChatLogMaxFiles != 7 {
+		t.Errorf("YC_CHAT_LOG_MAX_FILES = %d, want 7", cfg.Logging.ChatLogMaxFiles)
+	}
+}
+
+func TestChatLoggingDefaultsOff(t *testing.T) {
+	cfg := Default()
+	if cfg.Logging.ChatLogEnabled {
+		t.Error("chat logging must default off; writing chat to disk is opt-in")
 	}
 }
 
