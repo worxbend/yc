@@ -12,7 +12,7 @@ Behavior references, each generated from or checkable against the source:
 
 ## Current State
 
-- Module `github.com/worxbend/yc`, `go 1.26`, `toolchain go1.26.5`.
+- Module `github.com/worxbend/yc`, `go 1.26`, `toolchain go1.26.6`.
 - `govulncheck` and `staticcheck` are pinned as module `tool` directives.
 - Go modules only. No GOPATH workflows.
 - Eleven internal packages plus `cmd/yc`. Count the tests rather than trusting a

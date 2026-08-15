@@ -22,7 +22,7 @@ docker build -t yc:local .
 
 Multi-stage:
 
-- `golang:1.26.5-bookworm` compiles `cmd/yc` with `CGO_ENABLED=0 -trimpath
+- `golang:1.26.6-bookworm` compiles `cmd/yc` with `CGO_ENABLED=0 -trimpath
   -ldflags="-s -w"`, plus `-X …/internal/cli.Version=${VERSION}` from the
   `VERSION` build argument. Without `--build-arg VERSION=…` the image reports
   `yc dev`, which is correct for a local build and wrong for a released one:

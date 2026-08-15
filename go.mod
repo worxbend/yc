@@ -2,7 +2,7 @@ module github.com/worxbend/yc
 
 go 1.26
 
-toolchain go1.26.5
+toolchain go1.26.6
 
 require (
 	github.com/charmbracelet/bubbletea v1.3.10
