@@ -167,6 +167,13 @@ type shellModel struct {
 	chatLogger    ChatLogger
 	chatLogFailed bool
 
+	// Auto-follow re-resolves a chat's channel after its stream ends. The
+	// interval and check cap come from config; per-chat progress lives on
+	// chatState so two chats can follow independently.
+	autoFollowEnabled   bool
+	autoFollowInterval  time.Duration
+	autoFollowMaxChecks int
+
 	// identity is the authenticated user's own channel. The local echo has no
 	// other source for the sender's display name and badges.
 	identity      youtube.Identity
@@ -265,6 +272,9 @@ func newShellModel(cfg config.Config, clock animation.Clock) shellModel {
 		sidebarWidthOverride:  cfg.Features.SidebarWidth,
 		activityWidthOverride: cfg.Features.ActivityWidth,
 		debugRecording:        cfg.Debug.Enabled,
+		autoFollowEnabled:     cfg.Features.AutoFollow,
+		autoFollowInterval:    autoFollowIntervalFor(cfg.Features.AutoFollowPollSeconds),
+		autoFollowMaxChecks:   autoFollowMaxChecksFor(cfg.Features.AutoFollowMaxChecks),
 		effectiveConfig:       cfg,
 		width:                 defaultShellWidth,
 		height:                defaultShellHeight,

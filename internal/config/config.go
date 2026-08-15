@@ -123,6 +123,17 @@ type FeatureConfig struct {
 	// EmojiAutocompleteMode is "auto" or "off". The emoji picker is a
 	// built-in Unicode set and never needs credentials.
 	EmojiAutocompleteMode string `toml:"emoji_autocomplete_mode" env:"YC_EMOJI_AUTOCOMPLETE_MODE"`
+	// AutoFollow re-resolves a chat's channel after its stream ends and
+	// reconnects when the channel goes live again. Off by default because
+	// every check spends a channels.list unit against the daily quota.
+	AutoFollow bool `toml:"auto_follow" env:"YC_AUTO_FOLLOW"`
+	// AutoFollowPollSeconds is how often auto-follow checks for a new
+	// stream. Values below 30 are raised to 30 so a typo cannot burn quota.
+	AutoFollowPollSeconds int `toml:"auto_follow_poll_seconds" env:"YC_AUTO_FOLLOW_POLL_SECONDS"`
+	// AutoFollowMaxChecks bounds how many checks are made per ended stream
+	// before auto-follow gives up. It is the quota cap: each check is an
+	// estimated one unit.
+	AutoFollowMaxChecks int `toml:"auto_follow_max_checks" env:"YC_AUTO_FOLLOW_MAX_CHECKS"`
 }
 
 // QuotaConfig holds the poll-cadence and quota-accounting knobs. This block has
@@ -243,6 +254,8 @@ func Default() Config {
 			ScrollbackLimit:       DefaultScrollbackLimit,
 			StreamStatusMode:      "auto",
 			EmojiAutocompleteMode: "auto",
+			AutoFollowPollSeconds: 60,
+			AutoFollowMaxChecks:   30,
 		},
 		Logging: LoggingConfig{
 			ChatLogMaxBytes: DefaultChatLogMaxBytes,

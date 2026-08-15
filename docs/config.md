@@ -127,6 +127,9 @@ to config.
 | `activity_width` | `YC_ACTIVITY_WIDTH` | `0` | Activity column width in cells. Same clamping. |
 | `scrollback_limit` | `YC_SCROLLBACK_LIMIT` | `2000` | Messages retained per chat. `0` or negative keeps everything, at the cost of a repaint that slows as the buffer grows. |
 | `stream_status_mode` | `YC_STREAM_STATUS_MODE` | `auto` | `auto` enables the LIVE badge and viewer-count refresh; `off` disables them. |
+| `auto_follow` | `YC_AUTO_FOLLOW` | `false` | When a watched stream ends, keep re-checking its channel and reconnect to the next broadcast automatically. Opt-in because every check spends an estimated one quota unit (`channels.list`). Needs the chat to know its channel: a chat opened by `@handle`, channel ID, or one whose metadata lookup has answered qualifies. |
+| `auto_follow_poll_seconds` | `YC_AUTO_FOLLOW_POLL_SECONDS` | `60` | How often auto-follow checks for the next stream. Values below 30 are raised to 30 so a typo cannot burn the budget. |
+| `auto_follow_max_checks` | `YC_AUTO_FOLLOW_MAX_CHECKS` | `30` | Checks per ended stream before auto-follow gives up. This is the quota cap: with the defaults an ended stream costs at most ~30 estimated units over ~30 minutes. `0` means the default, never unbounded. |
 | `emoji_autocomplete_mode` | `YC_EMOJI_AUTOCOMPLETE_MODE` | `auto` | **Inert.** Parsed and printed, but no code reads it: the emoji picker is a built-in Unicode set that is always available and needs no credentials. |
 
 An unrecognized mode value is **normalized to a known one rather than rejected**,
