@@ -37,7 +37,61 @@ func SplitFragments(text string) []MessageFragment {
 	if text == "" {
 		return nil
 	}
+	if isASCIIOnly(text) {
+		return splitFragmentsASCII(text)
+	}
+	return splitFragmentsUnicode(text)
+}
 
+// isASCIIOnly reports whether every byte is below utf8.RuneSelf.
+func isASCIIOnly(text string) bool {
+	for i := 0; i < len(text); i++ {
+		if text[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
+// splitFragmentsASCII is the fast path for a body with no multi-byte runes,
+// which is most chat traffic. For pure ASCII every byte is its own grapheme
+// cluster (the one exception, the CR LF pair, lands in the same text fragment
+// either way) and no ASCII rune is in emojiRanges, so the segmenter's
+// per-cluster state machine - the dominant CPU cost of normalizing a page -
+// buys nothing here. TestSplitFragmentsASCIIFastPathMatchesSegmenter holds
+// the two paths to identical output.
+func splitFragmentsASCII(text string) []MessageFragment {
+	var fragments []MessageFragment
+	var pending strings.Builder
+
+	flush := func() {
+		if pending.Len() == 0 {
+			return
+		}
+		fragments = append(fragments, MessageFragment{Type: FragmentText, Text: pending.String()})
+		pending.Reset()
+	}
+
+	atWordStart := true
+	for i := 0; i < len(text); {
+		cluster := text[i : i+1]
+		if token, kind, ok := matchToken(text[i:], cluster, atWordStart); ok {
+			flush()
+			fragments = append(fragments, MessageFragment{Type: kind, Text: token})
+			i += len(token)
+			atWordStart = false
+			continue
+		}
+		pending.WriteString(cluster)
+		i++
+		atWordStart = isBoundaryCluster(cluster)
+	}
+	flush()
+	return fragments
+}
+
+// splitFragmentsUnicode is the general, grapheme-segmented path.
+func splitFragmentsUnicode(text string) []MessageFragment {
 	var fragments []MessageFragment
 	var pending strings.Builder
 
