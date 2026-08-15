@@ -12,6 +12,67 @@ Released binaries are stamped with their tag.
 
 Nothing yet.
 
+## [0.2.0] - 2026-08-15
+
+A five-track improvement pass: security hardening, measured performance work,
+chat navigation, on-disk logging, and a lint gate. Full details live in
+`docs/swarm/FINAL-REPORT.md`.
+
+### Added
+
+- In-buffer search: `/` opens an incremental search over the scrollback,
+  `n`/`N` walk matches, `esc` unwinds. Matches are highlighted in place.
+- Vim-style scrollback navigation: `g`/`G` jump to the oldest/newest message,
+  `ctrl+d`/`ctrl+u` move half a page.
+- A sticky `↓ N new` indicator while scrolled up, cleared on jumping to the
+  bottom. Historical backlog does not count toward it.
+- `y` copies the focused message to the clipboard as sanitized plain text over
+  OSC 52 — no shell-out, and only in interactive sessions.
+- Opt-in chat logging (`chat_logging`): normalized events appended as JSON
+  Lines, one file per session, size-rotated (`chat_log_max_bytes`,
+  `chat_log_max_files`), written `0600` in a `0700` directory with free-text
+  fields passed through the redactor. A write failure disables logging for the
+  session and says so once; it never kills the chat.
+- `yc export superchats`: reads those logs and emits a CSV ledger
+  (timestamp, chat, author, amount, currency, tier, message) using integer
+  micros — no floating-point money.
+- Opt-in auto-follow (`auto_follow`): when a watched stream ends, yc
+  re-resolves the channel on a bounded, quota-charged cadence
+  (`auto_follow_poll_seconds`, `auto_follow_max_checks`) and reopens the next
+  broadcast into the same chat, keeping history and draft.
+- The first fuzz tests in the repository, covering the three text sanitizers
+  with terminal-safety invariants, plus end-to-end escape-injection probes
+  through the rendered frame.
+- Replay benchmarks for the chat ingestion and render paths, so performance
+  claims are measured rather than asserted.
+- A `.golangci.yml` lint gate (errcheck, govet, staticcheck, revive, gocritic,
+  gosec, misspell, unparam) wired into CI. The initial run's 440 findings are
+  at zero.
+
+### Fixed
+
+- The tab-bar sanitizer now neutralizes raw C1 control bytes and bidirectional
+  override characters, and trims after mapping so a trailing control cannot
+  shield whitespace.
+- Desktop notifications on Linux pass `--` to `notify-send`, so a chatter whose
+  display name looks like an option (for example `--icon=...`) is treated as
+  text, not parsed.
+- API response bodies are bounded on the success path, closing the client's one
+  unbounded read.
+- OAuth state generation could loop forever for alphabet sizes that divide 256;
+  the rejection threshold no longer wraps to zero.
+- `yc export superchats` reports a failed output-file close instead of
+  silently dropping data on a full disk.
+
+### Changed
+
+- Ingesting a message at the scrollback cap is roughly ten times faster and
+  allocates ~99% less (26,097 → 2,419 ns/op; 190,647 → 2,099 B/op on the flood
+  benchmark): the buffer now trims in place instead of reallocating.
+- Splitting pure-ASCII message bodies into fragments skips the grapheme
+  segmenter (10,005 → 1,338 ns/op).
+- One combined Update+View pipeline pass allocates 41% less.
+
 ## [0.1.0] - 2026-08-08
 
 The first release. Everything below is the initial implementation.
@@ -207,5 +268,6 @@ The first release. Everything below is the initial implementation.
   Windows binaries, no snap, no package-manager manifests, no signing,
   notarization, SBOM, or provenance.
 
-[Unreleased]: https://github.com/worxbend/yc/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/worxbend/yc/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/worxbend/yc/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/worxbend/yc/releases/tag/v0.1.0
