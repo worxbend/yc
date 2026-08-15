@@ -75,6 +75,11 @@ type chatState struct {
 	scrollOffset int
 	filters      messageFilterSet
 
+	// newBelow counts messages that arrived while the viewer was scrolled
+	// away from the bottom. It backs the sticky "N new" indicator and resets
+	// the moment the viewer is back at the bottom.
+	newBelow int
+
 	// revealQueue animates newly arrived rows. Only the active chat animates;
 	// a background chat appends statically so an off-screen flood cannot grow
 	// a reveal backlog.

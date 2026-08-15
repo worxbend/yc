@@ -1017,6 +1017,11 @@ func (m *shellModel) clampScroll() {
 	if state.scrollOffset < 0 {
 		state.scrollOffset = 0
 	}
+	if state.scrollOffset == 0 {
+		// Back at the bottom: everything that arrived while scrolled away is
+		// now on screen, so the "N new" indicator has nothing left to say.
+		state.newBelow = 0
+	}
 }
 
 // selectMessage moves the browsing cursor through the visible history. It
@@ -1350,6 +1355,12 @@ func (m *shellModel) enqueueMessage(message youtube.Message) tea.Cmd {
 	if !m.animationEnabled() || message.Historical || m.scrolledAway() {
 		// The priming page is a backlog of up to 2000 rows. Typing it in one
 		// grapheme at a time would take minutes and tell the viewer nothing.
+		if m.scrolledAway() && !message.Historical {
+			// The viewer is reading history, so the arrival lands off screen.
+			// Counting it feeds the sticky "N new" indicator; clampScroll
+			// zeroes the count the moment they are back at the bottom.
+			state.newBelow++
+		}
 		state.appendMessage(message)
 		state.trimScrollback(m.chats.scrollbackLimit)
 		return nil

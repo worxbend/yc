@@ -556,7 +556,35 @@ func (m shellModel) visibleChatRows(layout shellLayout) []string {
 	// scrollOffset counts rows hidden below the viewport, so the window ends
 	// that far from the bottom.
 	offset := min(clampMin(state.scrollOffset, 0), total-height)
-	return m.styleChatRowWindow(blocks, rowWidth, clampMin(total-offset-height, 0), height)
+	rows := m.styleChatRowWindow(blocks, rowWidth, clampMin(total-offset-height, 0), height)
+	// While the viewer reads history, arrivals land below the viewport where
+	// they are invisible. The sticky indicator borrows the bottom row so
+	// off-screen traffic is never silent; clampScroll clears the count the
+	// moment the viewer is back at the bottom.
+	if offset > 0 && state.newBelow > 0 && len(rows) > 0 {
+		rows[len(rows)-1] = m.newMessagesIndicatorRow(rowWidth, state.newBelow)
+	}
+	return rows
+}
+
+// newMessagesIndicatorRow is the sticky "N new" strip drawn over the bottom
+// viewport row while the viewer is scrolled away and messages keep arriving.
+func (m shellModel) newMessagesIndicatorRow(rowWidth, count int) string {
+	label := fmt.Sprintf(" ↓ %d new ", count)
+	if count == 1 {
+		label = " ↓ 1 new "
+	}
+	hint := "G to jump to newest "
+	if ansi.StringWidth(label)+len(hint) <= rowWidth {
+		label += "· " + hint
+	}
+	foreground := theme.ContrastCorrectedForeground(m.theme.Foreground, m.theme.Accent, canvasBackground(m.theme))
+	return lipgloss.NewStyle().
+		Width(clampMin(rowWidth, 1)).
+		Background(lipgloss.Color(m.theme.Accent)).
+		Foreground(lipgloss.Color(foreground)).
+		Bold(true).
+		Render(truncateDisplayWidth(label, clampMin(rowWidth, 1)))
 }
 
 // chatRowCount reports how many rows the viewport would produce without paying
