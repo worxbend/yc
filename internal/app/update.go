@@ -117,6 +117,10 @@ func (m shellModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case targetResolvedMsg:
 		return m.applyResolvedTarget(msg)
 
+	case autoFollowTickMsg:
+		return m.handleAutoFollowTick(msg)
+	case autoFollowResolvedMsg:
+		return m.handleAutoFollowResolved(msg)
 	case chatMetricsMsg:
 		m.applyChatMetrics(msg)
 		return m, nil
@@ -1263,6 +1267,7 @@ func (m shellModel) handleClientMessage(msg chatClientMessageMsg) (tea.Model, te
 		return m, nil
 	}
 	var cmds []tea.Cmd
+	m.logChatMessage(msg.message)
 	if cmd := m.enqueueMessage(msg.message); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
@@ -1276,6 +1281,9 @@ func (m shellModel) handleClientMessage(msg chatClientMessageMsg) (tea.Model, te
 			Detail: "live chat ended",
 			At:     m.now(),
 		})
+		if cmd := m.maybeStartAutoFollow(msg.message.LiveChatID); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
 	cmds = append(cmds, m.nextClientMessageCommand())
 	m.clampScroll()
@@ -1294,6 +1302,9 @@ func (m shellModel) handleConnectionState(msg chatClientConnectionStateMsg) (tea
 		return m, nil
 	}
 	m.applyConnectionState(msg.state)
+	if msg.state.Status == youtube.ConnectionClosed {
+		return m, batchNonNil(m.nextConnectionStateCommand(), m.maybeStartAutoFollow(msg.state.ChatID))
+	}
 	if msg.state.Status == youtube.ConnectionConnected {
 		// A session that just came up needs its viewer count now, not at the
 		// next two-minute tick: after a reconnect the old figure is the one

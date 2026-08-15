@@ -125,6 +125,13 @@ type chatState struct {
 
 	unread int
 
+	// autoFollowActive marks a chat whose stream ended and whose channel is
+	// being watched for the next broadcast; autoFollowChecks counts the
+	// quota-charged re-resolutions already spent on it, so the configured
+	// cap can stop the watch. See internal/app/autofollow.go.
+	autoFollowActive bool
+	autoFollowChecks int
+
 	composerText string
 	// selected is the browsing cursor j/k/up/down move through history, and
 	// what inspect and r act on. replyTo is the reply r actually armed.

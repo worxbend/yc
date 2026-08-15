@@ -127,6 +127,9 @@ to config.
 | `activity_width` | `YC_ACTIVITY_WIDTH` | `0` | Activity column width in cells. Same clamping. |
 | `scrollback_limit` | `YC_SCROLLBACK_LIMIT` | `2000` | Messages retained per chat. `0` or negative keeps everything, at the cost of a repaint that slows as the buffer grows. |
 | `stream_status_mode` | `YC_STREAM_STATUS_MODE` | `auto` | `auto` enables the LIVE badge and viewer-count refresh; `off` disables them. |
+| `auto_follow` | `YC_AUTO_FOLLOW` | `false` | When a watched stream ends, keep re-checking its channel and reconnect to the next broadcast automatically. Opt-in because every check spends an estimated one quota unit (`channels.list`). Needs the chat to know its channel: a chat opened by `@handle`, channel ID, or one whose metadata lookup has answered qualifies. |
+| `auto_follow_poll_seconds` | `YC_AUTO_FOLLOW_POLL_SECONDS` | `60` | How often auto-follow checks for the next stream. Values below 30 are raised to 30 so a typo cannot burn the budget. |
+| `auto_follow_max_checks` | `YC_AUTO_FOLLOW_MAX_CHECKS` | `30` | Checks per ended stream before auto-follow gives up. This is the quota cap: with the defaults an ended stream costs at most ~30 estimated units over ~30 minutes. `0` means the default, never unbounded. |
 | `emoji_autocomplete_mode` | `YC_EMOJI_AUTOCOMPLETE_MODE` | `auto` | **Inert.** Parsed and printed, but no code reads it: the emoji picker is a built-in Unicode set that is always available and needs no credentials. |
 
 An unrecognized mode value is **normalized to a known one rather than rejected**,
@@ -183,6 +186,36 @@ release.
 An endpoint with no entry costs 1 unit, so an unmetered call still moves the
 ledger. `yc doctor` prints the table actually in force and how many entries your
 config overrode.
+
+## Chat Logging
+
+Opt-in archive of the chat itself, separate from debug logging: the debug log
+records what `yc` did, the chat log records what the chat said. Each session
+appends normalized events - one JSON object per line (JSON Lines) - so the
+files work with `jq`, spreadsheet imports, and `yc export superchats` without a
+custom parser. Raw YouTube API JSON never reaches disk, every free-text field
+passes through the credential redactor, and files are written `0600` in a
+`0700` directory. A write failure never interrupts chat: logging turns itself
+off for the session and says so once in the status line.
+
+| Key | Env | Default | Purpose |
+| --- | --- | --- | --- |
+| `chat_logging` | `YC_CHAT_LOG` | `false` | Enable the chat log. Off by default: writing chat to disk is a privacy decision, never a default. |
+| `chat_log_dir` | `YC_CHAT_LOG_DIR` | empty | Where log files go. Empty means `chatlog` under the cache directory. |
+| `chat_log_max_bytes` | `YC_CHAT_LOG_MAX_BYTES` | `10485760` | Rotate the current file once it exceeds this size (10 MB). |
+| `chat_log_max_files` | `YC_CHAT_LOG_MAX_FILES` | `5` | How many log files survive rotation, newest first, current file included. |
+
+Export the paid ledger from the logs (no network, no quota):
+
+```sh
+yc export superchats                     # CSV to stdout
+yc export superchats --out ledger.csv    # CSV to a file
+yc export superchats --dir /path/to/logs
+```
+
+Columns: `timestamp, chat_id, author, amount_value, currency, tier, message`.
+Amounts are derived from the API's integer micros, never floats, so nothing is
+rounded between the wire and the spreadsheet.
 
 ## Debug Logging
 
@@ -293,6 +326,7 @@ yc chat [--chat ID] [--chats a,b] [--video ID] [--channel @handle]
 yc config show [--config PATH]
 yc config path
 yc doctor [--config PATH] [--debug-log]
+yc export superchats [--dir DIR] [--out FILE] [--config PATH]
 yc login [--redirect-uri URL] [--timeout D] [--dry-run] [--read-only]
          [--write-default-config] [--debug-log] [--debug-log-path PATH] [--config PATH]
 yc logout [--config PATH] [--keep-remote]

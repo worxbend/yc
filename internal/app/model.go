@@ -161,6 +161,19 @@ type shellModel struct {
 	streamInfoManager  StreamInfoManager
 	categoryLookup     CategoryLookup
 
+	// chatLogger is the opt-in chat log. chatLogFailed latches the first
+	// write failure so a full disk degrades to one status notice rather
+	// than an error per message.
+	chatLogger    ChatLogger
+	chatLogFailed bool
+
+	// Auto-follow re-resolves a chat's channel after its stream ends. The
+	// interval and check cap come from config; per-chat progress lives on
+	// chatState so two chats can follow independently.
+	autoFollowEnabled   bool
+	autoFollowInterval  time.Duration
+	autoFollowMaxChecks int
+
 	// identity is the authenticated user's own channel. The local echo has no
 	// other source for the sender's display name and badges.
 	identity      youtube.Identity
@@ -265,6 +278,9 @@ func newShellModel(cfg config.Config, clock animation.Clock) shellModel {
 		sidebarWidthOverride:  cfg.Features.SidebarWidth,
 		activityWidthOverride: cfg.Features.ActivityWidth,
 		debugRecording:        cfg.Debug.Enabled,
+		autoFollowEnabled:     cfg.Features.AutoFollow,
+		autoFollowInterval:    autoFollowIntervalFor(cfg.Features.AutoFollowPollSeconds),
+		autoFollowMaxChecks:   autoFollowMaxChecksFor(cfg.Features.AutoFollowMaxChecks),
 		effectiveConfig:       cfg,
 		width:                 defaultShellWidth,
 		height:                defaultShellHeight,
@@ -286,6 +302,7 @@ func newLiveModel(cfg config.Config, client ChatClient, clock animation.Clock, o
 	model.subscriptionLookup = opts.SubscriptionLookup
 	model.streamInfoManager = opts.StreamInfoManager
 	model.categoryLookup = opts.CategoryLookup
+	model.chatLogger = opts.ChatLogger
 	model.sourceDetail = "youtube live chat"
 
 	// Every open chat starts in "connecting": the transport has not reported

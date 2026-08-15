@@ -50,6 +50,7 @@ Usage:
   yc config show [--config PATH]
   yc config path
   yc doctor [--config PATH] [--debug-log]
+  yc export superchats [--dir DIR] [--out FILE] [--config PATH]
   yc login [--redirect-uri URL] [--dry-run] [--write-default-config]
            [--debug-log] [--debug-log-path PATH] [--config PATH]
   yc logout [--config PATH] [--keep-remote]
@@ -91,6 +92,7 @@ Environment:
   YC_MESSAGE_LAYOUT, YC_BADGE_MODE, YC_HIGHLIGHT_EMOJI, YC_FULL_USERNAME
   YC_SIDEBAR_WIDTH, YC_ACTIVITY_WIDTH, YC_SCROLLBACK_LIMIT
   YC_STREAM_STATUS_MODE, YC_EMOJI_AUTOCOMPLETE_MODE
+  YC_AUTO_FOLLOW, YC_AUTO_FOLLOW_POLL_SECONDS, YC_AUTO_FOLLOW_MAX_CHECKS
   YC_POLL_INTERVAL_MODE, YC_POLL_INTERVAL_FLOOR_MS, YC_POLL_INTERVAL_CEILING_MS
   YC_DAILY_QUOTA_UNITS, YC_SEARCH_QUOTA_CALLS, YC_QUOTA_RESERVE_PERCENT
   YC_SESSION_HOURS, YC_FOLLOW_SERVER_CADENCE, YC_ALLOW_SEARCH
@@ -98,6 +100,7 @@ Environment:
   YC_QUOTA_COST_BANS_INSERT, YC_QUOTA_COST_BANS_DELETE,
   YC_QUOTA_COST_VIDEOS_LIST, YC_QUOTA_COST_CHANNELS_LIST,
   YC_QUOTA_COST_SEARCH_LIST
+  YC_CHAT_LOG, YC_CHAT_LOG_DIR, YC_CHAT_LOG_MAX_BYTES, YC_CHAT_LOG_MAX_FILES
   YC_DEBUG_LOG, YC_DEBUG_LOG_PATH
 `
 
@@ -120,6 +123,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runChat(args[1:], stdout, stderr)
 	case "config":
 		return runConfig(args[1:], stdout, stderr)
+	case "export":
+		return runExport(args[1:], stdout, stderr)
 	case "doctor":
 		return runDoctor(args[1:], stdout, stderr)
 	case "login":
@@ -381,6 +386,13 @@ func runLiveChatSession(cfg config.Config, liveChatID string, stdout, stderr io.
 	}
 
 	options := newLiveClientOptions(cfg, client, capability, logger, app.NewDefaultSystemNotifier(stdout))
+	// The typed-nil check matters: assigning a nil *chatlog.Writer into the
+	// interface field would make it non-nil and send every message into a
+	// writer that no longer exists.
+	if chatLog := openChatLogWriter(cfg, logger); chatLog != nil {
+		defer chatLog.Close()
+		options.ChatLogger = chatLog
+	}
 	if err := runLiveChat(stdout, cfg, chatClient, options); err != nil {
 		logger.Log(ctx, "cli.chat.failed", debuglog.Err("error", err))
 		fmt.Fprintf(stderr, "live chat: %s\n", safeStartupError(redactor, err))
