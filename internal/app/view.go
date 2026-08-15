@@ -80,7 +80,9 @@ type chatRowBlock struct {
 
 // View renders one complete frame.
 func (m shellModel) View() string {
-	background := m.themeBackgroundSequence()
+	// The clipboard sequence rides in the frame for the same reason the
+	// background override does: only the renderer may write to the terminal.
+	background := m.themeBackgroundSequence() + m.clipboardSequence()
 	if m.splashActive() {
 		return background + m.splashView()
 	}

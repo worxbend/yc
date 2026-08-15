@@ -167,6 +167,12 @@ type shellModel struct {
 	identityKnown bool
 	mentionHandle string
 
+	// clipboardText is a pending OSC 52 clipboard payload, embedded in the
+	// next rendered frame and retired by clipboardClearMsg. clipboardSeq
+	// numbers the payloads so a stale timer cannot drop a newer one.
+	clipboardText string
+	clipboardSeq  int
+
 	sourceDetail  string
 	animationMode string
 	avatarMode    string

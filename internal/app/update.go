@@ -137,6 +137,10 @@ func (m shellModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case revealTickMsg:
 		return m.advanceReveal()
+
+	case clipboardClearMsg:
+		m.retireClipboard(msg)
+		return m, nil
 	}
 	return m, nil
 }
@@ -395,6 +399,8 @@ func (m shellModel) handleRuneKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.jumpSearchMatch(-1)
 	case r == 'N':
 		m.jumpSearchMatch(1)
+	case r == 'y':
+		return m.copySelectedMessage()
 	case isInsertRune(r):
 		// i/o/a all enter the composer, matching vim's insert keys; the
 		// composer appends, so they differ only in muscle memory.
@@ -866,6 +872,9 @@ func paletteCommands() []paletteCommand {
 		{title: "Search messages", shortcut: "/", run: func(m shellModel) (tea.Model, tea.Cmd) {
 			m.startSearchInput()
 			return m, nil
+		}},
+		{title: "Copy selected message", shortcut: "y", run: func(m shellModel) (tea.Model, tea.Cmd) {
+			return m.copySelectedMessage()
 		}},
 		{title: "Help", shortcut: "?", run: func(m shellModel) (tea.Model, tea.Cmd) {
 			m.helpExpanded = !m.helpExpanded

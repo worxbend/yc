@@ -64,6 +64,7 @@ var keyBindings = []keyBinding{
 	{Keys: "g/G", Description: "oldest/newest", Group: keyGroupChat},
 	{Keys: "/", Description: "search messages", Group: keyGroupChat},
 	{Keys: "n/N", Description: "next/prev match", Group: keyGroupChat},
+	{Keys: "y", Description: "copy selected message", Group: keyGroupChat},
 	{Keys: "r", Description: "reply", Group: keyGroupChat},
 	{Keys: "K", Description: "inspect", Group: keyGroupChat},
 	{Keys: "ctrl+e", Description: "emoji picker", Group: keyGroupChat},
