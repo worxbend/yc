@@ -551,7 +551,7 @@ func TestRefreshHonorsTheCallerContext(t *testing.T) {
 
 	source := &refreshingCredentials{
 		token: auth.NewSecret(expiredTestToken),
-		refresh: func(ctx context.Context, call int) (auth.Secret, error) {
+		refresh: func(_ context.Context, call int) (auth.Secret, error) {
 			if call == 1 {
 				close(entered)
 				<-release

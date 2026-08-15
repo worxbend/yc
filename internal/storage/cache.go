@@ -145,7 +145,7 @@ func (c Cache) Get(ctx context.Context, key string) ([]byte, bool, error) {
 	if err != nil {
 		return nil, false, fmt.Errorf("read cache entry: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	data, err := io.ReadAll(io.LimitReader(file, maxCacheEntryBytes+1))
 	if err != nil {

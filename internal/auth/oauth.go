@@ -18,6 +18,8 @@ import (
 )
 
 // Google installed-app OAuth endpoints.
+//
+//nolint:gosec // gosec's G101 pattern-matches "oauth2"/"token" in the URLs; these are public endpoint addresses, not credentials
 const (
 	GoogleAuthEndpoint      = "https://accounts.google.com/o/oauth2/v2/auth"
 	GoogleTokenEndpoint     = "https://oauth2.googleapis.com/token"
@@ -455,7 +457,7 @@ func (f *GoogleOAuthLoginFlow) Revoke(ctx context.Context, token Secret) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		detail, readErr := responseDetail(resp.Body)
@@ -493,7 +495,7 @@ func (f *GoogleOAuthLoginFlow) TokenInfo(ctx context.Context, accessToken Secret
 	if err != nil {
 		return TokenSet{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		detail, readErr := responseDetail(resp.Body)
@@ -729,7 +731,7 @@ func (f *GoogleOAuthLoginFlow) postToken(ctx context.Context, action string, for
 	if err != nil {
 		return TokenSet{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxOAuthResponseBytes))
@@ -852,7 +854,7 @@ func (f *GoogleOAuthLoginFlow) resolveIdentity(ctx context.Context, accessToken 
 	if err != nil {
 		return Identity{}, safeError("resolve YouTube channel", err, redactor)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		detail, readErr := responseDetail(resp.Body)
@@ -943,8 +945,13 @@ func randomString(length int, alphabet string) (string, error) {
 	if length <= 0 || alphabet == "" {
 		return "", errors.New("random string requires a positive length and a non-empty alphabet")
 	}
-	size := byte(len(alphabet))
-	limit := byte(256 - (256 % int(size)))
+	if len(alphabet) > 256 {
+		return "", errors.New("random string alphabet is longer than a byte can index")
+	}
+	size := len(alphabet)
+	// Rejection-sampling threshold, kept as an int: as a byte it would wrap
+	// to zero whenever size divides 256 evenly and reject every draw.
+	limit := 256 - (256 % size)
 
 	out := make([]byte, 0, length)
 	buf := make([]byte, length)
@@ -953,10 +960,10 @@ func randomString(length int, alphabet string) (string, error) {
 			return "", err
 		}
 		for _, b := range buf {
-			if b >= limit {
+			if int(b) >= limit {
 				continue
 			}
-			out = append(out, alphabet[b%size])
+			out = append(out, alphabet[int(b)%size])
 			if len(out) == length {
 				break
 			}

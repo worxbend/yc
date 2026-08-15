@@ -140,14 +140,14 @@ func (s *FileLedgerStore) SaveLedger(fingerprint, day string, byEndpoint map[str
 		return fmt.Errorf("quota ledger: create temp file: %w", err)
 	}
 	tempName := temp.Name()
-	defer os.Remove(tempName)
+	defer func() { _ = os.Remove(tempName) }()
 
 	if err := temp.Chmod(ledgerFileMode); err != nil {
-		temp.Close()
+		_ = temp.Close()
 		return fmt.Errorf("quota ledger: set permissions: %w", err)
 	}
 	if _, err := temp.Write(data); err != nil {
-		temp.Close()
+		_ = temp.Close()
 		return fmt.Errorf("quota ledger: write record: %w", err)
 	}
 	if err := temp.Close(); err != nil {

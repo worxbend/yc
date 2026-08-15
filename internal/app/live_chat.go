@@ -169,14 +169,19 @@ func NewLiveChatClient(cfg LiveChatConfig) (*LiveChatClient, error) {
 	return client, nil
 }
 
+// Messages returns the merged chat message stream.
 func (c *LiveChatClient) Messages() <-chan youtube.Message { return c.messages }
 
+// ConnectionStates returns the merged connection lifecycle stream.
 func (c *LiveChatClient) ConnectionStates() <-chan youtube.ConnectionState { return c.states }
 
+// Moderations returns the merged moderation event stream.
 func (c *LiveChatClient) Moderations() <-chan youtube.ModerationEvent { return c.moderations }
 
+// RoomEvents returns the merged room-wide event stream.
 func (c *LiveChatClient) RoomEvents() <-chan youtube.RoomEvent { return c.rooms }
 
+// Polls returns the merged creator poll stream.
 func (c *LiveChatClient) Polls() <-chan youtube.PollState { return c.polls }
 
 // Send dispatches to the session that owns the request's chat. A request with

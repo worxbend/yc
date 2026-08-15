@@ -46,7 +46,7 @@ func (m shellModel) mentionSuggestions() []string {
 
 	// A prefix match is what the user meant; a substring match is a guess, so
 	// it never outranks one.
-	ranked := append(starts, contains...)
+	ranked := append(starts, contains...) //nolint:gocritic // starts is dead after this; extending it in place is the intent
 	if len(ranked) > maxMentionSuggestions {
 		ranked = ranked[:maxMentionSuggestions]
 	}
@@ -100,6 +100,8 @@ func (m shellModel) mentionSelection(count int) int {
 // Claiming them unconditionally would break the four bindings those keys carry
 // everywhere else in the composer, so this reports whether it consumed the key
 // rather than swallowing it.
+//
+//nolint:unparam // every modal key handler shares the (model, cmd, consumed) shape, even when this one never issues a command
 func (m shellModel) handleMentionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	suggestions := m.mentionSuggestions()
 	if len(suggestions) == 0 {

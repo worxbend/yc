@@ -72,7 +72,7 @@ func TestDoctorNamesTheCredentialModeWithoutEchoingACredential(t *testing.T) {
 		says   string
 	}{
 		"nothing configured": {
-			mutate: func(cfg *config.Config) {},
+			mutate: func(_ *config.Config) {},
 			want:   DoctorStatusWarn,
 			says:   "yc login",
 		},

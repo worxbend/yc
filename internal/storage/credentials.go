@@ -290,7 +290,7 @@ func (s *CredentialFileStore) LoadCredentials(ctx context.Context) (CredentialRe
 	if err != nil {
 		return CredentialRecord{}, false, credentialError("load credential file", s.plan.Path, err, auth.Redactor{})
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	data, err := io.ReadAll(io.LimitReader(file, maxCredentialFileBytes+1))
 	if err != nil {
@@ -491,6 +491,7 @@ type UnsupportedCredentialStore struct{}
 
 var _ CredentialStore = UnsupportedCredentialStore{}
 
+// LoadCredentials reports that no credential backend exists on this platform.
 func (UnsupportedCredentialStore) LoadCredentials(ctx context.Context) (CredentialRecord, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return CredentialRecord{}, false, err
@@ -498,6 +499,7 @@ func (UnsupportedCredentialStore) LoadCredentials(ctx context.Context) (Credenti
 	return CredentialRecord{}, false, unsupportedCredentialsError()
 }
 
+// SaveCredentials refuses to persist anything on an unsupported platform.
 func (UnsupportedCredentialStore) SaveCredentials(ctx context.Context, _ CredentialRecord) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -505,6 +507,8 @@ func (UnsupportedCredentialStore) SaveCredentials(ctx context.Context, _ Credent
 	return unsupportedCredentialsError()
 }
 
+// DeleteCredentials reports the same unsupported-platform error; there is
+// never anything to delete.
 func (UnsupportedCredentialStore) DeleteCredentials(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -786,7 +790,7 @@ func syncCredentialDir(dir string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	// Directory fsync is not supported everywhere; an EINVAL there is not a
 	// failure of the write that already landed.
 	if err := file.Sync(); err != nil && !errors.Is(err, fs.ErrInvalid) && !errors.Is(err, os.ErrInvalid) {

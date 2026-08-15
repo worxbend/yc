@@ -113,11 +113,11 @@ func (m shellModel) View() string {
 		regions = append(regions, chat)
 	}
 	if layout.streamInfoHeight > 0 {
-		regions = append(regions, m.linesPane("🎛", "Stream Info", m.streamInfoLines(layout.width),
+		regions = append(regions, m.linesPane("🎛", "Stream Info", m.streamInfoLines(),
 			layout.width, layout.streamInfoHeight, layout.streamInfoContentHeight, layout.streamInfoFramed))
 	}
 	if layout.miscHeight > 0 {
-		regions = append(regions, m.linesPane("⟳", "Quota · estimated", m.quotaLedgerLines(layout.width),
+		regions = append(regions, m.linesPane("⟳", "Quota · estimated", m.quotaLedgerLines(),
 			layout.width, layout.miscHeight, layout.miscContentHeight, layout.miscFramed))
 	}
 	if layout.overlayHeight > 0 {
@@ -1362,7 +1362,7 @@ func (m shellModel) listOverlayState() listOverlayState {
 // Twitch's equivalent tab held stream markers, which YouTube has no analog
 // for. Quota does not merely fill the gap - it is the constraint that decides
 // whether a session survives the broadcast, so it earns a whole screen.
-func (m shellModel) quotaLedgerLines(width int) []string {
+func (m shellModel) quotaLedgerLines() []string {
 	quota, known := m.quotaSnapshot()
 	if !known {
 		return []string{
@@ -1416,7 +1416,7 @@ func sortedEndpoints(byEndpoint map[string]int) []string {
 // streamInfoLines renders the Stream Info tab from what the session already
 // knows. It is read-only unless a StreamInfoManager was wired in, and it says
 // which of the two it is rather than presenting inert fields.
-func (m shellModel) streamInfoLines(width int) []string {
+func (m shellModel) streamInfoLines() []string {
 	state := m.activeChatState()
 	if state == nil || m.noChatsOpen() {
 		return []string{" No live chat open.", "", " Open one with " + targetPickerKeyHint + " to see its broadcast details."}

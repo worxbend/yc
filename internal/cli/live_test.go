@@ -267,7 +267,7 @@ func TestLiveChatStartupFailuresExitWithoutOpeningTheUI(t *testing.T) {
 	newTokenValidator = func(config.Config) tokenValidator { return nil }
 
 	var uiStarted bool
-	runLiveChat = func(w io.Writer, cfg config.Config, client app.ChatClient, opts app.ClientOptions) error {
+	runLiveChat = func(_ io.Writer, cfg config.Config, client app.ChatClient, opts app.ClientOptions) error {
 		uiStarted = true
 		return nil
 	}

@@ -249,7 +249,7 @@ func runMockChat(cfg config.Config, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "open debug log: %s\n", config.RedactDisplayValue(err.Error()))
 		return ExitFailure
 	}
-	defer closeLog.Close()
+	defer func() { _ = closeLog.Close() }()
 
 	ctx := context.Background()
 	logger.Log(ctx, "cli.chat.start",
@@ -290,7 +290,7 @@ func runLiveChatSession(cfg config.Config, liveChatID string, stdout, stderr io.
 		fmt.Fprintf(stderr, "open debug log: %s\n", config.RedactDisplayValue(err.Error()))
 		return ExitFailure
 	}
-	defer closeLog.Close()
+	defer func() { _ = closeLog.Close() }()
 
 	capability := describeCapability(cfg, status)
 	logger.Log(ctx, "cli.chat.start",
@@ -390,7 +390,7 @@ func runLiveChatSession(cfg config.Config, liveChatID string, stdout, stderr io.
 	// interface field would make it non-nil and send every message into a
 	// writer that no longer exists.
 	if chatLog := openChatLogWriter(cfg, logger); chatLog != nil {
-		defer chatLog.Close()
+		defer func() { _ = chatLog.Close() }()
 		options.ChatLogger = chatLog
 	}
 	if err := runLiveChat(stdout, cfg, chatClient, options); err != nil {
@@ -507,7 +507,7 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "open debug log: %s\n", config.RedactDisplayValue(err.Error()))
 		return ExitFailure
 	}
-	defer closeLog.Close()
+	defer func() { _ = closeLog.Close() }()
 	logger.Log(ctx, "cli.doctor.start")
 
 	capability := describeCapability(cfg, status)

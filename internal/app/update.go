@@ -533,6 +533,8 @@ func nextBadgeMode(mode render.BadgeMode) render.BadgeMode {
 // handleSidebarKey handles the chats sidebar while it has focus. It reports
 // whether the key was consumed so anything it does not claim keeps its usual
 // meaning.
+//
+//nolint:unparam // every modal key handler shares the (model, cmd, consumed) shape, even when this one never issues a command
 func (m shellModel) handleSidebarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	switch msg.Type {
 	case tea.KeyUp:

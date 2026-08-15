@@ -87,20 +87,32 @@ func runExportSuperchats(args []string, stdout, stderr io.Writer) int {
 	}
 
 	out := io.Writer(stdout)
+	var outFile *os.File
 	if path := strings.TrimSpace(outFlag); path != "" {
 		file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 		if err != nil {
 			fmt.Fprintf(stderr, "create output: %s\n", config.RedactDisplayValue(err.Error()))
 			return ExitFailure
 		}
-		defer file.Close()
+		outFile = file
 		out = file
 	}
 
 	rows, err := exportSuperchatsCSV(dir, out)
 	if err != nil {
+		if outFile != nil {
+			_ = outFile.Close()
+		}
 		fmt.Fprintf(stderr, "export superchats: %s\n", config.RedactDisplayValue(err.Error()))
 		return ExitFailure
+	}
+	if outFile != nil {
+		// Close is where a delayed write error (a full disk, a quota hit)
+		// finally surfaces, so a failure here means the CSV is incomplete.
+		if err := outFile.Close(); err != nil {
+			fmt.Fprintf(stderr, "close output: %s\n", config.RedactDisplayValue(err.Error()))
+			return ExitFailure
+		}
 	}
 	fmt.Fprintf(stderr, "wrote %d super chat rows from %s\n", rows, config.RedactDisplayValue(dir))
 	return ExitOK
@@ -131,7 +143,7 @@ func exportSuperchatsCSV(dir string, out io.Writer) (int, error) {
 			rows++
 			return writer.Write(superChatCSVRow(event))
 		})
-		file.Close()
+		_ = file.Close()
 		if err != nil {
 			return rows, err
 		}

@@ -346,9 +346,12 @@ func parseHexColor(value string) (rgb, bool) {
 		return rgb{}, false
 	}
 	return rgb{
-		r: uint8(parsed >> 16),
-		g: uint8(parsed >> 8),
-		b: uint8(parsed),
+		// The input is exactly six hex digits, so parsed fits 24 bits and
+		// each shifted byte is in range.
+		r: uint8(parsed >> 16), //nolint:gosec
+		g: uint8(parsed >> 8),  //nolint:gosec // see above
+
+		b: uint8(parsed), //nolint:gosec // see above
 	}, true
 }
 

@@ -170,14 +170,14 @@ func TestASymlinkAnywhereOnThePathIsRefused(t *testing.T) {
 	}
 
 	root := t.TempDir()
-	real := filepath.Join(root, "real", "yc")
-	if err := os.MkdirAll(real, CredentialDirMode); err != nil {
+	realDir := filepath.Join(root, "real", "yc")
+	if err := os.MkdirAll(realDir, CredentialDirMode); err != nil {
 		t.Fatalf("create real directory: %v", err)
 	}
-	if err := os.Chmod(real, CredentialDirMode); err != nil {
+	if err := os.Chmod(realDir, CredentialDirMode); err != nil {
 		t.Fatalf("chmod real directory: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(real, "credentials.json"), []byte(`{"version":1,"google":{}}`), CredentialFileMode); err != nil {
+	if err := os.WriteFile(filepath.Join(realDir, "credentials.json"), []byte(`{"version":1,"google":{}}`), CredentialFileMode); err != nil {
 		t.Fatalf("write credential file: %v", err)
 	}
 

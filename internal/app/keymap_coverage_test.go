@@ -64,7 +64,7 @@ func TestEveryHandledCtrlKeyIsDocumented(t *testing.T) {
 // advertising a binding the table no longer has.
 func TestCompactFooterOnlyNamesDocumentedKeys(t *testing.T) {
 	for _, entry := range compactFooter {
-		if _, ok := bindingForKeys(entry.Keys); !ok {
+		if !hasBindingForKeys(entry.Keys) {
 			t.Errorf("compact footer names %q, which is not in keyBindings", entry.Keys)
 		}
 	}
@@ -124,7 +124,7 @@ func TestCommandPaletteShortcutsAreDocumentedKeys(t *testing.T) {
 		if shortcut == "" {
 			continue
 		}
-		if _, ok := bindingForKeys(shortcut); ok {
+		if hasBindingForKeys(shortcut) {
 			continue
 		}
 		if documented[shortcut] {

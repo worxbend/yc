@@ -361,7 +361,7 @@ func applyFile(cfg *Config, path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	index := bindingIndex(cfg)
 	scanner := bufio.NewScanner(file)
@@ -607,7 +607,7 @@ func writeFilePrivate(path string, data []byte) error {
 		return err
 	}
 	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()

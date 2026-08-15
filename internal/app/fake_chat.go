@@ -176,14 +176,19 @@ func (c *FakeChatClient) ReconnectCount() int {
 	return c.reconnects
 }
 
+// Messages returns the scripted chat message stream.
 func (c *FakeChatClient) Messages() <-chan youtube.Message { return c.messages }
 
+// ConnectionStates returns the scripted connection lifecycle stream.
 func (c *FakeChatClient) ConnectionStates() <-chan youtube.ConnectionState { return c.states }
 
+// Moderations returns the scripted moderation event stream.
 func (c *FakeChatClient) Moderations() <-chan youtube.ModerationEvent { return c.moderations }
 
+// RoomEvents returns the scripted room-wide event stream.
 func (c *FakeChatClient) RoomEvents() <-chan youtube.RoomEvent { return c.rooms }
 
+// Polls returns the scripted creator poll stream.
 func (c *FakeChatClient) Polls() <-chan youtube.PollState { return c.polls }
 
 // Send records the request and returns the next queued result.

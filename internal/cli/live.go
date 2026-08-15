@@ -78,7 +78,7 @@ var newLiveChatClient = func(client *youtube.Client, cfg config.Config, targets 
 // One client means one quota ledger: the meter in the status bar counts the
 // chat poll, the metadata refresh, and the send path together, which is the
 // only way the number matches what the Cloud Console will show.
-func newYouTubeClient(cfg config.Config, credentials youtube.CredentialSource, ledger *youtube.QuotaLedger, logger debuglog.Logger) (*youtube.Client, error) {
+func newYouTubeClient(_ config.Config, credentials youtube.CredentialSource, ledger *youtube.QuotaLedger, logger debuglog.Logger) (*youtube.Client, error) {
 	return youtube.NewClient(youtube.ClientConfig{
 		Credentials: credentials,
 		HTTPClient:  youtube.NewAPIHTTPClient(chatHTTPTimeout),
@@ -213,7 +213,7 @@ func pollIntervalBounds(quota config.QuotaConfig) (minInterval, maxInterval time
 // several unexplained errors on unrelated surfaces. The ones a key can answer
 // stay wired, because read-only mode should still label chats by title and show
 // a viewer count.
-func newLiveClientOptions(cfg config.Config, client *youtube.Client, capability credentialCapability, logger debuglog.Logger, notifier app.SystemNotifier) app.ClientOptions {
+func newLiveClientOptions(_ config.Config, client *youtube.Client, capability credentialCapability, logger debuglog.Logger, notifier app.SystemNotifier) app.ClientOptions {
 	opts := app.ClientOptions{
 		SystemNotifier:    notifier,
 		DebugLogger:       logger,

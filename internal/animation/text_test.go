@@ -174,7 +174,11 @@ func TestBounceTravelsBothWaysAndLeavesATrail(t *testing.T) {
 	for step := range 24 {
 		cells := TextFrame("◆", cfg, time.Duration(step)*cfg.Step)
 		plain := TextPlain(cells)
-		positions = append(positions, ansi.StringWidth(plain[:strings.Index(plain, "◆")]))
+		glyphAt := strings.Index(plain, "◆")
+		if glyphAt < 0 {
+			t.Fatalf("step %d dropped the glyph entirely: %q", step, plain)
+		}
+		positions = append(positions, ansi.StringWidth(plain[:glyphAt]))
 		if strings.Count(plain, "◆") > 1 {
 			trailed = true
 		}

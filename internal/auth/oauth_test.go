@@ -87,7 +87,7 @@ func newOAuthTestServer(t *testing.T) *oauthTestServer {
 		}
 		_, _ = w.Write([]byte(body))
 	})
-	mux.HandleFunc("/channels", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/channels", func(w http.ResponseWriter, _ *http.Request) {
 		stub.mu.Lock()
 		status, body := stub.channelStatus, stub.channelsBody
 		stub.mu.Unlock()

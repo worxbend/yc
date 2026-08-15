@@ -14,6 +14,7 @@ import (
 type TextEffect string
 
 const (
+	// TextEffectNone renders the label as-is.
 	TextEffectNone TextEffect = "none"
 	// TextEffectTypewriter reveals clusters left to right behind a cursor.
 	TextEffectTypewriter TextEffect = "typewriter"

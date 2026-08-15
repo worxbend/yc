@@ -24,6 +24,8 @@ const MaxChatMessageRunes = 200
 type EventKind string
 
 const (
+	// EventKindUnknown marks a raw type yc does not recognize; the raw
+	// type string is preserved on the message.
 	EventKindUnknown EventKind = "unknown"
 	// EventKindText is an ordinary chat message (textMessageEvent).
 	EventKindText EventKind = "text"
@@ -185,6 +187,7 @@ func (a Author) Identity() string {
 // deliberately absent because this API has no equivalent.
 type BadgeKind string
 
+// The four author roles the API can attest.
 const (
 	BadgeOwner     BadgeKind = "owner"
 	BadgeModerator BadgeKind = "moderator"
@@ -230,6 +233,7 @@ func BadgesForAuthor(author Author) []Badge {
 type FragmentType string
 
 const (
+	// FragmentText is a plain text run with no special role.
 	FragmentText FragmentType = "text"
 	// FragmentMention is an "@name" token that starts a word.
 	FragmentMention FragmentType = "mention"
@@ -312,6 +316,7 @@ type GiftDetails struct {
 // MembershipKind distinguishes the five membership events.
 type MembershipKind string
 
+// The five membership event shapes the API reports.
 const (
 	MembershipNew          MembershipKind = "new"
 	MembershipUpgrade      MembershipKind = "upgrade"
@@ -447,7 +452,9 @@ type ModerationEvent struct {
 // RoomEventType enumerates chat-wide state changes.
 type RoomEventType string
 
+// The chat-wide state changes yc reports as room events.
 const (
+	// RoomSponsorOnlyStarted means chat became members-only.
 	RoomSponsorOnlyStarted RoomEventType = "sponsor_only_started"
 	RoomSponsorOnlyEnded   RoomEventType = "sponsor_only_ended"
 	RoomChatEnded          RoomEventType = "chat_ended"
@@ -468,6 +475,7 @@ type RoomEvent struct {
 // PollStatus is the lifecycle of a creator poll.
 type PollStatus string
 
+// The poll lifecycle stages, in order.
 const (
 	PollStatusUnknown PollStatus = "unknown"
 	PollStatusActive  PollStatus = "active"
@@ -507,6 +515,7 @@ func (p PollState) TotalVotes() int64 {
 // ConnectionStatus is the poll session lifecycle as the UI sees it.
 type ConnectionStatus string
 
+// The connection lifecycle stages the status bar can show.
 const (
 	ConnectionConnecting   ConnectionStatus = "connecting"
 	ConnectionConnected    ConnectionStatus = "connected"
@@ -563,6 +572,7 @@ type SendResult struct {
 type TargetKind string
 
 const (
+	// TargetUnknown is an input no classifier recognized.
 	TargetUnknown TargetKind = "unknown"
 	// TargetVideoID is a raw 11-character video ID or a watch/live/shorts URL.
 	TargetVideoID TargetKind = "video_id"

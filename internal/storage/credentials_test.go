@@ -195,16 +195,16 @@ func TestCredentialDirectorySymlinkIsRejected(t *testing.T) {
 	}
 
 	root := t.TempDir()
-	real := filepath.Join(root, "real")
-	if err := os.Mkdir(real, CredentialDirMode); err != nil {
+	realDir := filepath.Join(root, "real")
+	if err := os.Mkdir(realDir, CredentialDirMode); err != nil {
 		t.Fatalf("create real directory: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(real, "credentials.json"), []byte(`{"version":1,"google":{}}`), CredentialFileMode); err != nil {
+	if err := os.WriteFile(filepath.Join(realDir, "credentials.json"), []byte(`{"version":1,"google":{}}`), CredentialFileMode); err != nil {
 		t.Fatalf("write credential file: %v", err)
 	}
 
 	link := filepath.Join(root, "link")
-	if err := os.Symlink(real, link); err != nil {
+	if err := os.Symlink(realDir, link); err != nil {
 		t.Skipf("symlinks are unavailable here: %v", err)
 	}
 

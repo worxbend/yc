@@ -154,14 +154,15 @@ func compactHelpLine() string {
 	return " " + strings.Join(parts, " | ")
 }
 
-// bindingForKeys finds a binding by its Keys value.
-func bindingForKeys(keys string) (keyBinding, bool) {
+// hasBindingForKeys reports whether the table documents a binding under
+// exactly this Keys value.
+func hasBindingForKeys(keys string) bool {
 	for _, binding := range keyBindings {
 		if binding.Keys == keys {
-			return binding, true
+			return true
 		}
 	}
-	return keyBinding{}, false
+	return false
 }
 
 // documentedKeys reports every key form named in the table, for the coverage

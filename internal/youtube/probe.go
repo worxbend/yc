@@ -40,7 +40,7 @@ func ProbeReachability(ctx context.Context) error {
 		// might not be as harmless. The reason is reported without it.
 		return fmt.Errorf("no response from the youtube api: %w", probeCause(err))
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	return nil
 }
 

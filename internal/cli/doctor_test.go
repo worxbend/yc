@@ -22,7 +22,7 @@ func stubDoctorReport(t *testing.T, checks ...app.DoctorCheck) *config.Config {
 	t.Cleanup(func() { buildDoctorReport = original })
 
 	var seen config.Config
-	buildDoctorReport = func(ctx context.Context, cfg config.Config, cfgErr error, opts app.DoctorOptions) app.DoctorReport {
+	buildDoctorReport = func(_ context.Context, cfg config.Config, cfgErr error, opts app.DoctorOptions) app.DoctorReport {
 		seen = cfg
 		if cfgErr != nil {
 			checks = append(checks, app.DoctorCheck{
@@ -136,7 +136,7 @@ func TestDoctorWiresTheIdentityLookupOnlyForOAuth(t *testing.T) {
 		want  bool
 	}{
 		{"api key only", func(t *testing.T) { t.Setenv("YC_YOUTUBE_API_KEY", "AIza-"+fakeToken) }, false},
-		{"no credentials", func(t *testing.T) {}, false},
+		{"no credentials", func(_ *testing.T) {}, false},
 		{"oauth token", func(t *testing.T) { t.Setenv("YC_GOOGLE_ACCESS_TOKEN", fakeToken) }, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

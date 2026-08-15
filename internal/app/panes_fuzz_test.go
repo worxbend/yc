@@ -18,13 +18,13 @@ var fuzzChromeSeeds = []string{
 	"\x1b]8;;http://attacker.invalid\x07link\x1b]8;;\x07",
 	"\u009b31m one-byte CSI",
 	"\u009d0;owned one-byte OSC",
-	"bidi ‮gnihtemos‬ order",
-	"isolate ⁦right⁩ text",
-	"marks ‎ltr‏ rtl",
+	"bidi \u202egnihtemos\u202c order",
+	"isolate \u2066right\u2069 text",
+	"marks \u200eltr\u200f rtl",
 	"tab\there newline\nthere",
 	"bell\a del\x7f",
 	"\xff\xfe invalid utf-8 \x80",
-	"emoji \U0001F468‍\U0001F469‍\U0001F467 family",
+	"emoji \U0001F468\u200d\U0001F469\u200d\U0001F467 family",
 }
 
 // FuzzFlattenControlRunes pins the guard every app-drawn line relies on: the

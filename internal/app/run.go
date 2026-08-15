@@ -95,7 +95,9 @@ func RunClientWithOptions(w io.Writer, cfg config.Config, client ChatClient, opt
 // runModel is the shared shell lifecycle for every source.
 func runModel(w io.Writer, cfg config.Config, model shellModel, client ChatClient) error {
 	if client != nil {
-		defer client.Close()
+		// Best-effort: the UI is gone, so there is nowhere to report a
+		// close error to.
+		defer func() { _ = client.Close() }()
 	}
 
 	if !isInteractiveTerminal(w) {
@@ -220,7 +222,7 @@ func (m mockCollaborators) ResolveTarget(ctx context.Context, target youtube.Cha
 
 // Broadcast returns simulated stream metadata for the LIVE badge and the
 // viewer count.
-func (m mockCollaborators) Broadcast(ctx context.Context, videoID string) (youtube.BroadcastInfo, error) {
+func (m mockCollaborators) Broadcast(ctx context.Context, _ string) (youtube.BroadcastInfo, error) {
 	if err := ctx.Err(); err != nil {
 		return youtube.BroadcastInfo{}, err
 	}

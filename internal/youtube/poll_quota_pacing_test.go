@@ -332,13 +332,13 @@ func TestTheDefaultSleepIsInterruptible(t *testing.T) {
 // a 60s cap to 300s and stall the chat for five minutes.
 func TestTheBackoffLadderIsCappedAgainstTheInterval(t *testing.T) {
 	base := 5 * time.Second
-	cap := 60 * time.Second
+	ceiling := 60 * time.Second
 
 	backoff := backoffFloor
 	for i := 0; i < 20; i++ {
-		backoff = climb(backoff, base, cap)
-		if interval := time.Duration(float64(base) * backoff); interval > cap {
-			t.Fatalf("after %d climbs the interval is %v, past the %v cap", i+1, interval, cap)
+		backoff = climb(backoff, base, ceiling)
+		if interval := time.Duration(float64(base) * backoff); interval > ceiling {
+			t.Fatalf("after %d climbs the interval is %v, past the %v cap", i+1, interval, ceiling)
 		}
 		if backoff < backoffFloor {
 			t.Fatalf("backoff fell to %v, below the floor %v", backoff, backoffFloor)
@@ -346,7 +346,7 @@ func TestTheBackoffLadderIsCappedAgainstTheInterval(t *testing.T) {
 	}
 
 	// A zero base cannot produce an infinite multiplier.
-	if got := climb(backoffFloor, 0, cap); got <= 0 {
+	if got := climb(backoffFloor, 0, ceiling); got <= 0 {
 		t.Fatalf("climb with no base = %v, want a usable multiplier", got)
 	}
 }
