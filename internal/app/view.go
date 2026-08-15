@@ -476,7 +476,10 @@ func (m shellModel) tabBarContextParts() (string, string) {
 // removal cannot disturb the width math, while replacing them would widen the
 // name by a cell per control.
 func sanitizeContextValue(value string) string {
-	return strings.Map(func(r rune) rune {
+	// Trimming runs after the mapping: a bidi control dropped from the end of
+	// the value can expose fresh trailing whitespace, which a pre-map trim
+	// would miss.
+	return strings.TrimSpace(strings.Map(func(r rune) rune {
 		switch {
 		case isBidiOverride(r):
 			return -1
@@ -485,7 +488,7 @@ func sanitizeContextValue(value string) string {
 		default:
 			return r
 		}
-	}, strings.TrimSpace(value))
+	}, value))
 }
 
 func nonEmpty(values ...string) []string {
