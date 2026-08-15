@@ -21,7 +21,7 @@ const (
 
 // newTestClient wires a client to an in-process server. Every adapter is tested
 // this way: no test in this package may touch the network.
-func newTestClient(t *testing.T, credentials CredentialSource, handler http.HandlerFunc) (*Client, *httptest.Server) {
+func newTestClient(t testing.TB, credentials CredentialSource, handler http.HandlerFunc) (*Client, *httptest.Server) {
 	t.Helper()
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)

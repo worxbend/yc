@@ -24,7 +24,7 @@ type pollHarness struct {
 }
 
 // newPollHarness starts a poller whose responses are supplied per request.
-func newPollHarness(t *testing.T, cfg PollerConfig, respond func(call int, w http.ResponseWriter, r *http.Request)) *pollHarness {
+func newPollHarness(t testing.TB, cfg PollerConfig, respond func(call int, w http.ResponseWriter, r *http.Request)) *pollHarness {
 	t.Helper()
 
 	harness := &pollHarness{}

@@ -615,12 +615,18 @@ func (s *chatState) trimScrollback(limit int) {
 		return
 	}
 	drop := len(s.messages) - limit
-	// Reslice into a fresh backing array rather than sliding in place: the
-	// old array keeps every dropped message alive otherwise, which defeats
-	// the point of trimming on a long stream.
-	kept := make([]youtube.Message, limit)
-	copy(kept, s.messages[drop:])
-	s.messages = kept
+	// Slide in place and zero the freed tail rather than copying into a
+	// fresh array. Zeroing releases the dropped messages' fragments and
+	// author strings just as a fresh array would, but reuses the backing
+	// array append already grew: at the cap this path runs once per
+	// message, and a fresh limit-sized array here plus append's own
+	// regrowth was the dominant allocation of the whole ingest path.
+	// Capacity stays bounded by append's growth policy, roughly twice the
+	// limit. Sliding is safe because Update and View share one goroutine
+	// and nothing retains a slice of messages across frames.
+	copy(s.messages, s.messages[drop:])
+	clear(s.messages[limit:])
+	s.messages = s.messages[:limit]
 }
 
 // observeAuthor records a speaker for @mention completion and author meta.
