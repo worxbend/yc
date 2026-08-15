@@ -132,7 +132,7 @@ func stressBurst(count int) []youtube.Message {
 }
 
 // newStressModel builds a live shell wired to the deterministic fake client.
-func newStressModel(t *testing.T, clock *stressClock, animationMode string, width, height int) (shellModel, *FakeChatClient) {
+func newStressModel(t testing.TB, clock *stressClock, animationMode string, width, height int) (shellModel, *FakeChatClient) {
 	t.Helper()
 	cfg := config.Default()
 	cfg.Features.AnimationMode = animationMode
@@ -160,7 +160,7 @@ func newStressModel(t *testing.T, clock *stressClock, animationMode string, widt
 const stressScrollback = 200
 
 // feed drives one transport message through Update exactly as the runtime would.
-func feedStress(t *testing.T, model shellModel, message youtube.Message) shellModel {
+func feedStress(t testing.TB, model shellModel, message youtube.Message) shellModel {
 	t.Helper()
 	next, _ := model.Update(chatClientMessageMsg{message: message, ok: true})
 	updated, ok := next.(shellModel)
