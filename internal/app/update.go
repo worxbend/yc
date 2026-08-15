@@ -165,6 +165,13 @@ func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// The search input line is modal for the same reason the moderation
+	// prompt below is: while it is open every key is query text, so typing a
+	// word that happens to contain "d" cannot arm a deletion.
+	if model, cmd, handled := m.handleSearchKey(msg); handled {
+		return model, cmd
+	}
+
 	// Moderation is consumed before the global toggles because its duration
 	// prompt is modal: while it is open every key belongs to the field, and a
 	// stray ctrl+T that swapped the theme mid-prompt would leave a confirmed
@@ -274,6 +281,12 @@ func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.clampScroll()
 			return m, nil
 		}
+		// An active search is the next-most-recent mode, so esc clears it
+		// before touching the reply or the cursor beneath it.
+		if m.searchActive() {
+			m.clearSearch()
+			return m, nil
+		}
 		// Then unwind one step at a time: cancel the armed reply first and
 		// keep the cursor where it was, so changing your mind about replying
 		// does not also lose your place in the backlog.
@@ -376,6 +389,12 @@ func (m shellModel) handleRuneKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case r == 'G':
 		m.activeChatState().scrollOffset = 0
 		m.clampScroll()
+	case r == '/':
+		m.startSearchInput()
+	case r == 'n':
+		m.jumpSearchMatch(-1)
+	case r == 'N':
+		m.jumpSearchMatch(1)
 	case isInsertRune(r):
 		// i/o/a all enter the composer, matching vim's insert keys; the
 		// composer appends, so they differ only in muscle memory.
@@ -842,6 +861,10 @@ func paletteCommands() []paletteCommand {
 		}},
 		{title: "Inspect message", shortcut: "K", run: func(m shellModel) (tea.Model, tea.Cmd) {
 			m.toggleInspect()
+			return m, nil
+		}},
+		{title: "Search messages", shortcut: "/", run: func(m shellModel) (tea.Model, tea.Cmd) {
+			m.startSearchInput()
 			return m, nil
 		}},
 		{title: "Help", shortcut: "?", run: func(m shellModel) (tea.Model, tea.Cmd) {

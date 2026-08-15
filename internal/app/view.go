@@ -785,8 +785,11 @@ func (m shellModel) styleChatRowWindow(blocks []chatRowBlock, rowWidth, start, c
 	}
 
 	selectedID := replyMessageID(m.activeChatState().selected)
+	searchQuery := strings.TrimSpace(m.activeChatState().searchQuery)
 	for _, block := range blocks {
 		selected := selectedID != "" && block.message.ID == selectedID
+		matched := searchQuery != "" && !block.message.Deleted &&
+			messageMatchesSearch(block.message, searchQuery)
 		if block.separatorBefore {
 			keep, done := want()
 			if done {
@@ -803,7 +806,7 @@ func (m shellModel) styleChatRowWindow(blocks []chatRowBlock, rowWidth, start, c
 				return rows
 			}
 			if keep {
-				rows = append(rows, m.messageRowString(block, 0, render.Row{}, rowWidth, selected))
+				rows = append(rows, m.messageRowString(block, 0, render.Row{}, rowWidth, selected, matched))
 			}
 			index++
 			continue
@@ -814,7 +817,7 @@ func (m shellModel) styleChatRowWindow(blocks []chatRowBlock, rowWidth, start, c
 				return rows
 			}
 			if keep {
-				rows = append(rows, m.messageRowString(block, rowIndex, row, rowWidth, selected))
+				rows = append(rows, m.messageRowString(block, rowIndex, row, rowWidth, selected, matched))
 			}
 			index++
 		}
@@ -824,7 +827,7 @@ func (m shellModel) styleChatRowWindow(blocks []chatRowBlock, rowWidth, start, c
 
 // messageRowString draws one chat row: the group gutter rail, the event glyph
 // on the group's first row, and the message content on the group's surface.
-func (m shellModel) messageRowString(block chatRowBlock, rowIndex int, row render.Row, rowWidth int, selected bool) string {
+func (m shellModel) messageRowString(block chatRowBlock, rowIndex int, row render.Row, rowWidth int, selected, searchMatched bool) string {
 	gutterWidth := messageGutterWidth(rowWidth)
 	background := m.messageGroupBackground(block)
 	content := terminalRowString(row, clampMin(rowWidth-gutterWidth, 1), background)
@@ -838,13 +841,19 @@ func (m shellModel) messageRowString(block chatRowBlock, rowIndex int, row rende
 	// author tints. The heavy glyph is one cell wide, like the light one, so
 	// selecting a message shifts nothing.
 	railGlyph := "│ "
+	if searchMatched {
+		// A search match thickens the rail in the warning role, so every
+		// match is scannable down the gutter while the accent stays reserved
+		// for the one row the cursor is on.
+		railGlyph, railColor = "┃ ", m.theme.Warning
+	}
 	if selected {
 		railGlyph, railColor = "┃ ", m.theme.Accent
 	}
 	rail := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(railColor)).
 		Background(lipgloss.Color(background)).
-		Bold(block.animating || selected).
+		Bold(block.animating || selected || searchMatched).
 		Render(railGlyph)
 	if gutterWidth == 2 {
 		return rail + content
@@ -1166,6 +1175,7 @@ func (m shellModel) statusBarState() statusBarState {
 		st.Status = state.status.Status
 		st.StatusDetail = summarizeDetail(state.status.Detail)
 		st.Filter = state.filters.summary()
+		st.Search = m.searchStatusLabel()
 		st.SendFeedback = state.sendFeedback
 		st.Live = state.live
 		st.LiveSince = state.liveSince

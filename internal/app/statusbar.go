@@ -36,6 +36,7 @@ const (
 	statusWidthUnread       = 34
 	statusWidthDetail       = 34
 	statusWidthFilter       = 46
+	statusWidthSearch       = 40
 	statusWidthSendFeedback = 50
 	statusWidthNotify       = 58
 	statusWidthFocus        = 42
@@ -90,9 +91,13 @@ type statusBarState struct {
 	ModerationLevel moderationLevel
 	Notification    string
 	Filter          string
-	SendFeedback    string
-	Focus           string
-	Layout          string
+	// Search is the active "/" query - the raw input line while it is open,
+	// or the committed query with its match count. Empty when no search is
+	// active.
+	Search       string
+	SendFeedback string
+	Focus        string
+	Layout       string
 
 	Live             bool
 	LiveSince        time.Time
@@ -180,6 +185,11 @@ func statusSegments(width int, st statusBarState) []statusSegment {
 	}
 	if st.Moderation != "" {
 		add(text(st.Moderation, moderationStatusColor(st.Palette, st.ModerationLevel), true)...)
+	}
+	// The search line sits ahead of the meters: while the user is typing a
+	// query, the query is the thing they are looking for on screen.
+	if st.Search != "" && width >= statusWidthSearch {
+		add(text(st.Search, st.Palette.Warning, true)...)
 	}
 	if st.QuotaKnown {
 		add(quotaSegments(width, st)...)
