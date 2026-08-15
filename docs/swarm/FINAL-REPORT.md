@@ -76,8 +76,9 @@ is tested, some flag plumbing is not.)
   it deserves a deliberate decision).
 - Auto-follow does not arm if a stream ends while the reconnect ladder is
   exhausted (never observes `ConnectionClosed`) — acceptable v1 corner.
-- Flaky `TestValidateAccessTokenTreatsATransportFailureAsUnreachable`
-  (environmental port reuse) — should bind-and-close its own listener.
+- ~~Flaky `TestValidateAccessTokenTreatsATransportFailureAsUnreachable`~~ —
+  fixed during the release: the real cause was the rejection classifier
+  substring-matching "401" inside a dial port number, not port reuse.
 - Cold-frame render allocations (~2.1 MB on resize) — reusable grapheme scratch
   buffer if wrapping is ever restructured; row cache hides it in steady state.
 

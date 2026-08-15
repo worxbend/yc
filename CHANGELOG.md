@@ -63,6 +63,9 @@ chat navigation, on-disk logging, and a lint gate. Full details live in
   the rejection threshold no longer wraps to zero.
 - `yc export superchats` reports a failed output-file close instead of
   silently dropping data on a full disk.
+- Startup token validation no longer mistakes a network failure for a revoked
+  token when the dial address happens to contain the digits 400 or 401 (for
+  example a local port like 40113).
 
 ### Changed
 
