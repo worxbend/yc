@@ -583,7 +583,13 @@ func (m shellModel) chatRowBlocks(layout shellLayout) []chatRowBlock {
 	messages := m.visibleMessages()
 	order, frames := m.revealFrames()
 
-	blocks := make([]chatRowBlock, 0, len(messages)+len(order))
+	// The block slice is rebuilt on every repaint and never outlives the
+	// frame, so it reuses one package-level scratch buffer instead of
+	// allocating a backlog-sized slice per frame. Reuse is safe for the
+	// same reason sharedRowCache is: Update and View run on one goroutine,
+	// and no caller retains the returned slice past the frame it styled.
+	sharedChatRowBlocks = sharedChatRowBlocks[:0]
+	blocks := sharedChatRowBlocks
 	for _, message := range messages {
 		blocks = append(blocks, chatRowBlock{message: message})
 	}
@@ -617,8 +623,13 @@ func (m shellModel) chatRowBlocks(layout shellLayout) []chatRowBlock {
 			return render.Rows(message, opts)
 		})
 	}
+	sharedChatRowBlocks = blocks
 	return blocks
 }
+
+// sharedChatRowBlocks is the frame-scoped scratch buffer chatRowBlocks fills.
+// Its capacity settles at one backlog's worth of blocks and stays there.
+var sharedChatRowBlocks []chatRowBlock
 
 // sharedRowCache is the per-process memo for rendered chat rows.
 //
