@@ -202,6 +202,18 @@ off for the session and says so once in the status line.
 | `chat_log_max_bytes` | `YC_CHAT_LOG_MAX_BYTES` | `10485760` | Rotate the current file once it exceeds this size (10 MB). |
 | `chat_log_max_files` | `YC_CHAT_LOG_MAX_FILES` | `5` | How many log files survive rotation, newest first, current file included. |
 
+Export the paid ledger from the logs (no network, no quota):
+
+```sh
+yc export superchats                     # CSV to stdout
+yc export superchats --out ledger.csv    # CSV to a file
+yc export superchats --dir /path/to/logs
+```
+
+Columns: `timestamp, chat_id, author, amount_value, currency, tier, message`.
+Amounts are derived from the API's integer micros, never floats, so nothing is
+rounded between the wire and the spreadsheet.
+
 ## Debug Logging
 
 | Key | Env | Default | Purpose |
@@ -311,6 +323,7 @@ yc chat [--chat ID] [--chats a,b] [--video ID] [--channel @handle]
 yc config show [--config PATH]
 yc config path
 yc doctor [--config PATH] [--debug-log]
+yc export superchats [--dir DIR] [--out FILE] [--config PATH]
 yc login [--redirect-uri URL] [--timeout D] [--dry-run] [--read-only]
          [--write-default-config] [--debug-log] [--debug-log-path PATH] [--config PATH]
 yc logout [--config PATH] [--keep-remote]

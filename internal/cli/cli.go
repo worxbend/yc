@@ -50,6 +50,7 @@ Usage:
   yc config show [--config PATH]
   yc config path
   yc doctor [--config PATH] [--debug-log]
+  yc export superchats [--dir DIR] [--out FILE] [--config PATH]
   yc login [--redirect-uri URL] [--dry-run] [--write-default-config]
            [--debug-log] [--debug-log-path PATH] [--config PATH]
   yc logout [--config PATH] [--keep-remote]
@@ -121,6 +122,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runChat(args[1:], stdout, stderr)
 	case "config":
 		return runConfig(args[1:], stdout, stderr)
+	case "export":
+		return runExport(args[1:], stdout, stderr)
 	case "doctor":
 		return runDoctor(args[1:], stdout, stderr)
 	case "login":
