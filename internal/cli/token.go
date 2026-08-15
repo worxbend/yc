@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -94,13 +95,22 @@ func isTokenRejection(err error) bool {
 		return status == http.StatusBadRequest || status == http.StatusUnauthorized
 	}
 	message := strings.ToLower(err.Error())
-	for _, marker := range []string{"invalid_token", "invalid token", "invalid_grant", "unauthorized", "401", "400"} {
+	for _, marker := range []string{"invalid_token", "invalid token", "invalid_grant", "unauthorized"} {
 		if strings.Contains(message, marker) {
 			return true
 		}
 	}
-	return false
+	// A bare status code is only a rejection when it stands alone as a number.
+	// A plain substring match would also hit digits inside unrelated text —
+	// "dial tcp 127.0.0.1:40113" contains "401" — and misread a network
+	// failure as a revoked token.
+	return tokenRejectionStatus.MatchString(message)
 }
+
+// tokenRejectionStatus matches 400 or 401 as a standalone number, so status
+// codes in error text count but longer numbers that merely contain those
+// digits (ports, byte counts) do not.
+var tokenRejectionStatus = regexp.MustCompile(`\b40[01]\b`)
 
 // tokenScopeWarning reports scopes the token does not carry, so a disabled
 // composer has a reason attached instead of appearing broken.

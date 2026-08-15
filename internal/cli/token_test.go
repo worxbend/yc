@@ -98,12 +98,16 @@ func TestValidateAccessTokenTreatsA400AsARejection(t *testing.T) {
 // An offline laptop and a revoked token are different problems, and reporting
 // the first as the second sends the user to re-authenticate for no reason.
 func TestValidateAccessTokenTreatsATransportFailureAsUnreachable(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	endpoint := server.URL
-	server.Close() // nothing is listening now
-
+	// A round tripper that always fails stands in for the network being down.
+	// Dialing a closed port instead would embed a real port number in the
+	// error text, and a port like 40113 once made the rejection classifier
+	// read "401" out of it.
+	endpoint := "http://tokeninfo.invalid/oauth2"
 	flow := auth.NewGoogleOAuthLoginFlow(auth.GoogleOAuthConfig{
-		HTTPClient:        &http.Client{Timeout: time.Second},
+		HTTPClient: &http.Client{
+			Timeout:   time.Second,
+			Transport: failingRoundTripper{},
+		},
 		Timeout:           time.Second,
 		TokenInfoEndpoint: endpoint,
 	})
@@ -179,6 +183,8 @@ func TestIsTokenRejection(t *testing.T) {
 		{"unauthorized", errors.New("Unauthorized"), true},
 		{"invalid_grant", errors.New("invalid_grant"), true},
 		{"dns failure", errors.New("dial tcp: no such host"), false},
+		{"port containing 401", errors.New("Post: dial tcp 127.0.0.1:40113: connect: connection refused"), false},
+		{"port containing 400", errors.New("dial tcp 127.0.0.1:44005: connect: connection refused"), false},
 		{"timeout", errors.New("context deadline exceeded"), false},
 		{"http 500", errors.New("Google returned HTTP 500"), false},
 		{"status interface", statusCodeError{status: http.StatusUnauthorized}, true},
@@ -240,4 +246,12 @@ func TestTokenValidationErrorAlwaysNamesAWayForward(t *testing.T) {
 	if got := tokenValidationError(validation).Error(); strings.Contains(got, fakeToken) {
 		t.Fatalf("the terminal message leaked a token echoed back by the endpoint: %s", got)
 	}
+}
+
+// failingRoundTripper refuses every request, simulating a network that is
+// down without ever opening a socket.
+type failingRoundTripper struct{}
+
+func (failingRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("simulated transport failure")
 }
