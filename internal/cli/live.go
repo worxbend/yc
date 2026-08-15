@@ -140,7 +140,7 @@ func startLedgerPrune(ctx context.Context, logger debuglog.Logger) <-chan struct
 	go func() {
 		defer close(done)
 		// Detached from the caller's context on purpose: the prune is not
-		// worth cancelling, and inheriting a context the caller cancels on
+		// worth canceling, and inheriting a context the caller cancels on
 		// its own error path would leave the records behind on exactly the
 		// runs that never get another chance to tidy up.
 		pruneCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ledgerPruneTimeout)

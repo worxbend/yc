@@ -1228,7 +1228,7 @@ func (m shellModel) statusBarState() statusBarState {
 //
 // It is an estimate by construction: Google's published quota table contains no
 // live-chat rows at all, so the cost is a config-overridable community
-// observation and every figure derived from it is labelled as such.
+// observation and every figure derived from it is labeled as such.
 func (m shellModel) estimatedPollCost() int {
 	if cost := m.effectiveConfig.Quota.Costs.List; cost > 0 {
 		return cost
@@ -1359,7 +1359,7 @@ func (m shellModel) listOverlayState() listOverlayState {
 // quotaLedgerLines renders the Quota tab: the estimated ledger, the cadence it
 // implies, and the per-endpoint tally.
 //
-// Twitch's equivalent tab held stream markers, which YouTube has no analogue
+// Twitch's equivalent tab held stream markers, which YouTube has no analog
 // for. Quota does not merely fill the gap - it is the constraint that decides
 // whether a session survives the broadcast, so it earns a whole screen.
 func (m shellModel) quotaLedgerLines(width int) []string {
@@ -1562,8 +1562,8 @@ func (m shellModel) splashView() string {
 
 	// Every line is already exactly contentWidth cells, so the block is
 	// placed with one shared offset and lipgloss is left to do the vertical
-	// centering only. Asking it to centre horizontally as well would right-
-	// trim each line first and re-centre it on its own visible width, which
+	// centering only. Asking it to center horizontally as well would right-
+	// trim each line first and re-center it on its own visible width, which
 	// shifts each row of the wordmark by its own indent and shears the logo
 	// apart.
 	leading := strings.Repeat(" ", max((width-contentWidth)/2, 0))

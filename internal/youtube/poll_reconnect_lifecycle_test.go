@@ -26,7 +26,7 @@ import (
 // budget at double the rate the status bar's arithmetic promises.
 
 // busyPollerStep is the interval a stepped session polls at. It is short so a
-// session nobody cancelled is loud rather than dormant: a stranded loop shows up
+// session nobody canceled is loud rather than dormant: a stranded loop shows up
 // as requests arriving after the poller was closed, which is unambiguous, rather
 // than as a goroutine parked somewhere that only a stack dump would find.
 const busyPollerStep = 20 * time.Millisecond
@@ -173,7 +173,7 @@ func (b *busyPoller) assertNoFurtherPolls(window time.Duration, why string) {
 // to prevent.
 //
 // Two restarts that interleave each cancel one session and launch another, and
-// the second overwrites p.cancel - so the first replacement is never cancelled
+// the second overwrites p.cancel - so the first replacement is never canceled
 // by anything and keeps polling for the rest of the process's life. Closing the
 // poller does not stop it either, because Close can only cancel the session it
 // knows about. That is what makes "no requests after Close" the right assertion:
@@ -281,7 +281,7 @@ func settleGoroutines() int {
 	return last
 }
 
-// A Reconnect whose context is already cancelled reports the cancellation and
+// A Reconnect whose context is already canceled reports the cancellation and
 // starts nothing. The previous session is still stopped: the caller asked for a
 // restart, and leaving the old loop running under a context the caller has
 // abandoned would keep spending quota on a chat nobody is watching.
@@ -294,14 +294,14 @@ func TestReconnectWithACancelledContextStartsNothing(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := b.poller.Reconnect(ctx); !errors.Is(err, context.Canceled) {
-		t.Fatalf("Reconnect with a cancelled context = %v, want context.Canceled", err)
+		t.Fatalf("Reconnect with a canceled context = %v, want context.Canceled", err)
 	}
-	b.assertNoFurtherPolls(300*time.Millisecond, "a Reconnect whose context was already cancelled")
+	b.assertNoFurtherPolls(300*time.Millisecond, "a Reconnect whose context was already canceled")
 
 	// And the poller is not wedged: a later restart on a live context works,
 	// resuming from the cursor the refused attempt never touched.
 	if err := b.poller.Reconnect(b.ctx); err != nil {
-		t.Fatalf("Reconnect after a cancelled one = %v", err)
+		t.Fatalf("Reconnect after a canceled one = %v", err)
 	}
 	b.drainRequests()
 	b.awaitRequest("after a live restart following a refused one")

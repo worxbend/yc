@@ -81,7 +81,7 @@ const ledgerSearchCallsKey = "__search_calls"
 // or deletes a resource usually costs 50 units"
 // (https://developers.google.com/youtube/v3/getting-started#quota) - but a
 // consistent guess is still a guess, so they are config-overridable and are
-// labelled as estimates everywhere they surface.
+// labeled as estimates everywhere they surface.
 type CostTable map[string]int
 
 // DefaultCostTable returns the built-in costs. Everything except the five

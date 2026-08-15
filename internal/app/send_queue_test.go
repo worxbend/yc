@@ -157,7 +157,7 @@ func TestSendResultDetailAlwaysSaysSomething(t *testing.T) {
 
 // A failed send returns the text so the user can retry without retyping.
 //
-// The status line is a second line of defence, not the first: transport errors
+// The status line is a second line of defense, not the first: transport errors
 // are redacted at their own boundary, and this layer can only catch what a
 // credential looks like. So the fixture is credential-shaped - the forms the
 // pattern redactor exists to catch - rather than an opaque string no layer here
@@ -297,13 +297,13 @@ func TestSendCancellationIsReportedNotSwallowed(t *testing.T) {
 
 	state := model.activeChatState()
 	if state.sendState == composerSendSending {
-		t.Error("a cancelled send left the composer stuck in the sending state")
+		t.Error("a canceled send left the composer stuck in the sending state")
 	}
 	if state.activeSend != nil {
-		t.Error("a cancelled send is still marked in flight")
+		t.Error("a canceled send is still marked in flight")
 	}
 	if strings.TrimSpace(state.sendFeedback) == "" {
-		t.Error("a cancelled send gave no feedback")
+		t.Error("a canceled send gave no feedback")
 	}
 }
 

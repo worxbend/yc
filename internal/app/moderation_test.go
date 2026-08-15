@@ -179,7 +179,7 @@ func TestModerationEscCancelsWithoutActing(t *testing.T) {
 		t.Fatalf("esc still issued a ban: %v", client.bans)
 	}
 	if line, _ := model.moderationStatus(); !strings.Contains(line, "cancel") {
-		t.Fatalf("status = %q, want it to say the action was cancelled", line)
+		t.Fatalf("status = %q, want it to say the action was canceled", line)
 	}
 }
 

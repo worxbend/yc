@@ -192,7 +192,7 @@ func escapeNotificationXML(value string) string {
 // sanitizeNotificationText makes a value safe to hand to a shell-launched
 // notifier: redacted, control-character free, whitespace collapsed, bounded.
 //
-// The redaction pass is not theatre. A notification body is the one piece of
+// The redaction pass is not theater. A notification body is the one piece of
 // yc's output that leaves the terminal entirely and can be logged by a desktop
 // environment, so it gets the same treatment as the debug log.
 func sanitizeNotificationText(value string, limit int) string {

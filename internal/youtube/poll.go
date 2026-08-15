@@ -284,7 +284,7 @@ func (p *Poller) Send(ctx context.Context, request SendRequest) (SendResult, err
 }
 
 // Reconnect cancels the current session and starts a new one, resuming from the
-// retained page token rather than re-priming. The old context is cancelled and
+// retained page token rather than re-priming. The old context is canceled and
 // the old streams drained before the replacement exists.
 //
 // This is the restart path, not rebuilding the poller, because everything worth
@@ -408,7 +408,7 @@ func (p *Poller) closeAllStreams() {
 // --- the poll loop ---------------------------------------------------------
 
 // run is the whole state machine. It returns only when the session context is
-// cancelled: a terminal condition parks instead of returning, because the
+// canceled: a terminal condition parks instead of returning, because the
 // adapter above treats a closed stream as "retry this chat", and retrying a
 // chat that has ended spends quota to be told so again.
 func (p *Poller) run(ctx context.Context, pageToken string) {

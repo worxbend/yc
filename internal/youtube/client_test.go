@@ -235,7 +235,7 @@ func TestClientCancelledContextReturnsTheContextError(t *testing.T) {
 		t.Fatalf("error = %v, want context.Canceled", err)
 	}
 	if Retryable(err) {
-		t.Fatal("Retryable = true for a cancelled context; the user asked yc to stop")
+		t.Fatal("Retryable = true for a canceled context; the user asked yc to stop")
 	}
 }
 

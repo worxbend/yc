@@ -40,7 +40,7 @@ var (
 	// JSON key separator and the way English writes "error code: 403". So
 	// the name must sit in a parameter position: at the start, or after
 	// "?", "&", "{" or ",", optionally quoted. A bare "code: <value>" in
-	// prose is deliberately left alone; Secret is the primary defence and
+	// prose is deliberately left alone; Secret is the primary defense and
 	// an authorization code does not reach a string that way.
 	ambiguousColonPattern = regexp.MustCompile(`(?i)((?:^|[?&{,])\s*["']?(?:state|code)["']?\s*:\s*["']?)[^"'\s&?,}]+`)
 	// googleAPIKeyPattern catches a bare Google API key by its own shape, so

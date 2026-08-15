@@ -243,6 +243,6 @@ var catalog = []Entry{
 	{Cluster: "🎮", Name: "video game", Keywords: []string{"game", "gaming", "controller"}},
 	{Cluster: "🎲", Name: "game die", Keywords: []string{"dice", "random", "luck"}},
 	{Cluster: "🧩", Name: "puzzle piece", Keywords: []string{"puzzle", "piece", "fit"}},
-	{Cluster: "🏁", Name: "chequered flag", Keywords: []string{"finish", "end", "race"}},
+	{Cluster: "🏁", Name: "checkered flag", Keywords: []string{"finish", "end", "race"}},
 	{Cluster: "🌍", Name: "globe showing europe-africa", Keywords: []string{"world", "earth", "global"}},
 }

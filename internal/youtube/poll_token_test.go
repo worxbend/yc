@@ -20,11 +20,11 @@ func TestStalePageTokenRePrimesInsteadOfEndingTheChat(t *testing.T) {
 	var calls atomic.Int64
 	harness := newPollHarness(t, PollerConfig{}, func(call int, w http.ResponseWriter, r *http.Request) {
 		calls.Store(int64(call))
-		switch {
-		case call == 1:
+		switch call {
+		case 1:
 			// Priming succeeds and hands back a continuation token.
 			w.Write([]byte(`{"items":[],"nextPageToken":"stale-token","pollingIntervalMillis":1000}`))
-		case call == 2:
+		case 2:
 			// The continuation token is rejected.
 			if got := r.URL.Query().Get("pageToken"); got != "stale-token" {
 				t.Errorf("second call pageToken = %q, want the retained token", got)

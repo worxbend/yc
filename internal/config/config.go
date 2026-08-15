@@ -137,7 +137,7 @@ type FeatureConfig struct {
 }
 
 // QuotaConfig holds the poll-cadence and quota-accounting knobs. This block has
-// no twi analogue: it exists because the YouTube Data API's 10,000-unit daily
+// no twi analog: it exists because the YouTube Data API's 10,000-unit daily
 // allowance, spent at the server-advised cadence, is exhausted in under three
 // hours, so cadence is a budgeting decision rather than a preference.
 type QuotaConfig struct {

@@ -210,7 +210,7 @@ type moderationState struct {
 	duration      time.Duration
 	durationInput string
 
-	// feedback is the status-bar line, and level is how it is coloured.
+	// feedback is the status-bar line, and level is how it is colored.
 	feedback string
 	level    moderationLevel
 
@@ -343,7 +343,7 @@ func (m shellModel) moderationRole(state *chatState) moderationRole {
 	return moderationRoleViewer
 }
 
-// moderationStatus is the line the status bar draws, and how to colour it.
+// moderationStatus is the line the status bar draws, and how to color it.
 //
 // An idle session with a moderating credential says nothing at all: the keys
 // are documented in help, and a permanent "moderation: ready" banner would only
@@ -387,7 +387,7 @@ func (m *shellModel) handleModerationKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return m.handleModerationDurationKey(msg)
 	case moderationStageConfirm:
 		if msg.Type == tea.KeyEsc {
-			m.cancelModeration("moderation cancelled")
+			m.cancelModeration("moderation canceled")
 			return nil, true
 		}
 		if msg.Type == tea.KeyEnter || m.isModerationConfirmKey(msg) {
@@ -437,7 +437,7 @@ func (m shellModel) isModerationConfirmKey(msg tea.KeyMsg) bool {
 func (m *shellModel) handleModerationDurationKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	switch msg.Type {
 	case tea.KeyEsc:
-		m.cancelModeration("timeout cancelled")
+		m.cancelModeration("timeout canceled")
 		return nil, true
 	case tea.KeyBackspace, tea.KeyCtrlH:
 		// Graphemes, not bytes: the field is normally ASCII, but a pasted
@@ -582,9 +582,10 @@ func moderationDurationPrompt(st moderationState) (string, moderationLevel) {
 // was about to remove would put those words back on screen.
 func moderationConfirmPrompt(st moderationState) string {
 	subject := st.displayName
-	if st.action == moderationActionDelete {
+	switch st.action {
+	case moderationActionDelete:
 		subject += "'s message"
-	} else if st.action == moderationActionTimeout {
+	case moderationActionTimeout:
 		subject += " for " + formatModerationDuration(st.duration)
 	}
 	return st.action.verb() + " " + subject + "? " +

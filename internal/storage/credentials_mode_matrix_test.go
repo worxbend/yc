@@ -263,7 +263,7 @@ func TestTheAtomicWriteNeverLeavesAReadableTemporary(t *testing.T) {
 }
 
 // yc creates the directory it needs, and does so at the right mode regardless
-// of the umask in force. MkdirAll honours the umask, so a 022 umask would
+// of the umask in force. MkdirAll honors the umask, so a 022 umask would
 // otherwise produce a 0755 directory that yc then refuses to use - a first run
 // that fails on a machine with entirely ordinary settings.
 func TestTheDirectoryIsCreatedTightRegardlessOfTheUmask(t *testing.T) {

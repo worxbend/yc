@@ -39,7 +39,7 @@ const (
 // hundred bytes each and a knob could only ever buy a larger pile of them. If
 // one is ever wanted it belongs on config.QuotaConfig as
 // `ledger_retention_days`, documented there and in docs/quota.md alongside the
-// rest of the estimated-meter behaviour, and passed to Prune in place of this.
+// rest of the estimated-meter behavior, and passed to Prune in place of this.
 const LedgerRetentionDays = 7
 
 // anonymousFingerprint keys the ledger for a run with no credential identity,

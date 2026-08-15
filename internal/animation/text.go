@@ -33,7 +33,7 @@ const (
 	// shimmerBand is how many columns either side of the highlight head
 	// still carry some of the accent.
 	shimmerBand = 3
-	// shimmerRest is how far past the label's end the head keeps travelling,
+	// shimmerRest is how far past the label's end the head keeps traveling,
 	// which reads as a pause between passes rather than a strobe.
 	shimmerRest = 6
 	// bounceTrail is how many fading ghosts follow the bouncing label.
@@ -231,7 +231,7 @@ func gradientWaveCells(units []textCluster, cfg TextConfig, elapsed time.Duratio
 	return cells
 }
 
-// shimmerCells sweeps a highlight head across the label and keeps travelling
+// shimmerCells sweeps a highlight head across the label and keeps traveling
 // past the end for shimmerRest columns.
 func shimmerCells(units []textCluster, cfg TextConfig, elapsed time.Duration) []TextCell {
 	width := clustersWidth(units)

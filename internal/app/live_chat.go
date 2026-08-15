@@ -313,7 +313,7 @@ func (c *LiveChatClient) OpenChat(ctx context.Context, target youtube.ChatTarget
 	return target, nil
 }
 
-// CloseChat stops polling one chat. The session's context is cancelled and its
+// CloseChat stops polling one chat. The session's context is canceled and its
 // transport closed before the entry is dropped, so nothing keeps spending quota
 // on a chat the user closed.
 func (c *LiveChatClient) CloseChat(chatKey string) error {
@@ -335,7 +335,7 @@ func (c *LiveChatClient) CloseChat(chatKey string) error {
 //
 // Each session's current transport is closed, which ends its fan-in and drops
 // the session back onto the ladder with a fresh attempt count. The old context
-// is cancelled and the old transport closed before a replacement exists, so two
+// is canceled and the old transport closed before a replacement exists, so two
 // pollers can never charge quota for the same chat at once.
 func (c *LiveChatClient) Reconnect(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
@@ -440,7 +440,7 @@ func (c *LiveChatClient) DroppedMessages() uint64 {
 }
 
 // Close cancels every session and closes the merged streams. The old context is
-// cancelled and the old channels closed before any replacement exists, and the
+// canceled and the old channels closed before any replacement exists, and the
 // call is safe to repeat.
 func (c *LiveChatClient) Close() error {
 	c.mu.Lock()
@@ -604,7 +604,7 @@ type liveChatSession struct {
 	target youtube.ChatTarget
 
 	transport LiveChatTransport
-	// stopped records that stop() has already run. Cancelling the context is
+	// stopped records that stop() has already run. Canceling the context is
 	// not enough on its own: stop() closes whichever transport is published at
 	// the moment it runs, so a transport published afterwards would never be
 	// closed by anyone. See publishTransport.
@@ -764,7 +764,7 @@ func (s *liveChatSession) restart() {
 	s.mu.Lock()
 	s.explicitRestart = true
 	// A restart with nothing published yet is recorded rather than dropped:
-	// the run loop is mid-build and will honour it as soon as it publishes.
+	// the run loop is mid-build and will honor it as soon as it publishes.
 	s.pendingRestart = transport == nil && !s.stopped
 	s.mu.Unlock()
 	if transport != nil {

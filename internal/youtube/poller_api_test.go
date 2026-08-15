@@ -182,7 +182,7 @@ func TestPollerReconnectHonorsACancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := harness.poller.Reconnect(ctx); !errors.Is(err, context.Canceled) {
-		t.Fatalf("Reconnect with a cancelled context = %v, want %v", err, context.Canceled)
+		t.Fatalf("Reconnect with a canceled context = %v, want %v", err, context.Canceled)
 	}
 }
 

@@ -306,7 +306,7 @@ func TestTheDefaultSleepIsInterruptible(t *testing.T) {
 		t.Fatalf("a non-positive sleep took %v", elapsed)
 	}
 
-	// A cancelled context cuts a long sleep short.
+	// A canceled context cuts a long sleep short.
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		time.Sleep(10 * time.Millisecond)
@@ -315,7 +315,7 @@ func TestTheDefaultSleepIsInterruptible(t *testing.T) {
 	started = time.Now()
 	sleepContext(ctx, time.Hour)
 	if elapsed := time.Since(started); elapsed > 30*time.Second {
-		t.Fatalf("a cancelled sleep took %v, want it to return promptly", elapsed)
+		t.Fatalf("a canceled sleep took %v, want it to return promptly", elapsed)
 	}
 
 	// And it does actually wait when nothing interrupts it.
