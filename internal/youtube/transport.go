@@ -30,6 +30,17 @@ var absoluteURLPattern = regexp.MustCompile(`(?i)\bhttps?://[^\s"'<>]+`)
 // detail, so a hostile or broken endpoint cannot make yc buffer a large body.
 const maxErrorBodyBytes = 8 << 10
 
+// maxResponseBodyBytes bounds how much of a successful response is decoded.
+// The largest legitimate answer - a liveChatMessages.list page holding
+// maxResults=2000 messages, each capped at 200 characters plus its metadata -
+// stays well under 16 MiB, so the limit is generous headroom, not a tuning
+// knob. What it removes is the one unbounded read in the client: without it, a
+// misbehaving proxy or a compromised endpoint answering 200 could stream an
+// arbitrarily large body straight into the JSON decoder's memory. The endpoint
+// is operator-configurable, so "it is always Google" is not a guarantee the
+// transport gets to assume.
+const maxResponseBodyBytes = 64 << 20
+
 // maxErrorDetailRunes bounds how much of a decoded error message reaches the
 // status line. A Google error message is a sentence; anything longer is a
 // hostile endpoint, not a diagnostic.
@@ -460,7 +471,10 @@ func (c *Client) attempt(ctx context.Context, method, endpoint, path string, que
 	if out == nil {
 		return nil
 	}
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	// The decoder reads through a limit so a 200 with an endless body cannot
+	// buffer without bound; a truncated-at-the-limit body fails the decode
+	// and is reported like any other malformed response.
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(out); err != nil {
 		return newSafeError(endpoint+": could not decode response", errors.Join(ErrTransient, c.safeCause(err)))
 	}
 	return nil

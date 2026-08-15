@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -194,6 +195,29 @@ func TestDesktopNotifierUsesThePlatformCommand(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(got, " "), "New member") {
 		t.Fatalf("command = %v, want the title", got)
+	}
+}
+
+// A chatter can be named "--icon=/etc/passwd". notify-send parses options
+// anywhere on its command line, so without the "--" terminator the name would
+// be consumed as an option instead of displayed as text.
+func TestDesktopNotifierTerminatesOptionsBeforeUserText(t *testing.T) {
+	name, args, ok := desktopNotificationCommand("linux", "New member", "--icon=/etc/passwd joined")
+	if !ok || name != "notify-send" {
+		t.Fatalf("command = %q ok=%v, want notify-send", name, ok)
+	}
+	sep := -1
+	for i, arg := range args {
+		if arg == "--" {
+			sep = i
+			break
+		}
+	}
+	if sep == -1 {
+		t.Fatalf("args = %v, want a \"--\" terminator before the title", args)
+	}
+	if want := []string{"--", "New member", "--icon=/etc/passwd joined"}; !slices.Equal(args[sep:], want) {
+		t.Fatalf("args tail = %v, want %v", args[sep:], want)
 	}
 }
 

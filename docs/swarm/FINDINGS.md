@@ -14,7 +14,10 @@ Only one track may touch each zone at a time. Orchestrator grants/releases.
 | Config schema | `internal/config/*` | Track D (after A/C merge) |
 
 ## Track A — Security
-(none yet)
+Done. See docs/swarm/SECURITY-AUDIT.md. No out-of-scope handoffs: nothing
+belonging to another track surfaced during the audit. Render-pipeline lock can
+be released to Track C (Track A touched internal/app/view.go's
+sanitizeContextValue only; internal/render gained a fuzz test, no code change).
 
 ## Track B — UI/UX
 (none yet)

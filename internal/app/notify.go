@@ -134,7 +134,11 @@ func desktopNotificationCommand(goos, title, body string) (string, []string, boo
 			"-EncodedCommand", windowsToastPowerShellCommand(title, body),
 		}, true
 	case "linux", "freebsd", "netbsd", "openbsd":
-		args := []string{"--app-name=yc", "--urgency=normal", "--expire-time=8000", title}
+		// The "--" terminator matters: notify-send accepts options anywhere
+		// on the command line, and the body starts with an attacker-chosen
+		// author name, so a chatter called "--icon=/etc/passwd" would
+		// otherwise be parsed as an option rather than displayed as text.
+		args := []string{"--app-name=yc", "--urgency=normal", "--expire-time=8000", "--", title}
 		if body != "" {
 			args = append(args, body)
 		}
