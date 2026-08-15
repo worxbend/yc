@@ -90,4 +90,13 @@ Done. See docs/swarm/FEATURES.md. Notes:
 
 
 ## Track E — Clean Code
-(none yet)
+Done. See docs/swarm/CLEANUP.md. Out-of-scope observations:
+
+- `bench_poll_test.go` still uses `b.N` directly (counts received messages,
+  not iterations) — fine, but if the harness is ever reworked, a
+  `b.Loop()`-compatible shape would be nicer.
+- Track D's flaky `token_test.go` port-guessing note stands; Track E did not
+  touch it (test-behavior change).
+- `randomString` (internal/auth/oauth.go) had a latent infinite loop for
+  alphabets whose size divides 256; fixed defensively during the errcheck
+  pass. No current caller was affected, so no release note is needed.
