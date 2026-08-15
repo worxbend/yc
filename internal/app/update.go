@@ -137,6 +137,10 @@ func (m shellModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case revealTickMsg:
 		return m.advanceReveal()
+
+	case clipboardClearMsg:
+		m.retireClipboard(msg)
+		return m, nil
 	}
 	return m, nil
 }
@@ -163,6 +167,13 @@ func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.clampScroll()
 			return m, nil
 		}
+	}
+
+	// The search input line is modal for the same reason the moderation
+	// prompt below is: while it is open every key is query text, so typing a
+	// word that happens to contain "d" cannot arm a deletion.
+	if model, cmd, handled := m.handleSearchKey(msg); handled {
+		return model, cmd
 	}
 
 	// Moderation is consumed before the global toggles because its duration
@@ -230,6 +241,14 @@ func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEnd:
 		if m.focus != focusComposer {
 			m.activeChatState().scrollOffset = 0
+			m.clampScroll()
+		}
+	case tea.KeyCtrlD:
+		// Half-page scrolling mirrors vim: ctrl+d moves toward the newest
+		// messages, ctrl+u back into history. Outside the composer only -
+		// inside it ctrl+u keeps its "clear the line" meaning below.
+		if m.focus != focusComposer {
+			m.scrollBy(-clampMin(m.chatViewportHeight()/2, 1))
 		}
 	case tea.KeyCtrlL:
 		// Clearing discards the whole retained backlog and cannot be undone.
@@ -250,7 +269,9 @@ func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyCtrlU:
 		if m.focus == focusComposer {
 			m.activeChatState().composerText = ""
+			break
 		}
+		m.scrollBy(clampMin(m.chatViewportHeight()/2, 1))
 	case tea.KeyEsc:
 		// esc is "leave insert mode" first: from the composer it always
 		// returns to the chat view, keeping the draft intact.
@@ -262,6 +283,12 @@ func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if state.inspectOpen {
 			state.inspectOpen = false
 			m.clampScroll()
+			return m, nil
+		}
+		// An active search is the next-most-recent mode, so esc clears it
+		// before touching the reply or the cursor beneath it.
+		if m.searchActive() {
+			m.clearSearch()
 			return m, nil
 		}
 		// Then unwind one step at a time: cancel the armed reply first and
@@ -358,6 +385,22 @@ func (m shellModel) handleRuneKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.selectMessage(1)
 	case r == 'k':
 		m.selectMessage(-1)
+	case r == 'g':
+		// g and G are vim's jumps: g to the oldest retained row, G back to
+		// the live bottom. The offset counts rows hidden below the viewport,
+		// so the top is the maximum offset and the bottom is zero.
+		m.activeChatState().scrollOffset = m.maxScrollOffset()
+	case r == 'G':
+		m.activeChatState().scrollOffset = 0
+		m.clampScroll()
+	case r == '/':
+		m.startSearchInput()
+	case r == 'n':
+		m.jumpSearchMatch(-1)
+	case r == 'N':
+		m.jumpSearchMatch(1)
+	case r == 'y':
+		return m.copySelectedMessage()
 	case isInsertRune(r):
 		// i/o/a all enter the composer, matching vim's insert keys; the
 		// composer appends, so they differ only in muscle memory.
@@ -826,6 +869,13 @@ func paletteCommands() []paletteCommand {
 			m.toggleInspect()
 			return m, nil
 		}},
+		{title: "Search messages", shortcut: "/", run: func(m shellModel) (tea.Model, tea.Cmd) {
+			m.startSearchInput()
+			return m, nil
+		}},
+		{title: "Copy selected message", shortcut: "y", run: func(m shellModel) (tea.Model, tea.Cmd) {
+			return m.copySelectedMessage()
+		}},
 		{title: "Help", shortcut: "?", run: func(m shellModel) (tea.Model, tea.Cmd) {
 			m.helpExpanded = !m.helpExpanded
 			return m, nil
@@ -998,6 +1048,11 @@ func (m *shellModel) clampScroll() {
 	}
 	if state.scrollOffset < 0 {
 		state.scrollOffset = 0
+	}
+	if state.scrollOffset == 0 {
+		// Back at the bottom: everything that arrived while scrolled away is
+		// now on screen, so the "N new" indicator has nothing left to say.
+		state.newBelow = 0
 	}
 }
 
@@ -1332,6 +1387,12 @@ func (m *shellModel) enqueueMessage(message youtube.Message) tea.Cmd {
 	if !m.animationEnabled() || message.Historical || m.scrolledAway() {
 		// The priming page is a backlog of up to 2000 rows. Typing it in one
 		// grapheme at a time would take minutes and tell the viewer nothing.
+		if m.scrolledAway() && !message.Historical {
+			// The viewer is reading history, so the arrival lands off screen.
+			// Counting it feeds the sticky "N new" indicator; clampScroll
+			// zeroes the count the moment they are back at the bottom.
+			state.newBelow++
+		}
 		state.appendMessage(message)
 		state.trimScrollback(m.chats.scrollbackLimit)
 		return nil

@@ -81,7 +81,9 @@ type chatRowBlock struct {
 
 // View renders one complete frame.
 func (m shellModel) View() string {
-	background := m.themeBackgroundSequence()
+	// The clipboard sequence rides in the frame for the same reason the
+	// background override does: only the renderer may write to the terminal.
+	background := m.themeBackgroundSequence() + m.clipboardSequence()
 	if m.splashActive() {
 		return background + m.splashView()
 	}
@@ -572,7 +574,35 @@ func (m shellModel) visibleChatRows(layout shellLayout) []string {
 	// scrollOffset counts rows hidden below the viewport, so the window ends
 	// that far from the bottom.
 	offset := min(clampMin(state.scrollOffset, 0), total-height)
-	return m.styleChatRowWindow(blocks, rowWidth, clampMin(total-offset-height, 0), height)
+	rows := m.styleChatRowWindow(blocks, rowWidth, clampMin(total-offset-height, 0), height)
+	// While the viewer reads history, arrivals land below the viewport where
+	// they are invisible. The sticky indicator borrows the bottom row so
+	// off-screen traffic is never silent; clampScroll clears the count the
+	// moment the viewer is back at the bottom.
+	if offset > 0 && state.newBelow > 0 && len(rows) > 0 {
+		rows[len(rows)-1] = m.newMessagesIndicatorRow(rowWidth, state.newBelow)
+	}
+	return rows
+}
+
+// newMessagesIndicatorRow is the sticky "N new" strip drawn over the bottom
+// viewport row while the viewer is scrolled away and messages keep arriving.
+func (m shellModel) newMessagesIndicatorRow(rowWidth, count int) string {
+	label := fmt.Sprintf(" ↓ %d new ", count)
+	if count == 1 {
+		label = " ↓ 1 new "
+	}
+	hint := "G to jump to newest "
+	if ansi.StringWidth(label)+len(hint) <= rowWidth {
+		label += "· " + hint
+	}
+	foreground := theme.ContrastCorrectedForeground(m.theme.Foreground, m.theme.Accent, canvasBackground(m.theme))
+	return lipgloss.NewStyle().
+		Width(clampMin(rowWidth, 1)).
+		Background(lipgloss.Color(m.theme.Accent)).
+		Foreground(lipgloss.Color(foreground)).
+		Bold(true).
+		Render(truncateDisplayWidth(label, clampMin(rowWidth, 1)))
 }
 
 // chatRowCount reports how many rows the viewport would produce without paying
@@ -784,8 +814,11 @@ func (m shellModel) styleChatRowWindow(blocks []chatRowBlock, rowWidth, start, c
 	}
 
 	selectedID := replyMessageID(m.activeChatState().selected)
+	searchQuery := strings.TrimSpace(m.activeChatState().searchQuery)
 	for _, block := range blocks {
 		selected := selectedID != "" && block.message.ID == selectedID
+		matched := searchQuery != "" && !block.message.Deleted &&
+			messageMatchesSearch(block.message, searchQuery)
 		if block.separatorBefore {
 			keep, done := want()
 			if done {
@@ -802,7 +835,7 @@ func (m shellModel) styleChatRowWindow(blocks []chatRowBlock, rowWidth, start, c
 				return rows
 			}
 			if keep {
-				rows = append(rows, m.messageRowString(block, 0, render.Row{}, rowWidth, selected))
+				rows = append(rows, m.messageRowString(block, 0, render.Row{}, rowWidth, selected, matched))
 			}
 			index++
 			continue
@@ -813,7 +846,7 @@ func (m shellModel) styleChatRowWindow(blocks []chatRowBlock, rowWidth, start, c
 				return rows
 			}
 			if keep {
-				rows = append(rows, m.messageRowString(block, rowIndex, row, rowWidth, selected))
+				rows = append(rows, m.messageRowString(block, rowIndex, row, rowWidth, selected, matched))
 			}
 			index++
 		}
@@ -823,7 +856,7 @@ func (m shellModel) styleChatRowWindow(blocks []chatRowBlock, rowWidth, start, c
 
 // messageRowString draws one chat row: the group gutter rail, the event glyph
 // on the group's first row, and the message content on the group's surface.
-func (m shellModel) messageRowString(block chatRowBlock, rowIndex int, row render.Row, rowWidth int, selected bool) string {
+func (m shellModel) messageRowString(block chatRowBlock, rowIndex int, row render.Row, rowWidth int, selected, searchMatched bool) string {
 	gutterWidth := messageGutterWidth(rowWidth)
 	background := m.messageGroupBackground(block)
 	content := terminalRowString(row, clampMin(rowWidth-gutterWidth, 1), background)
@@ -837,13 +870,19 @@ func (m shellModel) messageRowString(block chatRowBlock, rowIndex int, row rende
 	// author tints. The heavy glyph is one cell wide, like the light one, so
 	// selecting a message shifts nothing.
 	railGlyph := "│ "
+	if searchMatched {
+		// A search match thickens the rail in the warning role, so every
+		// match is scannable down the gutter while the accent stays reserved
+		// for the one row the cursor is on.
+		railGlyph, railColor = "┃ ", m.theme.Warning
+	}
 	if selected {
 		railGlyph, railColor = "┃ ", m.theme.Accent
 	}
 	rail := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(railColor)).
 		Background(lipgloss.Color(background)).
-		Bold(block.animating || selected).
+		Bold(block.animating || selected || searchMatched).
 		Render(railGlyph)
 	if gutterWidth == 2 {
 		return rail + content
@@ -1165,6 +1204,7 @@ func (m shellModel) statusBarState() statusBarState {
 		st.Status = state.status.Status
 		st.StatusDetail = summarizeDetail(state.status.Detail)
 		st.Filter = state.filters.summary()
+		st.Search = m.searchStatusLabel()
 		st.SendFeedback = state.sendFeedback
 		st.Live = state.live
 		st.LiveSince = state.liveSince

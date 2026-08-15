@@ -38,6 +38,26 @@ Done. See docs/swarm/PERF-REPORT.md. Notes for later tracks:
   ~2.4 us/op on the first `-count` repetitions (suspected CPU frequency
   scaling on the benchmark box); prefer best-of-N when comparing.
 
+## Track B — notes from its pass
+
+### For Track D (config)
+
+- A `features.clipboard` (or similar) config key could let users disable the
+  OSC 52 clipboard write from `y` entirely — some remote/tmux setups treat
+  clipboard escapes as a policy concern. Track B deliberately did not touch
+  the config schema; the key is gated on interactive terminals only today.
+
+### Out-of-scope observations
+
+- `selectMessage` (j/k) does not scroll the viewport to keep the cursor
+  visible; only search jumps do (`scrollToMessage`). Reusing
+  `scrollToMessage` from `selectMessage` would make j/k follow the cursor
+  off-screen, but it changes long-standing behavior and is left for a
+  deliberate decision.
+- `maxScrollOffset` uses a `rows ≈ messages × 4` heuristic; the paint-time
+  clamp corrects it, but `g`/`home` can momentarily overshoot on short
+  buffers until the next frame. Harmless, documented in the code.
+
 ## Track D — Features
 (none yet)
 

@@ -18,6 +18,7 @@ consumed by the first context that claims it:
   ctrl+c                      -> quit, from anywhere, always first
   splash still animating      -> any key skips it, and nothing else happens
   alt+<digit>                 -> switch tab, from any focus
+  search input open ("/")     -> the query field owns every key until enter/esc
   moderation prompt armed     -> the duration field or the confirmation owns it
   ctrl+p / ctrl+e / ctrl+t    -> open or close an overlay, from any focus
   ctrl+g / ctrl+b / ctrl+y / ctrl+n -> display cycles, from any focus
@@ -70,6 +71,11 @@ expanded help renders it.
 | | `esc` | back to chat |
 | | `j/k` | select message |
 | | `pgup/pgdn` | scroll |
+| | `ctrl+d/ctrl+u` | half-page scroll |
+| | `g/G` | oldest/newest |
+| | `/` | search messages |
+| | `n/N` | next/prev match |
+| | `y` | copy selected message |
 | | `r` | reply |
 | | `K` | inspect |
 | | `ctrl+e` | emoji picker |
@@ -119,7 +125,31 @@ expanded help renders it.
 - **`pgup` / `pgdn`** scroll by one viewport height. **`home`** jumps to the
   oldest retained row and **`end`** to the newest, outside the composer only.
   Neither is in the table above because neither is listed in `keyBindings`;
-  they are handled directly by `handleKey`.
+  they are handled directly by `handleKey`. **`g`** and **`G`** are the
+  vim-style equivalents of `home` and `end`, and **`ctrl+d` / `ctrl+u`**
+  scroll half a viewport at a time — toward the newest messages and back into
+  history respectively. Inside the composer `ctrl+u` keeps its usual meaning:
+  clear the draft line.
+- **`/`** opens an incremental search over the retained history. While the
+  input is open every key is query text (so a query containing `d` cannot arm
+  a deletion); each edit jumps the cursor to the newest match and scrolls it
+  into view. `enter` commits the query, **`n`** walks to older matches and
+  **`N`** back to newer ones without wrapping, and `esc` clears the search —
+  once from inside the input, or as the first step of the normal `esc` unwind
+  after committing. Matching is case-insensitive over the message text and
+  the author name; every match thickens its gutter rail so the eye can scan
+  them, and the status bar shows the query with its match count.
+- **`y`** copies the selected message's text — or the newest message when
+  nothing is selected — to the system clipboard over OSC 52, the escape
+  sequence terminals expose for clipboard writes. Nothing shells out to
+  `pbcopy`/`xclip`. The text is plain and sanitized: control characters are
+  stripped, newlines become spaces, and a deleted message has nothing left to
+  copy. Your terminal must support OSC 52 (most modern ones do; some require
+  enabling it, e.g. `set -g set-clipboard on` in tmux).
+- While you are **scrolled up** and new messages keep arriving, the bottom
+  row of the chat pane becomes a sticky `↓ N new · G to jump to newest`
+  strip. It clears the moment you return to the bottom by any route — `G`,
+  `end`, `pgdn`, or the mouse wheel.
 - **`</>` and `=`** work from the chat pane and from the sidebar, because the
   sidebar is the one pane whose own width they adjust. `=` clears both the
   sidebar and activity width overrides at once.
