@@ -294,6 +294,13 @@ func normalizeBan(item liveChatMessage, at time.Time) ModerationEvent {
 	event.TargetDisplayName = details.BannedUserDetails.DisplayName
 	// banDurationSeconds is a uint64 sent as a JSON string.
 	if seconds, ok := parseMicros(details.BanDurationSeconds); ok && seconds > 0 {
+		// parseMicros clamps at MaxInt64, but that is a count of seconds:
+		// multiplying it into nanoseconds would overflow and wrap a huge ban
+		// into a negative Duration. Clamp to the largest representable
+		// duration instead - "effectively forever" is the honest reading.
+		if seconds > math.MaxInt64/int64(time.Second) {
+			seconds = math.MaxInt64 / int64(time.Second)
+		}
 		event.Duration = time.Duration(seconds) * time.Second
 	}
 	if strings.EqualFold(strings.TrimSpace(details.BanType), "temporary") || event.Duration > 0 {

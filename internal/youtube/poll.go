@@ -42,9 +42,29 @@ const defaultMinInterval = time.Second
 // the same second and turn a poll into a thundering herd.
 const pollJitterFraction = 0.10
 
+// PollerClient is the slice of the REST client the poller actually uses.
+//
+// It exists so the poll loop depends on five calls rather than on the whole
+// *Client, which keeps the state machine testable against a stub and keeps
+// streamList substitutable behind the same boundary if it ever ships. *Client
+// satisfies it.
+type PollerClient interface {
+	// ListMessages fetches one page of the chat.
+	ListMessages(ctx context.Context, request ListRequest) (ListResult, error)
+	// ResolveTarget turns the user's chat reference into a pollable target.
+	ResolveTarget(ctx context.Context, target ChatTarget) (ChatTarget, error)
+	// SendMessage posts a chat message.
+	SendMessage(ctx context.Context, request SendRequest) (SendResult, error)
+	// Quota returns the current estimated ledger snapshot.
+	Quota() QuotaSnapshot
+	// CostOf quotes the estimated unit cost of an endpoint without charging
+	// it; the budget arithmetic needs the price of the next poll.
+	CostOf(endpoint string) int
+}
+
 // PollerConfig configures one live chat poll session.
 type PollerConfig struct {
-	Client *Client
+	Client PollerClient
 	Target ChatTarget
 
 	// MinInterval is the absolute local floor. The server floor
@@ -99,6 +119,9 @@ const (
 	PollerQuotaPaused PollerState = "quota_paused"
 	PollerClosed      PollerState = "closed"
 )
+
+// The REST client must keep satisfying the poller's view of it.
+var _ PollerClient = (*Client)(nil)
 
 // Errors the poller returns for misuse rather than for an API condition.
 var (
@@ -512,7 +535,13 @@ func (p *Poller) run(ctx context.Context, pageToken string) {
 			backoff = nextBackoff
 			p.setState(PollerBackoff)
 			p.setMode(QuotaModeBackoff)
-			delay := NextInterval(serverInterval, 0, p.cfg.MinInterval, p.cfg.MaxInterval, backoff)
+			// The budget floor applies to failures too: Google charges a
+			// dispatched request whatever comes back, so an error storm that
+			// retried on the server cadence alone would burn the day's units
+			// proving the API is down. Hard-coding a zero budget here is
+			// exactly the bug this recomputation removes.
+			budget := p.budget(p.cfg.Client.Quota(), 0)
+			delay := NextInterval(serverInterval, budget, p.cfg.MinInterval, p.cfg.MaxInterval, backoff)
 			p.setEffective(delay)
 			p.cfg.Sleep(ctx, delay)
 			continue
@@ -833,7 +862,7 @@ func (p *Poller) budget(snapshot QuotaSnapshot, lastCost int) time.Duration {
 	}
 	cost := lastCost
 	if cost <= 0 {
-		cost = p.cfg.Client.cost(EndpointMessagesList)
+		cost = p.cfg.Client.CostOf(EndpointMessagesList)
 	}
 
 	// The injected clock, not the wall clock: PollerConfig promises the whole

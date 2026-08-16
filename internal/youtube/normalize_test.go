@@ -2,6 +2,8 @@ package youtube
 
 import (
 	"encoding/json"
+	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -247,6 +249,30 @@ func TestNormalizeBanDurationDecodesStringSeconds(t *testing.T) {
 	permanent := normalizeItem(loadEventFixture(t, "userBannedEventPermanent"), NormalizeOptions{Now: fixtureNow}).Moderations[0]
 	if permanent.Duration != 0 {
 		t.Fatalf("permanent ban Duration = %v, want 0", permanent.Duration)
+	}
+}
+
+// banDurationSeconds counts seconds, but Duration counts nanoseconds. A value
+// near the top of the range that parseMicros allows would overflow when
+// multiplied into nanoseconds and wrap negative, turning "banned for longer
+// than the universe has existed" into a timeout that has already elapsed.
+func TestNormalizeBanDurationClampsInsteadOfOverflowing(t *testing.T) {
+	item := loadEventFixture(t, "userBannedEventTemporary")
+	item.Snippet.UserBannedDetails.BanDurationSeconds = fmt.Sprint(uint64(math.MaxUint64))
+
+	event := normalizeItem(item, NormalizeOptions{Now: fixtureNow}).Moderations[0]
+
+	if event.Duration <= 0 {
+		t.Fatalf("Duration = %v, want a positive clamped value rather than an overflowed one", event.Duration)
+	}
+	// The clamp is applied in seconds before the multiply, so the result is
+	// the largest whole number of seconds a Duration can hold.
+	wantSeconds := math.MaxInt64 / int64(time.Second)
+	if event.Duration != time.Duration(wantSeconds)*time.Second {
+		t.Fatalf("Duration = %v, want %v", event.Duration, time.Duration(wantSeconds)*time.Second)
+	}
+	if event.Type != ModerationUserTimedOut {
+		t.Fatalf("Type = %v, want the event to stay a timeout", event.Type)
 	}
 }
 

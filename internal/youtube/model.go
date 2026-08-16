@@ -389,8 +389,11 @@ type Message struct {
 }
 
 // Amount returns the monetary value attached to a message, if any, together
-// with whether one was present. It folds the three paid event shapes so
-// callers do not have to branch on which pointer is set.
+// with whether one was present. It folds the two currency-bearing shapes -
+// Super Chats (which also cover the deprecated fanFundingEvent) and Super
+// Stickers - so callers do not have to branch on which pointer is set. Gifts
+// are deliberately absent: they carry Jewels, a platform currency with no
+// monetary amount, so there is no Money to return for them.
 func (m Message) Amount() (Money, bool) {
 	switch {
 	case m.SuperChat != nil && !m.SuperChat.Amount.Zero():

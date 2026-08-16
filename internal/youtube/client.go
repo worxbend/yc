@@ -378,6 +378,13 @@ func (c *Client) cost(endpoint string) int {
 	return DefaultCostTable().Cost(endpoint)
 }
 
+// CostOf quotes the estimated unit cost of an endpoint without charging it.
+// It is the exported face of cost, present so PollerClient - the poller's view
+// of this client - can include the price lookup its budget arithmetic needs.
+func (c *Client) CostOf(endpoint string) int {
+	return c.cost(endpoint)
+}
+
 // Quota returns the current estimated ledger snapshot.
 //
 // Every figure in it is an estimate: Google publishes no quota cost for any

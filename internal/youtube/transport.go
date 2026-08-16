@@ -30,6 +30,14 @@ var absoluteURLPattern = regexp.MustCompile(`(?i)\bhttps?://[^\s"'<>]+`)
 // detail, so a hostile or broken endpoint cannot make yc buffer a large body.
 const maxErrorBodyBytes = 8 << 10
 
+// maxDrainBytes bounds the final drain of a response body before it is closed.
+// Draining lets net/http return the connection to its keep-alive pool, and the
+// bound must comfortably cover the tail a successful decode leaves behind - a
+// list page's trailing bytes, not the whole body - so it is far larger than
+// the error-detail cap while still refusing to swallow an endless stream. A
+// body longer than this simply costs the connection instead of yc's memory.
+const maxDrainBytes = 1 << 20
+
 // maxResponseBodyBytes bounds how much of a successful response is decoded.
 // The largest legitimate answer - a liveChatMessages.list page holding
 // maxResults=2000 messages, each capped at 200 characters plus its metadata -
@@ -453,7 +461,12 @@ func (c *Client) attempt(ctx context.Context, method, endpoint, path string, que
 		return newSafeError(endpoint+": request failed", errors.Join(ErrTransient, c.safeCause(err)))
 	}
 	defer func() {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrorBodyBytes))
+		// Drained with the larger bound: on the success path the decoder has
+		// already consumed most of the body, and capping the leftover at the
+		// 8 KiB error-detail limit forfeited keep-alive reuse on every page
+		// whose tail ran past it. Error detail stays capped where it is read,
+		// in readSmallBody.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxDrainBytes))
 		_ = resp.Body.Close()
 	}()
 

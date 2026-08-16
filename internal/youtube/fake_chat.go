@@ -26,6 +26,12 @@ type FakeChatConfig struct {
 type FakeChatClient struct {
 	cfg FakeChatConfig
 
+	// script is the normalized script, one entry per wire item, computed once
+	// at construction. Keeping the per-item grouping is what lets run emit in
+	// wire-item order: a tombstone's moderation event must not be delivered
+	// before the message it deletes.
+	script []NormalizeResult
+
 	start sync.Once
 	stop  sync.Once
 	done  chan struct{}
@@ -59,16 +65,24 @@ func NewFakeChatClient(cfg FakeChatConfig) *FakeChatClient {
 	}
 
 	fake := &FakeChatClient{cfg: cfg, done: make(chan struct{})}
-	normalized := fake.normalizedScript()
+	fake.script = fake.normalizedScript()
+
+	var messages, moderations, rooms, polls int
+	for _, result := range fake.script {
+		messages += len(result.Messages)
+		moderations += len(result.Moderations)
+		rooms += len(result.RoomEvents)
+		polls += len(result.Polls)
+	}
 
 	// The buffers are sized to hold the whole script so a zero Interval can
 	// deliver everything without a reader, which is what the golden tests
 	// and the non-interactive smoke run rely on.
-	fake.messages = make(chan Message, len(normalized.Messages)+len(cfg.Script)+8)
+	fake.messages = make(chan Message, messages+len(cfg.Script)+8)
 	fake.states = make(chan ConnectionState, 8)
-	fake.moderations = make(chan ModerationEvent, len(normalized.Moderations)+4)
-	fake.rooms = make(chan RoomEvent, len(normalized.RoomEvents)+4)
-	fake.polls = make(chan PollState, len(normalized.Polls)+4)
+	fake.moderations = make(chan ModerationEvent, moderations+4)
+	fake.rooms = make(chan RoomEvent, rooms+4)
+	fake.polls = make(chan PollState, polls+4)
 	return fake
 }
 
@@ -86,22 +100,28 @@ func (f *FakeChatClient) run(ctx context.Context) {
 	f.emitState(ConnectionState{Status: ConnectionConnecting, ChatID: f.cfg.LiveChatID, At: now})
 	f.emitState(ConnectionState{Status: ConnectionConnected, ChatID: f.cfg.LiveChatID, Detail: f.cfg.ChatTitle, At: now})
 
-	normalized := f.normalizedScript()
-	for _, event := range normalized.RoomEvents {
-		f.emitRoom(event)
-	}
-	for _, event := range normalized.Polls {
-		f.emitPoll(event)
-	}
-	for _, event := range normalized.Moderations {
-		f.emitModeration(event)
-	}
-
-	for _, message := range normalized.Messages {
-		if !f.wait(ctx) {
-			return
+	// Emission walks the script in wire-item order, mirroring the live
+	// poller's emitResult: each item's messages go out before its other
+	// events, and no event for a later item leaves before an earlier item's
+	// message. Flushing the moderation stream up front - as an earlier version
+	// did - delivered the tombstone for fake-00 before fake-00 itself existed,
+	// so consumers rendered a "deleted" placeholder they had no row for.
+	for _, result := range f.script {
+		for _, message := range result.Messages {
+			if !f.wait(ctx) {
+				return
+			}
+			f.emitMessage(message)
 		}
-		f.emitMessage(message)
+		for _, event := range result.Moderations {
+			f.emitModeration(event)
+		}
+		for _, event := range result.RoomEvents {
+			f.emitRoom(event)
+		}
+		for _, poll := range result.Polls {
+			f.emitPoll(poll)
+		}
 	}
 }
 
@@ -129,20 +149,22 @@ func (f *FakeChatClient) wait(ctx context.Context) bool {
 	}
 }
 
-// normalizedScript returns the script as the four normalized streams. An
-// explicit Script is used verbatim; otherwise the sample wire items are run
-// through the real normalizer, so the mock exercises the same code path a live
-// chat does rather than a hand-written parallel one.
-func (f *FakeChatClient) normalizedScript() NormalizeResult {
+// normalizedScript returns the script as normalized streams, one entry per
+// wire item so run can preserve the wire's ordering. An explicit Script is
+// used verbatim; otherwise the sample wire items are run through the real
+// normalizer, so the mock exercises the same code path a live chat does rather
+// than a hand-written parallel one.
+func (f *FakeChatClient) normalizedScript() []NormalizeResult {
 	if len(f.cfg.Script) > 0 {
-		return NormalizeResult{Messages: f.cfg.Script}
+		return []NormalizeResult{{Messages: f.cfg.Script}}
 	}
-	var result NormalizeResult
+	items := sampleItems(f.cfg.LiveChatID, f.cfg.Now())
+	results := make([]NormalizeResult, 0, len(items))
 	opts := NormalizeOptions{Now: f.cfg.Now(), SeenMessageIDs: func(string) bool { return true }}
-	for _, item := range sampleItems(f.cfg.LiveChatID, f.cfg.Now()) {
-		result.append(normalizeItem(item, opts))
+	for _, item := range items {
+		results = append(results, normalizeItem(item, opts))
 	}
-	return result
+	return results
 }
 
 // SampleScript returns one representative message for every EventKind,
