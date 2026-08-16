@@ -96,14 +96,10 @@ func (r Row) Plain() string {
 	return builder.String()
 }
 
-// String returns the row with ANSI styling applied.
+// String returns the row with ANSI styling applied, as styled text fallbacks.
+// Avatars, badges, and emoji always render as text; there is no image
+// rendering path.
 func (r Row) String() string {
-	return r.TerminalString()
-}
-
-// TerminalString returns the row with styled text fallbacks. Avatars, badges,
-// and emoji always render as text; there is no image rendering path.
-func (r Row) TerminalString() string {
 	var builder strings.Builder
 	for _, fragment := range r.Fragments {
 		builder.WriteString(renderFragment(fragment))
@@ -111,7 +107,7 @@ func (r Row) TerminalString() string {
 	return builder.String()
 }
 
-// TerminalStringWithBackground behaves like TerminalString but fills every
+// TerminalStringWithBackground behaves like String but fills every
 // fragment's unset background with background instead of leaving it empty.
 //
 // Each fragment renders through its own style and ends in its own ANSI reset,
@@ -194,8 +190,7 @@ type AuthorMeta struct {
 	// when they arrived in the chat - that is not knowable from this API.
 	FirstSeen time.Time
 	// Now anchors relative durations. Zero means "use the wall clock", which
-	// tests override for determinism. Callers should truncate it to the
-	// minute so a per-frame clock cannot invalidate the row cache.
+	// tests override for determinism.
 	Now time.Time
 }
 
@@ -206,11 +201,19 @@ func (a AuthorMeta) empty() bool {
 		a.FirstSeen.IsZero()
 }
 
+// now is the instant relative durations are measured from, truncated to the
+// minute.
+//
+// The truncation is what keeps a repainting chat cheap. Rendered rows are
+// cached by their inputs, and a clock that ticks every frame would make every
+// row's inputs different every frame, so nothing would ever hit the cache. The
+// renderer does this itself rather than asking callers to pass a rounded time,
+// because a caller that forgets costs a full re-render and nothing says so.
 func (a AuthorMeta) now() time.Time {
 	if a.Now.IsZero() {
-		return time.Now()
+		return time.Now().Truncate(time.Minute)
 	}
-	return a.Now
+	return a.Now.Truncate(time.Minute)
 }
 
 // AssetOptions controls the fixed widths of the text chips that stand in for
@@ -366,17 +369,17 @@ func groupedRows(msg youtube.Message, opts Options) []Row {
 	indent := groupedIndentWidth(opts.Width)
 	var rows []Row
 	if !opts.ContinuesGroup {
-		header := groupedHeaderFragments(msg, opts)
-		headerRows, current, _ := appendWrappedFragments(nil, Row{}, 0, header, opts.Width, indent)
-		rows = append(headerRows, current) //nolint:gocritic // headerRows is dead after this; rows deliberately continues it
+		header := newWrapper(opts.Width)
+		header.setIndent(indent)
+		header.add(groupedHeaderFragments(msg, opts))
+		rows = header.finish()
 	}
 
-	content := messageContent(msg, opts)
-	indentFragment := []Fragment{{Kind: FragmentText, Text: strings.Repeat(" ", indent)}}
-	bodyRows, current, _ := appendWrappedFragments(nil, Row{}, 0, indentFragment, opts.Width, 0)
-	bodyRows, current, _ = appendWrappedFragments(bodyRows, current, indent, content, opts.Width, indent)
-	rows = append(rows, append(bodyRows, current)...)
-	return rows
+	body := newWrapper(opts.Width)
+	body.add([]Fragment{{Kind: FragmentText, Text: strings.Repeat(" ", indent)}})
+	body.setIndent(indent)
+	body.add(messageContent(msg, opts))
+	return append(rows, body.finish()...)
 }
 
 // groupedIndentWidth is how far grouped message text is inset under its author
@@ -401,17 +404,17 @@ func groupedIndentWidth(width int) int {
 // name on its own bold, colored row above unemphasized body text.
 func groupedHeaderFragments(msg youtube.Message, opts Options) []Fragment {
 	var fragments []Fragment
-	if opts.Assets.ShowAvatars && opts.Width >= 28 {
+	if opts.Assets.ShowAvatars && opts.Width >= minWidthWideChip {
 		fragments = append(fragments, avatarFragment(msg, opts))
 	}
 	fragments = append(fragments, usernameFragment(msg, opts))
 	badged := false
-	if badges := badgeFragments(msg, opts); len(badges) > 0 && opts.Width >= 24 {
+	if badges := badgeFragments(msg, opts); len(badges) > 0 && opts.Width >= minWidthNarrowChip {
 		fragments = append(fragments, Fragment{Kind: FragmentText, Text: " "})
 		fragments = append(fragments, badges...)
 		badged = true
 	}
-	if opts.Width >= 30 {
+	if opts.Width >= minWidthGroupedClock {
 		// Badge fragments already reserve a trailing pad cell, so adding
 		// another separator here would open a two-cell gap in front of the
 		// clock on exactly the rows that carry a badge.
@@ -425,7 +428,7 @@ func groupedHeaderFragments(msg youtube.Message, opts Options) []Fragment {
 			Style: FragmentStyle{Foreground: opts.Palette.Muted},
 		})
 	}
-	if opts.Width >= 46 {
+	if opts.Width >= minWidthAuthorMeta {
 		fragments = append(fragments, authorMetaFragments(opts)...)
 	}
 	return fragments
@@ -457,6 +460,29 @@ func TextRow(msg youtube.Message, width int) string {
 	return strings.Join(PlainRows(msg, width), "\n")
 }
 
+// Width breakpoints for the decorations around a message. A terminal narrower
+// than a breakpoint drops that decoration rather than letting it crowd out the
+// author's name or the message text.
+//
+// The two layouts share the tiers but not the order they spend them in: the
+// inline prefix buys the avatar at the narrow tier and badges at the wide one,
+// while the grouped header does the reverse, because a grouped header already
+// gives the name a row of its own and can afford badges sooner.
+const (
+	minWidthTimestamp    = 16
+	minWidthNarrowChip   = 24
+	minWidthWideChip     = 28
+	minWidthGroupedClock = 30
+	minWidthAuthorMeta   = 46
+)
+
+// timestampWidth is the column budget messagePrefix reserves for the clock,
+// including the space that separates it from what follows. It has to match what
+// timestampText produces - TestTimestampWidthMatchesFormat holds the two
+// together, so changing the format fails a test instead of silently
+// overspending the row.
+const timestampWidth = len("15:04") + 1
+
 // messagePrefix builds the inline "[AB] 12:00 ◉⚔ Name: " run.
 //
 // The decorations are budgeted before anything is built and dropped in order -
@@ -469,7 +495,7 @@ func messagePrefix(msg youtube.Message, opts Options) []Fragment {
 	// column would spend the widest part of the row restating the "[notice]"
 	// marker the body already carries.
 	if !hasAuthor(msg) {
-		if opts.Width < 16 || opts.layout() == LayoutCompact {
+		if opts.Width < minWidthTimestamp || opts.layout() == LayoutCompact {
 			return nil
 		}
 		return []Fragment{{
@@ -480,9 +506,9 @@ func messagePrefix(msg youtube.Message, opts Options) []Fragment {
 	}
 
 	author := usernameText(msg, opts)
-	includeTimestamp := opts.Width >= 16
-	includeBadges := opts.Width >= 28 && len(msg.Badges) > 0 && opts.badgeMode() != BadgeModeOff
-	includeAvatar := opts.Assets.ShowAvatars && opts.Width >= 24
+	includeTimestamp := opts.Width >= minWidthTimestamp
+	includeBadges := opts.Width >= minWidthWideChip && len(msg.Badges) > 0 && opts.badgeMode() != BadgeModeOff
+	includeAvatar := opts.Assets.ShowAvatars && opts.Width >= minWidthNarrowChip
 	// LayoutCompact trades every decoration for message text.
 	if opts.layout() == LayoutCompact {
 		includeTimestamp, includeBadges, includeAvatar = false, false, false
@@ -491,7 +517,7 @@ func messagePrefix(msg youtube.Message, opts Options) []Fragment {
 	for {
 		fixedWidth := 2 // the ": " separator
 		if includeTimestamp {
-			fixedWidth += 6
+			fixedWidth += timestampWidth
 		}
 		if includeBadges {
 			fixedWidth += badgeSetWidth(msg.Badges, opts)
@@ -539,6 +565,11 @@ func messagePrefix(msg youtube.Message, opts Options) []Fragment {
 
 // messageContent builds everything after the author: the deletion placeholder,
 // the notice marker, the event chips, and the body text.
+//
+// This is the one place that coalesces: every list it returns has had
+// same-styled neighbours merged. The helpers it calls append freely and leave
+// the merging to the end, so a run of text split across two spans still
+// arrives as a single styled run.
 func messageContent(msg youtube.Message, opts Options) []Fragment {
 	// A deletion means the words leave the screen. yc runs on terminals that
 	// are frequently on stream, so a removed message is never reprinted -
@@ -613,7 +644,7 @@ func normalizedFragments(in []youtube.MessageFragment, opts Options) []Fragment 
 			out = append(out, splitTextFragments(text, opts)...)
 		}
 	}
-	return coalesceAdjacent(out)
+	return out
 }
 
 // splitTextFragments scans plain text for the spans the API never marks up:
@@ -667,7 +698,7 @@ func splitTextFragments(text string, opts Options) []Fragment {
 		i++
 	}
 	flushText()
-	return coalesceAdjacent(fragments)
+	return fragments
 }
 
 func mentionFragment(text string, opts Options) Fragment {
@@ -956,50 +987,82 @@ func wrap(prefix, content []Fragment, width int) []Row {
 		indentWidth = width / 2
 	}
 
-	rows := make([]Row, 0, 2)
-	current := Row{}
-	used := 0
-	rows, current, used = appendWrappedFragments(rows, current, used, prefix, width, 0)
-	// The trailing width is not needed: nothing is appended after content, so
-	// the final row is emitted as-is.
-	rows, current, _ = appendWrappedFragments(rows, current, used, content, width, indentWidth)
-	rows = append(rows, current)
-	return rows
+	w := newWrapper(width)
+	w.add(prefix)
+	w.setIndent(indentWidth)
+	w.add(content)
+	return w.finish()
 }
 
-func appendWrappedFragments(rows []Row, current Row, used int, fragments []Fragment, width, indentWidth int) ([]Row, Row, int) {
+// wrapper lays fragments out into rows of a fixed width. It owns the row still
+// under construction and the columns that row has used, so a caller can hand it
+// several fragment lists in turn without threading that state itself.
+//
+// indentWidth is the hanging indent continuation rows start at. Callers change
+// it between passes: an author prefix wraps from column zero, and the message
+// text that follows hangs underneath it.
+type wrapper struct {
+	rows        []Row
+	current     Row
+	used        int
+	width       int
+	indentWidth int
+}
+
+func newWrapper(width int) *wrapper {
+	return &wrapper{rows: make([]Row, 0, 2), width: width}
+}
+
+// setIndent changes the hanging indent used from the next wrap onwards. The row
+// being built is left alone - it was laid out under the previous indent.
+func (w *wrapper) setIndent(indentWidth int) {
+	w.indentWidth = indentWidth
+}
+
+// finish emits the row still under construction and returns every row. The
+// wrapper is not usable afterwards.
+func (w *wrapper) finish() []Row {
+	return append(w.rows, w.current)
+}
+
+func (w *wrapper) breakRow(indentWidth int) {
+	w.rows = append(w.rows, w.current)
+	w.current = continuationRow(indentWidth)
+	w.used = indentWidth
+}
+
+func (w *wrapper) add(fragments []Fragment) {
+	width, indentWidth := w.width, w.indentWidth
 	for _, fragment := range fragments {
 		if fragment.WidthCells > 0 || isAtomicFragment(fragment) {
 			fragmentWidth := fragment.Width()
 			if fragmentWidth == 0 {
 				continue
 			}
-			if used+fragmentWidth > width && used > indentWidth {
-				rows = append(rows, current)
-				current = continuationRow(indentWidth)
-				used = indentWidth
+			if w.used+fragmentWidth > width && w.used > indentWidth {
+				w.breakRow(indentWidth)
 			}
-			if used+fragmentWidth > width && used == indentWidth && used > 0 && fragmentWidth <= width {
+			if w.used+fragmentWidth > width && w.used == indentWidth && w.used > 0 && fragmentWidth <= width {
 				// The fragment cannot fit beside the indent but would fit
 				// on a full-width row, so give up the indent.
 				//
 				// The row being abandoned must be emitted first if it holds
 				// anything real. On the content pass indentWidth is exactly
 				// the prefix width, so used == indentWidth is also true on
-				// the very first row - where current holds the timestamp,
+				// the very first row - where the row holds the timestamp,
 				// badges, and author name. Discarding it unconditionally
 				// would drop the whole prefix whenever a message opened
 				// with a long mention or an amount chip, leaving an
 				// unattributed line in chat at ordinary terminal widths.
-				if rowHasContent(current) {
-					rows = append(rows, current)
+				if rowHasContent(w.current) {
+					w.rows = append(w.rows, w.current)
 				}
-				current = Row{}
-				used = 0
+				w.current = Row{}
+				w.used = 0
 			}
-			if used+fragmentWidth <= width {
-				appendFragment(&current, fragment)
-				used += fragmentWidth
+			if w.used+fragmentWidth <= width {
+				w.current.Append(fragment)
+				w.used += fragmentWidth
 				continue
 			}
 		}
@@ -1011,16 +1074,13 @@ func appendWrappedFragments(rows []Row, current Row, used int, fragments []Fragm
 		for _, chunk := range wrapChunks(fragment.Text) {
 			chunkWidth := textWidth(chunk)
 			if chunkWidth > 0 && chunkWidth <= width-indentWidth &&
-				used+chunkWidth > width && used > indentWidth &&
+				w.used+chunkWidth > width && w.used > indentWidth &&
 				strings.TrimSpace(chunk) != "" {
-				rows = append(rows, current)
-				current = continuationRow(indentWidth)
-				used = indentWidth
+				w.breakRow(indentWidth)
 			}
-			rows, current, used = appendWrappedClusters(rows, current, used, fragment, chunk, width, indentWidth)
+			w.addClusters(fragment, chunk)
 		}
 	}
-	return rows, current, used
 }
 
 // wrapChunks splits text into word-sized pieces, each a run of non-space
@@ -1061,37 +1121,34 @@ func wrapChunks(text string) []string {
 	return chunks
 }
 
-func appendWrappedClusters(rows []Row, current Row, used int, fragment Fragment, text string, width, indentWidth int) ([]Row, Row, int) {
+// addClusters is the fallback for text that will not fit a row whole: it lays
+// the chunk out one grapheme cluster at a time, breaking wherever the row runs
+// out of columns.
+func (w *wrapper) addClusters(fragment Fragment, text string) {
+	width, indentWidth := w.width, w.indentWidth
 	for _, cluster := range graphemeStrings(text) {
 		if cluster == "\n" {
-			rows = append(rows, current)
-			current = continuationRow(indentWidth)
-			used = indentWidth
+			w.breakRow(indentWidth)
 			continue
 		}
 
 		clusterWidth := textWidth(cluster)
-		if used+clusterWidth > width && used > indentWidth {
-			rows = append(rows, current)
-			current = continuationRow(indentWidth)
-			used = indentWidth
+		if w.used+clusterWidth > width && w.used > indentWidth {
+			w.breakRow(indentWidth)
 			if strings.TrimSpace(cluster) == "" {
 				continue
 			}
 		}
-		if used+clusterWidth > width && used == indentWidth && used > 0 {
-			rows = append(rows, current)
-			current = continuationRow(0)
-			used = 0
+		if w.used+clusterWidth > width && w.used == indentWidth && w.used > 0 {
+			w.breakRow(0)
 		}
 
 		next := fragment
 		next.Text = cluster
 		next.WidthCells = 0
-		appendFragment(&current, next)
-		used += clusterWidth
+		w.current.Append(next)
+		w.used += clusterWidth
 	}
-	return rows, current, used
 }
 
 // isAtomicFragment reports the fragments that must move to the next row whole.
@@ -1116,35 +1173,41 @@ func continuationRow(indentWidth int) Row {
 	}}}
 }
 
-func appendFragment(row *Row, fragment Fragment) {
+// Append adds fragment to the row, merging it into the previous fragment when
+// the two carry the same kind and style. Empty text is dropped: a fragment with
+// nothing in it would only add a styled run nobody can see.
+//
+// Every builder of rows goes through here, in this package and in
+// internal/animation, so the merge rule stays in one place.
+func (r *Row) Append(fragment Fragment) {
 	if fragment.Text == "" {
 		return
 	}
-	lastIndex := len(row.Fragments) - 1
-	if lastIndex >= 0 && sameFragmentStyle(row.Fragments[lastIndex], fragment) {
-		row.Fragments[lastIndex].Text += fragment.Text
+	lastIndex := len(r.Fragments) - 1
+	if lastIndex >= 0 && mergeableFragments(r.Fragments[lastIndex], fragment) {
+		r.Fragments[lastIndex].Text += fragment.Text
 		return
 	}
-	row.Fragments = append(row.Fragments, fragment)
+	r.Fragments = append(r.Fragments, fragment)
 }
 
+// coalesceAdjacent merges neighbouring fragments that share a kind and style.
+// Callers building fragment lists by hand use it once, at the end.
 func coalesceAdjacent(in []Fragment) []Fragment {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]Fragment, 0, len(in))
+	row := Row{Fragments: make([]Fragment, 0, len(in))}
 	for _, fragment := range in {
-		row := Row{Fragments: out}
-		appendFragment(&row, fragment)
-		out = row.Fragments
+		row.Append(fragment)
 	}
-	return out
+	return row.Fragments
 }
 
-// sameFragmentStyle reports whether two neighbors can be merged into one
+// mergeableFragments reports whether two neighbors can be merged into one
 // styled run. Fixed-width fragments never merge: their reserved columns are the
 // point, and concatenating two of them would collapse a column.
-func sameFragmentStyle(a, b Fragment) bool {
+func mergeableFragments(a, b Fragment) bool {
 	if a.WidthCells > 0 || b.WidthCells > 0 {
 		return false
 	}

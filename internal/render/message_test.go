@@ -52,7 +52,7 @@ func TestFragmentWithDefaultBackgroundFillsOnlyWhenUnset(t *testing.T) {
 func backgroundOnlySGRCode(t *testing.T, hex string) string {
 	t.Helper()
 	ref := Row{Fragments: []Fragment{{Kind: FragmentText, Text: "x", Style: FragmentStyle{Background: hex}}}}
-	out := ref.TerminalString()
+	out := ref.String()
 	start := strings.Index(out, "\x1b[")
 	end := strings.Index(out, "m")
 	if start < 0 || end < 0 || end <= start+2 {
@@ -72,12 +72,11 @@ func TestTerminalStringWithBackgroundAppliesPastEmbeddedResets(t *testing.T) {
 		{Kind: FragmentUsername, Text: "green", Style: FragmentStyle{Foreground: "#00ff00"}},
 	}}
 
-	// Plain TerminalString leaves every background empty, so each fragment's
-	// own reset ends any coloring - which is the exact bug: an outer
-	// Background() applied to the assembled row would only reach the first
-	// reset.
-	if plain := row.TerminalString(); strings.Contains(plain, backgroundCode+"m") {
-		t.Fatalf("TerminalString() unexpectedly carries the background SGR code %q: %q", backgroundCode, plain)
+	// Plain String leaves every background empty, so each fragment's own
+	// reset ends any coloring - which is the exact bug: an outer Background()
+	// applied to the assembled row would only reach the first reset.
+	if plain := row.String(); strings.Contains(plain, backgroundCode+"m") {
+		t.Fatalf("String() unexpectedly carries the background SGR code %q: %q", backgroundCode, plain)
 	}
 
 	withBg := row.TerminalStringWithBackground(background)
@@ -561,5 +560,17 @@ func TestFallbackAssetOptionsFillOnlyMissingWidths(t *testing.T) {
 	defaults := FallbackAssetOptions()
 	if filled.EmojiWidthCells != defaults.EmojiWidthCells || filled.ShortcodeCells != defaults.ShortcodeCells {
 		t.Fatalf("unset chip widths were not filled: %#v", filled)
+	}
+}
+
+// TestTimestampWidthMatchesFormat pins the column budget messagePrefix reserves
+// for the clock to the text timestampText actually produces. Changing the time
+// format without changing the budget would let the prefix overrun the row.
+func TestTimestampWidthMatchesFormat(t *testing.T) {
+	stamp := time.Date(2024, 5, 1, 13, 45, 0, 0, time.UTC)
+	for _, text := range []string{timestampText(stamp), timestampText(time.Time{})} {
+		if got := textWidth(text) + 1; got != timestampWidth {
+			t.Fatalf("timestamp %q occupies %d cells, but timestampWidth is %d", text, got, timestampWidth)
+		}
 	}
 }

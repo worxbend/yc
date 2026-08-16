@@ -1,6 +1,10 @@
 package theme
 
-import "sort"
+import (
+	"maps"
+	"sort"
+	"strings"
+)
 
 // presets holds the built-in named palettes. Most take each scheme's
 // well-known published colors; yc, Claude, Codex, Btop, and Mono are authored
@@ -708,12 +712,25 @@ var presets = map[string]Palette{
 	},
 }
 
+// Preset returns the built-in palette registered under name, and whether there
+// is one. Name matching follows ResolvePalette: leading and trailing spaces are
+// ignored and case does not matter.
+//
+// This is the cheap way to ask "is this a real theme name?" - it hands back a
+// copy of one palette rather than the whole table.
+func Preset(name string) (Palette, bool) {
+	palette, ok := presets[strings.ToLower(strings.TrimSpace(name))]
+	return palette, ok
+}
+
 // Presets returns every built-in palette keyed by its config name.
 //
 // The set is platform-neutral and ports from twi with one addition: the
-// YouTube-flavored "yc" palette. Callers must not mutate the returned map.
+// YouTube-flavored "yc" palette. The returned map is a copy, so a caller that
+// writes to it changes nothing for anyone else - palette resolution reads the
+// private table. Reach for Preset when one name is all that is needed.
 func Presets() map[string]Palette {
-	return presets
+	return maps.Clone(presets)
 }
 
 // PresetNames returns every preset name in sorted order, for the theme page and

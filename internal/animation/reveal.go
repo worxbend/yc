@@ -149,7 +149,7 @@ func (s Sequence) Frame() []render.Row {
 		if !ok {
 			continue
 		}
-		appendFragment(&rows[unit.Row], fragment)
+		rows[unit.Row].Append(fragment)
 	}
 	return rows
 }
@@ -358,28 +358,6 @@ func isAtomic(fragment render.Fragment) bool {
 		fragment.Style.Bold ||
 		fragment.Style.Italic ||
 		fragment.Style.Strikethrough
-}
-
-func appendFragment(row *render.Row, fragment render.Fragment) {
-	if fragment.Text == "" {
-		return
-	}
-	last := len(row.Fragments) - 1
-	if last >= 0 && mergeable(row.Fragments[last], fragment) {
-		row.Fragments[last].Text += fragment.Text
-		return
-	}
-	row.Fragments = append(row.Fragments, fragment)
-}
-
-// mergeable reports whether two neighboring fragments can be emitted as one
-// styled run. Fixed-width fragments never merge: two chips side by side reserve
-// two chip widths, and concatenating them would reserve one.
-func mergeable(a, b render.Fragment) bool {
-	if a.WidthCells > 0 || b.WidthCells > 0 {
-		return false
-	}
-	return a.Kind == b.Kind && a.Style == b.Style
 }
 
 func cloneRows(rows []render.Row) []render.Row {
