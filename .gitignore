@@ -44,6 +44,10 @@ credentials.json
 config.toml
 .local/
 quota/
+# The rule above has no leading slash, so it matches a directory named quota at
+# any depth - including the internal/quota source package, whose files were
+# silently left out of a commit until this exception was added.
+!internal/quota/
 
 # --- Go build output ---
 /yc
