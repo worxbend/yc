@@ -215,6 +215,29 @@ func (c *LiveChatClient) ModerationAvailable() (bool, string) {
 	return true, ""
 }
 
+// snapshotSessions copies the open sessions out from under the lock.
+//
+// Every reader below works by asking each session's transport something, and a
+// transport call must not run while the client lock is held - a session that
+// blocks would stall Close and every other reader with it. Copying the map
+// into a slice keeps the lock to the copy itself.
+func (c *LiveChatClient) snapshotSessions() []*liveChatSession {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sessionsLocked()
+}
+
+// sessionsLocked is snapshotSessions for callers that already hold the lock
+// because they have more to do under it - checking closed, or clearing the map
+// in the same critical section.
+func (c *LiveChatClient) sessionsLocked() []*liveChatSession {
+	sessions := make([]*liveChatSession, 0, len(c.sessions))
+	for _, session := range c.sessions {
+		sessions = append(sessions, session)
+	}
+	return sessions
+}
+
 // moderator returns whatever can perform outbound moderation, preferring the
 // configured credential and falling back to a transport that can moderate for
 // its own chat.
@@ -222,12 +245,7 @@ func (c *LiveChatClient) moderator() Moderator {
 	if c.cfg.moderator != nil {
 		return c.cfg.moderator
 	}
-	c.mu.Lock()
-	sessions := make([]*liveChatSession, 0, len(c.sessions))
-	for _, session := range c.sessions {
-		sessions = append(sessions, session)
-	}
-	c.mu.Unlock()
+	sessions := c.snapshotSessions()
 	for _, session := range sessions {
 		transport := session.currentTransport()
 		if transport == nil {
@@ -351,10 +369,7 @@ func (c *LiveChatClient) Reconnect(ctx context.Context) error {
 		c.mu.Unlock()
 		return ErrReconnectUnavailable
 	}
-	sessions := make([]*liveChatSession, 0, len(c.sessions))
-	for _, session := range c.sessions {
-		sessions = append(sessions, session)
-	}
+	sessions := c.sessionsLocked()
 	c.mu.Unlock()
 	if len(sessions) == 0 {
 		return ErrReconnectUnavailable
@@ -372,12 +387,7 @@ func (c *LiveChatClient) Reconnect(ctx context.Context) error {
 // summing a shared ledger would multiply the estimate by the number of open
 // chats and tell the user they have far less budget than they do.
 func (c *LiveChatClient) Quota() youtube.QuotaSnapshot {
-	c.mu.Lock()
-	sessions := make([]*liveChatSession, 0, len(c.sessions))
-	for _, session := range c.sessions {
-		sessions = append(sessions, session)
-	}
-	c.mu.Unlock()
+	sessions := c.snapshotSessions()
 
 	var merged youtube.QuotaSnapshot
 	answered := false
@@ -414,12 +424,7 @@ func (c *LiveChatClient) Quota() youtube.QuotaSnapshot {
 // is the one the status bar should show: it is the rate at which the user can
 // expect the next message.
 func (c *LiveChatClient) PollInterval() time.Duration {
-	c.mu.Lock()
-	sessions := make([]*liveChatSession, 0, len(c.sessions))
-	for _, session := range c.sessions {
-		sessions = append(sessions, session)
-	}
-	c.mu.Unlock()
+	sessions := c.snapshotSessions()
 
 	var shortest time.Duration
 	for _, session := range sessions {
@@ -454,10 +459,7 @@ func (c *LiveChatClient) Close() error {
 		return nil
 	}
 	c.closed = true
-	sessions := make([]*liveChatSession, 0, len(c.sessions))
-	for _, session := range c.sessions {
-		sessions = append(sessions, session)
-	}
+	sessions := c.sessionsLocked()
 	c.sessions = make(map[string]*liveChatSession)
 	c.mu.Unlock()
 
@@ -482,10 +484,7 @@ func (c *LiveChatClient) Close() error {
 // including the transport's own in-flight resolution.
 func (c *LiveChatClient) sessionForChatID(liveChatID string) *liveChatSession {
 	c.mu.Lock()
-	sessions := make([]*liveChatSession, 0, len(c.sessions))
-	for _, session := range c.sessions {
-		sessions = append(sessions, session)
-	}
+	sessions := c.sessionsLocked()
 	direct, ok := c.sessions[strings.ToLower(strings.TrimSpace(liveChatID))]
 	c.mu.Unlock()
 

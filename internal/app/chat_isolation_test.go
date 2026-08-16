@@ -42,7 +42,7 @@ func isolationModel(t *testing.T) (shellModel, []string) {
 		t.Fatalf("chatKeys = %v, want three chats", keys)
 	}
 	for _, key := range keys {
-		state := model.chats.ensureKey(key)
+		state := model.chats.stateForKey(key)
 		state.target.LiveChatID = key
 	}
 	model.chats.setActive(keys[0])
@@ -131,12 +131,12 @@ func TestEveryPerChatFieldSurvivesASwitchAndIsInvisibleFromElsewhere(t *testing.
 	}
 	// Distinct filter sets, including the empty one, so "filters bled" is not
 	// hidden by every chat happening to agree.
-	model.chats.ensureKey(keys[0]).filters.toggle(messageFilterMentions)
-	model.chats.ensureKey(keys[1]).filters.toggle(messageFilterRoles)
+	model.chats.stateForKey(keys[0]).filters.toggle(messageFilterMentions)
+	model.chats.stateForKey(keys[1]).filters.toggle(messageFilterRoles)
 
 	before := make(map[string]chatFingerprint, len(keys))
 	for _, key := range keys {
-		before[key] = fingerprint(model.chats.ensureKey(key))
+		before[key] = fingerprint(model.chats.stateForKey(key))
 	}
 
 	// Walk the whole ring twice with the real key bindings.
@@ -148,12 +148,12 @@ func TestEveryPerChatFieldSurvivesASwitchAndIsInvisibleFromElsewhere(t *testing.
 	}
 
 	for _, key := range keys {
-		assertUnchanged(t, "chat "+key+" after switching", before[key], fingerprint(model.chats.ensureKey(key)))
+		assertUnchanged(t, "chat "+key+" after switching", before[key], fingerprint(model.chats.stateForKey(key)))
 	}
 
 	// And no two chats agree on anything they were given distinct values for.
-	first := fingerprint(model.chats.ensureKey(keys[0]))
-	second := fingerprint(model.chats.ensureKey(keys[1]))
+	first := fingerprint(model.chats.stateForKey(keys[0]))
+	second := fingerprint(model.chats.stateForKey(keys[1]))
 	if first.composerText == second.composerText {
 		t.Fatalf("both chats hold the draft %q", first.composerText)
 	}
@@ -171,7 +171,7 @@ func TestEveryPerChatFieldSurvivesASwitchAndIsInvisibleFromElsewhere(t *testing.
 func TestVisitingAChatClearsOnlyItsOwnUnread(t *testing.T) {
 	model, keys := isolationModel(t)
 	for index, key := range keys {
-		state := model.chats.ensureKey(key)
+		state := model.chats.stateForKey(key)
 		state.unread = index + 5
 	}
 	// Start somewhere that is not the chat under test.
@@ -181,10 +181,10 @@ func TestVisitingAChatClearsOnlyItsOwnUnread(t *testing.T) {
 	if got := model.activeChatKey(); got != keys[1] {
 		t.Fatalf("] landed on %q, want %q", got, keys[1])
 	}
-	if got := model.chats.ensureKey(keys[1]).unread; got != 0 {
+	if got := model.chats.stateForKey(keys[1]).unread; got != 0 {
 		t.Fatalf("the visited chat still shows %d unread", got)
 	}
-	if got := model.chats.ensureKey(keys[2]).unread; got != 7 {
+	if got := model.chats.stateForKey(keys[2]).unread; got != 7 {
 		t.Fatalf("an unvisited chat's unread became %d, want 7", got)
 	}
 	if got := model.chats.totalUnread(); got != 7 {
@@ -199,17 +199,17 @@ func TestAStampedMessageTouchesExactlyOneChat(t *testing.T) {
 	active, background := keys[0], keys[2]
 
 	for _, key := range keys {
-		state := model.chats.ensureKey(key)
+		state := model.chats.stateForKey(key)
 		state.messages = []youtube.Message{testMessage(t, key+"-seed", key, "alice", "seed")}
 	}
 	before := make(map[string]chatFingerprint, len(keys))
 	for _, key := range keys {
-		before[key] = fingerprint(model.chats.ensureKey(key))
+		before[key] = fingerprint(model.chats.stateForKey(key))
 	}
 
 	model = deliverMessage(t, model, testMessage(t, "new-1", background, "carol", "for the background chat"))
 
-	backgroundState := model.chats.ensureKey(background)
+	backgroundState := model.chats.stateForKey(background)
 	if len(backgroundState.messages) != 2 {
 		t.Fatalf("background chat holds %d messages, want the delivery", len(backgroundState.messages))
 	}
@@ -219,8 +219,8 @@ func TestAStampedMessageTouchesExactlyOneChat(t *testing.T) {
 	if got := model.activeChatKey(); got != active {
 		t.Fatalf("a background delivery moved the active chat to %q", got)
 	}
-	assertUnchanged(t, "the active chat", before[active], fingerprint(model.chats.ensureKey(active)))
-	assertUnchanged(t, "the untouched chat", before[keys[1]], fingerprint(model.chats.ensureKey(keys[1])))
+	assertUnchanged(t, "the active chat", before[active], fingerprint(model.chats.stateForKey(active)))
+	assertUnchanged(t, "the untouched chat", before[keys[1]], fingerprint(model.chats.stateForKey(keys[1])))
 }
 
 // A moderation event names the chat it belongs to. Applying it to the active
@@ -231,7 +231,7 @@ func TestAModerationEventRedactsOnlyItsOwnChat(t *testing.T) {
 	target, bystander := keys[1], keys[0]
 
 	for _, key := range keys {
-		state := model.chats.ensureKey(key)
+		state := model.chats.stateForKey(key)
 		state.messages = []youtube.Message{
 			testMessage(t, key+"-1", key, "spammer", "the same words in every chat"),
 			testMessage(t, key+"-2", key, "alice", "an innocent line"),
@@ -245,7 +245,7 @@ func TestAModerationEventRedactsOnlyItsOwnChat(t *testing.T) {
 		TargetDisplayName: "spammer",
 	})
 
-	targetState := model.chats.ensureKey(target)
+	targetState := model.chats.stateForKey(target)
 	if !targetState.messages[0].Deleted || targetState.messages[0].Text != "" {
 		t.Fatalf("the ban did not redact its own chat: %+v", targetState.messages[0])
 	}
@@ -257,7 +257,7 @@ func TestAModerationEventRedactsOnlyItsOwnChat(t *testing.T) {
 		if key == target {
 			continue
 		}
-		state := model.chats.ensureKey(key)
+		state := model.chats.stateForKey(key)
 		if state.messages[0].Deleted || state.messages[0].Text == "" {
 			t.Fatalf("chat %q was redacted by a ban in %q: %+v", key, target, state.messages[0])
 		}
@@ -276,25 +276,25 @@ func TestClosingAChatNeitherDisturbsTheOthersNorLeavesARemnant(t *testing.T) {
 	doomed := keys[1]
 
 	for index, key := range keys {
-		state := model.chats.ensureKey(key)
+		state := model.chats.stateForKey(key)
 		state.composerText = "draft " + key
 		state.unread = index + 1
 		state.messages = []youtube.Message{testMessage(t, key+"-1", key, "alice", "history of "+key)}
 		state.filters.toggle(messageFilterRoles)
 	}
 	before := map[string]chatFingerprint{
-		keys[0]: fingerprint(model.chats.ensureKey(keys[0])),
-		keys[2]: fingerprint(model.chats.ensureKey(keys[2])),
+		keys[0]: fingerprint(model.chats.stateForKey(keys[0])),
+		keys[2]: fingerprint(model.chats.stateForKey(keys[2])),
 	}
 
 	if !model.chats.close(doomed) {
 		t.Fatal("close reported no change")
 	}
-	if model.chats.ensureKey(doomed) != nil {
+	if model.chats.stateForKey(doomed) != nil {
 		t.Fatal("the closed chat is still reachable by key")
 	}
-	assertUnchanged(t, "the chat before the closed one", before[keys[0]], fingerprint(model.chats.ensureKey(keys[0])))
-	assertUnchanged(t, "the chat after the closed one", before[keys[2]], fingerprint(model.chats.ensureKey(keys[2])))
+	assertUnchanged(t, "the chat before the closed one", before[keys[0]], fingerprint(model.chats.stateForKey(keys[0])))
+	assertUnchanged(t, "the chat after the closed one", before[keys[2]], fingerprint(model.chats.stateForKey(keys[2])))
 
 	// Reopening the same key is a new chat, not a resumed one.
 	if !model.chats.open(youtube.ChatTarget{LiveChatID: doomed, Title: "reopened"}) {
@@ -321,7 +321,7 @@ func TestClosingAChatNeitherDisturbsTheOthersNorLeavesARemnant(t *testing.T) {
 func TestClearingOneChatLeavesTheOthersWhole(t *testing.T) {
 	model, keys := isolationModel(t)
 	for _, key := range keys {
-		state := model.chats.ensureKey(key)
+		state := model.chats.stateForKey(key)
 		state.messages = []youtube.Message{
 			testMessage(t, key+"-1", key, "alice", "history of "+key),
 			testMessage(t, key+"-2", key, "bob", "more history of "+key),
@@ -329,8 +329,8 @@ func TestClearingOneChatLeavesTheOthersWhole(t *testing.T) {
 		state.recordModeration(youtube.ModerationEvent{LiveChatID: key, Type: youtube.ModerationUserBanned})
 	}
 	before := map[string]chatFingerprint{
-		keys[1]: fingerprint(model.chats.ensureKey(keys[1])),
-		keys[2]: fingerprint(model.chats.ensureKey(keys[2])),
+		keys[1]: fingerprint(model.chats.stateForKey(keys[1])),
+		keys[2]: fingerprint(model.chats.stateForKey(keys[2])),
 	}
 
 	model = press(t, model, key(tea.KeyCtrlL))
@@ -339,13 +339,13 @@ func TestClearingOneChatLeavesTheOthersWhole(t *testing.T) {
 	}
 	model = press(t, model, key(tea.KeyCtrlL))
 
-	cleared := model.chats.ensureKey(keys[0])
+	cleared := model.chats.stateForKey(keys[0])
 	if len(cleared.messages) != 0 || len(cleared.moderations) != 0 {
 		t.Fatalf("the active chat was not cleared: %d messages, %d moderations",
 			len(cleared.messages), len(cleared.moderations))
 	}
-	assertUnchanged(t, "the second chat", before[keys[1]], fingerprint(model.chats.ensureKey(keys[1])))
-	assertUnchanged(t, "the third chat", before[keys[2]], fingerprint(model.chats.ensureKey(keys[2])))
+	assertUnchanged(t, "the second chat", before[keys[1]], fingerprint(model.chats.stateForKey(keys[1])))
+	assertUnchanged(t, "the third chat", before[keys[2]], fingerprint(model.chats.stateForKey(keys[2])))
 }
 
 // A connection state names its chat. One chat reconnecting must not make the
@@ -354,7 +354,7 @@ func TestClearingOneChatLeavesTheOthersWhole(t *testing.T) {
 func TestAConnectionStateChangesOnlyItsOwnChat(t *testing.T) {
 	model, keys := isolationModel(t)
 	for _, key := range keys {
-		model.chats.ensureKey(key).status = youtube.ConnectionState{Status: youtube.ConnectionConnected}
+		model.chats.stateForKey(key).status = youtube.ConnectionState{Status: youtube.ConnectionConnected}
 	}
 
 	model.applyConnectionState(youtube.ConnectionState{
@@ -363,11 +363,11 @@ func TestAConnectionStateChangesOnlyItsOwnChat(t *testing.T) {
 		Detail: "backing off",
 	})
 
-	if got := model.chats.ensureKey(keys[2]).status.Status; got != youtube.ConnectionReconnecting {
+	if got := model.chats.stateForKey(keys[2]).status.Status; got != youtube.ConnectionReconnecting {
 		t.Fatalf("the named chat is %v, want reconnecting", got)
 	}
 	for _, other := range keys[:2] {
-		if got := model.chats.ensureKey(other).status.Status; got != youtube.ConnectionConnected {
+		if got := model.chats.stateForKey(other).status.Status; got != youtube.ConnectionConnected {
 			t.Fatalf("chat %q became %v because another chat reconnected", other, got)
 		}
 	}
@@ -532,7 +532,7 @@ func TestFiltersDoNotCrossChats(t *testing.T) {
 	model, keys := isolationModel(t)
 	model.mentionHandle = "you"
 	for _, key := range keys {
-		state := model.chats.ensureKey(key)
+		state := model.chats.stateForKey(key)
 		state.messages = filterCorpus(t)
 	}
 
@@ -543,7 +543,7 @@ func TestFiltersDoNotCrossChats(t *testing.T) {
 	}
 
 	for _, other := range keys[1:] {
-		state := model.chats.ensureKey(other)
+		state := model.chats.stateForKey(other)
 		if state.filters.active() {
 			t.Fatalf("chat %q inherited the active chat's filters", other)
 		}

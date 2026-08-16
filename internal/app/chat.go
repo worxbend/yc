@@ -197,7 +197,7 @@ func (m shellModel) resolveTargetsCommand() tea.Cmd {
 	resolver := m.broadcastResolver
 	cmds := make([]tea.Cmd, 0, len(m.chats.order))
 	for _, key := range m.chats.chatKeys() {
-		state := m.chats.ensureKey(key)
+		state := m.chats.stateForKey(key)
 		if state == nil || state.target.Resolved() {
 			continue
 		}
@@ -225,7 +225,7 @@ func (m shellModel) refreshChatMetricsCommand() tea.Cmd {
 	resolver := m.broadcastResolver
 	cmds := make([]tea.Cmd, 0, len(m.chats.order))
 	for _, key := range m.chats.chatKeys() {
-		state := m.chats.ensureKey(key)
+		state := m.chats.stateForKey(key)
 		if state == nil || strings.TrimSpace(state.target.VideoID) == "" || state.ended {
 			continue
 		}
@@ -338,7 +338,7 @@ func (m shellModel) chatStateForActiveSend(id int) *chatState {
 // duplicating it, and it carries the resolved identity's own badges because
 // YouTube never echoes a sender's own state.
 func (m *shellModel) appendLocalEcho(sent queuedComposerSend, result youtube.SendResult, now time.Time) {
-	state := m.chats.ensureKey(sent.ChatKey)
+	state := m.chats.stateForKey(sent.ChatKey)
 	if state == nil {
 		return
 	}
@@ -370,7 +370,6 @@ func (m *shellModel) appendLocalEcho(sent queuedComposerSend, result youtube.Sen
 	}
 	state.localEchoes[id] = struct{}{}
 	state.appendMessage(message)
-	state.trimScrollback(m.chats.scrollbackLimit)
 	state.observeAuthor(message)
 }
 
@@ -422,7 +421,7 @@ func (m *shellModel) requestReconnect(now time.Time) tea.Cmd {
 
 func (m *shellModel) completeReconnect(msg reconnectCompletedMsg, now time.Time) {
 	m.reconnectInFlight = false
-	state := m.chats.ensureKey(msg.chatKey)
+	state := m.chats.stateForKey(msg.chatKey)
 	if state == nil {
 		state = m.activeChatState()
 	}

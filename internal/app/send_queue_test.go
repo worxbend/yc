@@ -202,8 +202,8 @@ func TestSendCompletionFindsItsOwnChatAfterASwitch(t *testing.T) {
 	model.identity = youtube.Identity{ChannelID: "UC-me", DisplayName: "Me"}
 
 	keys := model.chats.chatKeys()
-	model.chats.ensureKey(keys[0]).target.LiveChatID = "chat-one"
-	model.chats.ensureKey(keys[1]).target.LiveChatID = "chat-two"
+	model.chats.stateForKey(keys[0]).target.LiveChatID = "chat-one"
+	model.chats.stateForKey(keys[1]).target.LiveChatID = "chat-two"
 
 	model.focus = focusComposer
 	model, cmd := submit(t, model, "sent from the first chat")
@@ -222,14 +222,14 @@ func TestSendCompletionFindsItsOwnChatAfterASwitch(t *testing.T) {
 	next, _ := model.Update(cmd())
 	model = next.(shellModel)
 
-	origin := model.chats.ensureKey(keys[0])
+	origin := model.chats.stateForKey(keys[0])
 	if origin.sendState != composerSendSucceeded {
 		t.Errorf("the originating chat's send state = %q, want %q", origin.sendState, composerSendSucceeded)
 	}
 	if len(origin.messages) != 1 || !origin.messages[0].LocalEcho {
 		t.Errorf("the echo did not land in the originating chat: %+v", origin.messages)
 	}
-	if other := model.chats.ensureKey(keys[1]); len(other.messages) != 0 {
+	if other := model.chats.stateForKey(keys[1]); len(other.messages) != 0 {
 		t.Errorf("the echo landed in the wrong chat: %+v", other.messages)
 	}
 }

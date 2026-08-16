@@ -210,11 +210,20 @@ type moderationState struct {
 	duration      time.Duration
 	durationInput string
 
-	// feedback is the status-bar line, and level is how it is colored.
-	feedback string
-	level    moderationLevel
-
 	rollback []moderationRollbackEntry
+}
+
+// moderationNote is the last thing moderation had to say, and how to color it.
+//
+// It is deliberately not part of moderationState. A pending action and a status
+// line have different lifetimes: the action ends the moment it is committed or
+// canceled, while the sentence explaining what happened has to outlive it and
+// stay on screen. Keeping both in one struct meant every stage zeroed the
+// struct and then wrote two fields back, and left most of the fields meaningful
+// only during some stages.
+type moderationNote struct {
+	text  string
+	level moderationLevel
 }
 
 // moderationCompletedMsg is one finished moderation request.
@@ -349,8 +358,8 @@ func (m shellModel) moderationRole(state *chatState) moderationRole {
 // are documented in help, and a permanent "moderation: ready" banner would only
 // spend width that the quota meter needs.
 func (m shellModel) moderationStatus() (string, moderationLevel) {
-	if line := strings.TrimSpace(m.moderation.feedback); line != "" {
-		return line, m.moderation.level
+	if line := strings.TrimSpace(m.moderationNote.text); line != "" {
+		return line, m.moderationNote.level
 	}
 	return "", moderationLevelInfo
 }
@@ -444,23 +453,23 @@ func (m *shellModel) handleModerationDurationKey(msg tea.KeyMsg) (tea.Cmd, bool)
 		// character that is not must delete as one keystroke rather than
 		// leaving half a sequence in the status bar.
 		m.moderation.durationInput = trimLastGrapheme(m.moderation.durationInput)
-		m.moderation.feedback, m.moderation.level = moderationDurationPrompt(m.moderation)
+		m.moderationNote.text, m.moderationNote.level = moderationDurationPrompt(m.moderation)
 		return nil, true
 	case tea.KeyCtrlU:
 		m.moderation.durationInput = ""
-		m.moderation.feedback, m.moderation.level = moderationDurationPrompt(m.moderation)
+		m.moderationNote.text, m.moderationNote.level = moderationDurationPrompt(m.moderation)
 		return nil, true
 	case tea.KeyEnter:
 		duration, err := parseModerationDuration(m.moderation.durationInput)
 		if err != nil {
-			m.moderation.feedback = "timeout " + err.Error()
-			m.moderation.level = moderationLevelError
+			m.moderationNote.text = "timeout " + err.Error()
+			m.moderationNote.level = moderationLevelError
 			return nil, true
 		}
 		m.moderation.duration = duration
 		m.moderation.stage = moderationStageConfirm
-		m.moderation.feedback = moderationConfirmPrompt(m.moderation)
-		m.moderation.level = moderationLevelWarn
+		m.moderationNote.text = moderationConfirmPrompt(m.moderation)
+		m.moderationNote.level = moderationLevelWarn
 		return nil, true
 	case tea.KeyRunes:
 		text := string(msg.Runes)
@@ -468,7 +477,7 @@ func (m *shellModel) handleModerationDurationKey(msg tea.KeyMsg) (tea.Cmd, bool)
 			return nil, true
 		}
 		m.moderation.durationInput += text
-		m.moderation.feedback, m.moderation.level = moderationDurationPrompt(m.moderation)
+		m.moderationNote.text, m.moderationNote.level = moderationDurationPrompt(m.moderation)
 		return nil, true
 	}
 	// Every other key is swallowed rather than passed on: a modal prompt that
@@ -484,15 +493,15 @@ func (m *shellModel) beginModeration(action moderationAction) {
 
 	capability := m.moderationCapability()
 	if !capability.Available {
-		m.moderation.feedback = "moderation unavailable: " + capability.Reason
-		m.moderation.level = moderationLevelError
+		m.moderationNote.text = "moderation unavailable: " + capability.Reason
+		m.moderationNote.level = moderationLevelError
 		return
 	}
 
 	message, ok := m.selectedMessage()
 	if !ok {
-		m.moderation.feedback = "select a message with j/k first"
-		m.moderation.level = moderationLevelError
+		m.moderationNote.text = "select a message with j/k first"
+		m.moderationNote.level = moderationLevelError
 		return
 	}
 	state := m.activeChatState()
@@ -510,8 +519,8 @@ func (m *shellModel) beginModeration(action moderationAction) {
 	}
 
 	if reason, ok := moderationTargetRefusal(action, message, m.identity.ChannelID, state); !ok {
-		m.moderation.feedback = reason
-		m.moderation.level = moderationLevelError
+		m.moderationNote.text = reason
+		m.moderationNote.level = moderationLevelError
 		return
 	}
 
@@ -519,18 +528,18 @@ func (m *shellModel) beginModeration(action moderationAction) {
 	if action == moderationActionTimeout {
 		m.moderation.stage = moderationStageDuration
 		m.moderation.durationInput = formatModerationDuration(defaultModerationTimeout)
-		m.moderation.feedback, m.moderation.level = moderationDurationPrompt(m.moderation)
+		m.moderationNote.text, m.moderationNote.level = moderationDurationPrompt(m.moderation)
 		return
 	}
 	m.moderation.stage = moderationStageConfirm
-	m.moderation.feedback = moderationConfirmPrompt(m.moderation)
-	m.moderation.level = moderationLevelWarn
+	m.moderationNote.text = moderationConfirmPrompt(m.moderation)
+	m.moderationNote.level = moderationLevelWarn
 
 	// An uncertain capability is disclosed at the moment of arming rather
 	// than buried in help: the user is about to spend an irreversible action
 	// on an assumption, and should know that is what is happening.
 	if !capability.Certain && strings.TrimSpace(capability.Reason) != "" {
-		m.moderation.feedback += " (" + capability.Reason + ")"
+		m.moderationNote.text += " (" + capability.Reason + ")"
 	}
 }
 
@@ -594,9 +603,10 @@ func moderationConfirmPrompt(st moderationState) string {
 
 // cancelModeration clears a pending action, optionally leaving a note.
 func (m *shellModel) cancelModeration(note string) {
-	m.moderation = moderationState{feedback: note}
+	m.moderation = moderationState{}
+	m.moderationNote = moderationNote{text: note}
 	if note != "" {
-		m.moderation.level = moderationLevelInfo
+		m.moderationNote.level = moderationLevelInfo
 	}
 }
 
@@ -626,21 +636,21 @@ func (m *shellModel) commitModeration() tea.Cmd {
 			reason = ErrModerationUnavailable.Error()
 		}
 		m.cancelModeration("moderation unavailable: " + reason)
-		m.moderation.level = moderationLevelError
+		m.moderationNote.level = moderationLevelError
 		return nil
 	}
 
-	state := m.chats.ensureKey(pending.chatKey)
+	state := m.chats.stateForKey(pending.chatKey)
 	if state == nil {
 		m.cancelModeration("that chat is no longer open")
-		m.moderation.level = moderationLevelError
+		m.moderationNote.level = moderationLevelError
 		return nil
 	}
 
 	m.moderation.stage = moderationStageInFlight
-	m.moderation.level = moderationLevelWarn
+	m.moderationNote.level = moderationLevelWarn
 	m.moderation.rollback = applyOptimisticModeration(state, pending)
-	m.moderation.feedback = moderationInFlightLine(pending)
+	m.moderationNote.text = moderationInFlightLine(pending)
 
 	liveChatID := strings.TrimSpace(state.target.LiveChatID)
 	channelID := pending.channelID
@@ -699,61 +709,19 @@ func applyOptimisticModeration(state *chatState, pending moderationState) []mode
 		if id == "" {
 			return nil
 		}
-		return redactWithRollback(state, func(message youtube.Message) bool {
+		return state.redact(func(message youtube.Message) bool {
 			return message.ID == id
-		})
+		}, true)
 	case moderationActionTimeout, moderationActionBan:
 		channelID := pending.channelID
 		if channelID == "" {
 			return nil
 		}
-		return redactWithRollback(state, func(message youtube.Message) bool {
+		return state.redact(func(message youtube.Message) bool {
 			return strings.EqualFold(strings.TrimSpace(message.Author.ChannelID), channelID)
-		})
+		}, true)
 	}
 	return nil
-}
-
-// redactWithRollback blanks every matching message and records what it blanked.
-//
-// It mirrors chatState.markMessagesDeleted, which discards the text outright.
-// The difference is the whole reason this exists: an optimistic redaction is a
-// claim about what YouTube is going to do, and a claim that turns out to be
-// wrong has to be retractable.
-func redactWithRollback(state *chatState, match func(youtube.Message) bool) []moderationRollbackEntry {
-	if state == nil || match == nil {
-		return nil
-	}
-	var entries []moderationRollbackEntry
-	for i := range state.messages {
-		if state.messages[i].Deleted || !match(state.messages[i]) {
-			continue
-		}
-		entries = append(entries, moderationRollbackEntry{
-			id:        state.messages[i].ID,
-			text:      state.messages[i].Text,
-			fragments: state.messages[i].Fragments,
-		})
-		state.messages[i].Deleted = true
-		state.messages[i].Text = ""
-		state.messages[i].Fragments = nil
-	}
-	for id, message := range state.activeMessages {
-		if message.Deleted || !match(message) {
-			continue
-		}
-		entries = append(entries, moderationRollbackEntry{
-			id:        id,
-			text:      message.Text,
-			fragments: message.Fragments,
-			active:    true,
-		})
-		message.Deleted = true
-		message.Text = ""
-		message.Fragments = nil
-		state.activeMessages[id] = message
-	}
-	return entries
 }
 
 // rollbackModeration restores everything an optimistic redaction removed.
@@ -803,13 +771,13 @@ func (m *shellModel) completeModeration(msg moderationCompletedMsg) {
 	pending := m.moderation
 	m.moderation = moderationState{}
 
-	state := m.chats.ensureKey(msg.chatKey)
+	state := m.chats.stateForKey(msg.chatKey)
 	if msg.err != nil {
 		if state != nil {
 			rollbackModeration(state, pending.rollback)
 		}
-		m.moderation.feedback = moderationFailureLine(msg)
-		m.moderation.level = moderationLevelError
+		m.moderationNote.text = moderationFailureLine(msg)
+		m.moderationNote.level = moderationLevelError
 		m.clampScroll()
 		return
 	}
@@ -837,8 +805,8 @@ func (m *shellModel) completeModeration(msg moderationCompletedMsg) {
 		}
 		m.applyModeration(event)
 	}
-	m.moderation.feedback = moderationSuccessLine(msg)
-	m.moderation.level = moderationLevelInfo
+	m.moderationNote.text = moderationSuccessLine(msg)
+	m.moderationNote.level = moderationLevelInfo
 	m.clampScroll()
 }
 

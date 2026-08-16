@@ -37,7 +37,8 @@ const (
 func (m shellModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		return m.handleKey(msg)
+		cmd := m.handleKey(msg)
+		return m, cmd
 
 	case tea.MouseMsg:
 		if !m.mouseEnabled {
@@ -151,7 +152,22 @@ func (m shellModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // --- keyboard --------------------------------------------------------------
 
-func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+// handleKey mutates through its receiver and hands back only a command.
+//
+// The pointer is the point. Update dispatches every key through one, so a
+// helper called here purely for its side effect - cancelModeration disarming a
+// ban on the path that then declines the key - writes into the model the
+// runtime goes on to draw, instead of into a copy that is thrown away on
+// return. Sub-handlers that still answer with a model are adopted explicitly
+// through adopt below, so there is exactly one way a key changes the model.
+func (m *shellModel) handleKey(msg tea.KeyMsg) tea.Cmd {
+	// adopt takes over a model a sub-handler built and returns its command.
+	adopt := func(model tea.Model, cmd tea.Cmd) tea.Cmd {
+		if next, ok := model.(shellModel); ok {
+			*m = next
+		}
+		return cmd
+	}
 	// Any key other than a second ctrl+L abandons a pending clear, so a stray
 	// press cannot arm the confirmation and sit waiting for an unrelated
 	// keystroke to trigger it later.
@@ -159,17 +175,17 @@ func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pendingClearChat = false
 	}
 	if msg.Type == tea.KeyCtrlC {
-		return m, tea.Quit
+		return tea.Quit
 	}
 	if m.splashActive() {
 		m.splashSkipped = true
-		return m, nil
+		return nil
 	}
 	if msg.Type == tea.KeyRunes && msg.Alt && len(msg.Runes) == 1 {
 		if tab, ok := tabForShortcutRune(msg.Runes[0]); ok {
 			m.activeTab = tab
 			m.clampScroll()
-			return m, nil
+			return nil
 		}
 	}
 
@@ -177,7 +193,7 @@ func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// prompt below is: while it is open every key is query text, so typing a
 	// word that happens to contain "d" cannot arm a deletion.
 	if model, cmd, handled := m.handleSearchKey(msg); handled {
-		return model, cmd
+		return adopt(model, cmd)
 	}
 
 	// Moderation is consumed before the global toggles because its duration
@@ -186,7 +202,7 @@ func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// ban armed behind a picker. An armed confirmation claims only its own
 	// key, esc, and enter, and lets everything else through after canceling.
 	if cmd, handled := m.handleModerationKey(msg); handled {
-		return m, cmd
+		return cmd
 	}
 
 	// Global toggles work from any focus, including from inside an overlay,
@@ -194,40 +210,40 @@ func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyCtrlP:
 		m.toggleOverlay(overlayPalette)
-		return m, nil
+		return nil
 	case tea.KeyCtrlE:
 		m.toggleOverlay(overlayEmojiPicker)
-		return m, nil
+		return nil
 	case tea.KeyCtrlT:
 		m.toggleOverlay(overlayThemePicker)
-		return m, nil
+		return nil
 	}
 	if handled := m.handleDisplayToggleKey(msg); handled {
-		return m, nil
+		return nil
 	}
 	if m.overlay.open() {
-		return m.handleOverlayKey(msg)
+		return adopt(m.handleOverlayKey(msg))
 	}
 
 	// The mention completion strip claims tab, up, down, and esc, but only
 	// while it is showing something. Claiming them unconditionally would
 	// break the bindings those keys carry everywhere else in the composer.
 	if model, cmd, handled := m.handleMentionKey(msg); handled {
-		return model, cmd
+		return adopt(model, cmd)
 	}
 
 	// The space leader chord is consumed before every other binding. It is
 	// only ever armed outside the composer, where space is literal text.
 	if m.leaderPending {
-		return m.handleLeaderKey(msg)
+		return adopt(m.handleLeaderKey(msg))
 	}
 	if msg.Type == tea.KeySpace && m.focus != focusComposer {
 		m.leaderPending = true
-		return m, nil
+		return nil
 	}
 	if m.focus == focusSidebar {
 		if model, cmd, handled := m.handleSidebarKey(msg); handled {
-			return model, cmd
+			return adopt(model, cmd)
 		}
 	}
 
@@ -265,7 +281,7 @@ func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.pendingClearChat = true
 	case tea.KeyCtrlR:
-		return m, m.requestReconnect(m.now())
+		return m.requestReconnect(m.now())
 	case tea.KeyBackspace:
 		if m.focus == focusComposer {
 			m.deleteComposerGrapheme()
@@ -281,26 +297,26 @@ func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// returns to the chat view, keeping the draft intact.
 		if m.focus == focusComposer {
 			m.focus = focusChat
-			return m, nil
+			return nil
 		}
 		state := m.activeChatState()
 		if state.inspectOpen {
 			state.inspectOpen = false
 			m.clampScroll()
-			return m, nil
+			return nil
 		}
 		// An active search is the next-most-recent mode, so esc clears it
 		// before touching the reply or the cursor beneath it.
 		if m.searchActive() {
 			m.clearSearch()
-			return m, nil
+			return nil
 		}
 		// Then unwind one step at a time: cancel the armed reply first and
 		// keep the cursor where it was, so changing your mind about replying
 		// does not also lose your place in the backlog.
 		if state.replyTo != nil {
 			state.replyTo = nil
-			return m, nil
+			return nil
 		}
 		state.selected = nil
 	case tea.KeyUp:
@@ -313,16 +329,16 @@ func (m shellModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case tea.KeyEnter:
 		if m.focus == focusComposer {
-			return m.queueComposerSend()
+			return adopt(m.queueComposerSend())
 		}
 	case tea.KeySpace:
 		if m.focus == focusComposer {
 			m.insertComposerText(" ")
 		}
 	case tea.KeyRunes:
-		return m.handleRuneKey(msg)
+		return adopt(m.handleRuneKey(msg))
 	}
-	return m, nil
+	return nil
 }
 
 func (m shellModel) handleRuneKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -485,27 +501,53 @@ func (m *shellModel) toggleActivityVisibility() {
 func (m *shellModel) handleDisplayToggleKey(msg tea.KeyMsg) bool {
 	switch msg.Type {
 	case tea.KeyCtrlG:
-		m.messageLayout = nextLayoutMode(m.messageLayout)
-		m.effectiveConfig.Features.MessageLayout = string(m.messageLayout)
-		m.refreshActiveRevealRows()
+		m.cycleLayout()
 		return true
 	case tea.KeyCtrlB:
-		m.badgeMode = nextBadgeMode(m.badgeMode)
-		m.effectiveConfig.Features.BadgeMode = string(m.badgeMode)
-		m.refreshActiveRevealRows()
+		m.cycleBadgeMode()
 		return true
 	case tea.KeyCtrlY:
-		m.highlightEmoji = !m.highlightEmoji
-		m.effectiveConfig.Features.HighlightEmoji = m.highlightEmoji
-		m.refreshActiveRevealRows()
+		m.toggleEmojiHighlight()
 		return true
 	case tea.KeyCtrlN:
-		m.fullUsername = !m.fullUsername
-		m.effectiveConfig.Features.FullUsername = m.fullUsername
-		m.refreshActiveRevealRows()
+		m.toggleFullUsernames()
 		return true
 	}
 	return false
+}
+
+// The four toggles below are the single implementation of each display cycle.
+// Both the key handler and the command palette call them, because the palette
+// used to carry its own copy that forgot refreshActiveRevealRows - cycling the
+// layout from the palette while a reveal was still animating left that reveal
+// drawn at the old layout until it finished.
+
+// cycleLayout advances the message layout: inline, grouped, compact.
+func (m *shellModel) cycleLayout() {
+	m.messageLayout = nextLayoutMode(m.messageLayout)
+	m.effectiveConfig.Features.MessageLayout = string(m.messageLayout)
+	m.refreshActiveRevealRows()
+}
+
+// cycleBadgeMode advances how author badges are drawn.
+func (m *shellModel) cycleBadgeMode() {
+	m.badgeMode = nextBadgeMode(m.badgeMode)
+	m.effectiveConfig.Features.BadgeMode = string(m.badgeMode)
+	m.refreshActiveRevealRows()
+}
+
+// toggleEmojiHighlight flips the emphasis applied to emoji-only messages.
+func (m *shellModel) toggleEmojiHighlight() {
+	m.highlightEmoji = !m.highlightEmoji
+	m.effectiveConfig.Features.HighlightEmoji = m.highlightEmoji
+	m.refreshActiveRevealRows()
+}
+
+// toggleFullUsernames flips between full and truncated author names.
+func (m *shellModel) toggleFullUsernames() {
+	m.fullUsername = !m.fullUsername
+	m.effectiveConfig.Features.FullUsername = m.fullUsername
+	m.refreshActiveRevealRows()
 }
 
 func nextLayoutMode(mode render.LayoutMode) render.LayoutMode {
@@ -800,9 +842,13 @@ func (m shellModel) commitOverlay() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// paletteCommand is one entry in the command palette. The shortcut column is
-// generated from the keymap table so a command cannot advertise a key the
-// keymap no longer has.
+// paletteCommand is one entry in the command palette.
+//
+// The shortcut column is written out by hand here rather than looked up from
+// keyBindings, because a palette entry and a key binding are matched by intent
+// and there is no shared identifier to join them on. What keeps the column
+// honest is a test: TestCommandPaletteShortcutsAreDocumentedKeys fails when an
+// entry advertises a key the keymap no longer has.
 type paletteCommand struct {
 	title    string
 	shortcut string
@@ -844,23 +890,19 @@ func paletteCommands() []paletteCommand {
 			return m, nil
 		}},
 		{title: "Cycle message layout", shortcut: "ctrl+g", run: func(m shellModel) (tea.Model, tea.Cmd) {
-			m.messageLayout = nextLayoutMode(m.messageLayout)
-			m.effectiveConfig.Features.MessageLayout = string(m.messageLayout)
+			m.cycleLayout()
 			return m, nil
 		}},
 		{title: "Cycle badge mode", shortcut: "ctrl+b", run: func(m shellModel) (tea.Model, tea.Cmd) {
-			m.badgeMode = nextBadgeMode(m.badgeMode)
-			m.effectiveConfig.Features.BadgeMode = string(m.badgeMode)
+			m.cycleBadgeMode()
 			return m, nil
 		}},
 		{title: "Toggle emoji highlight", shortcut: "ctrl+y", run: func(m shellModel) (tea.Model, tea.Cmd) {
-			m.highlightEmoji = !m.highlightEmoji
-			m.effectiveConfig.Features.HighlightEmoji = m.highlightEmoji
+			m.toggleEmojiHighlight()
 			return m, nil
 		}},
 		{title: "Toggle full usernames", shortcut: "ctrl+n", run: func(m shellModel) (tea.Model, tea.Cmd) {
-			m.fullUsername = !m.fullUsername
-			m.effectiveConfig.Features.FullUsername = m.fullUsername
+			m.toggleFullUsernames()
 			return m, nil
 		}},
 		{title: "Reconnect", shortcut: "ctrl+r", run: func(m shellModel) (tea.Model, tea.Cmd) {
@@ -1206,7 +1248,7 @@ func (m *shellModel) closeChat(key string) {
 }
 
 func (m shellModel) applyResolvedTarget(msg targetResolvedMsg) (tea.Model, tea.Cmd) {
-	state := m.chats.ensureKey(msg.chatKey)
+	state := m.chats.stateForKey(msg.chatKey)
 	if state == nil {
 		return m, nil
 	}
@@ -1228,7 +1270,7 @@ func (m *shellModel) applyChatMetrics(msg chatMetricsMsg) {
 	if msg.err != nil {
 		return
 	}
-	state := m.chats.ensureKey(msg.chatKey)
+	state := m.chats.stateForKey(msg.chatKey)
 	if state == nil {
 		return
 	}
@@ -1407,7 +1449,6 @@ func (m *shellModel) enqueueMessage(message youtube.Message) tea.Cmd {
 			state.newBelow++
 		}
 		state.appendMessage(message)
-		state.trimScrollback(m.chats.scrollbackLimit)
 		return nil
 	}
 
@@ -1417,7 +1458,6 @@ func (m *shellModel) enqueueMessage(message youtube.Message) tea.Cmd {
 	m.completeReveals(result.Completed)
 	if result.Immediate {
 		state.appendMessage(message)
-		state.trimScrollback(m.chats.scrollbackLimit)
 		return nil
 	}
 	state.activeOrder = append(state.activeOrder, revealID)
@@ -1431,16 +1471,14 @@ func (m *shellModel) nextRevealID(message youtube.Message) string {
 }
 
 // revealRenderOptions builds the render options the reveal animation measures
-// against. It deliberately mirrors what the view will draw: a reveal rendered
-// at a different width would jump when it completes.
+// against. The options and the width both come from the view's own owners -
+// renderOptions and chatMessageContentWidth - because a reveal measured any
+// differently would jump the moment it lands in history. This lane used to
+// keep its own copies of both, and they had already drifted: the copy tested
+// avatarMode != "off" while the view trimmed and case-folded it, so an
+// avatarMode of "Off " animated rows with avatars and settled them without.
 func (m shellModel) revealRenderOptions(message youtube.Message) render.Options {
-	opts := render.DefaultOptions(m.revealRowWidth())
-	opts.Palette = m.theme
-	opts.Layout = m.messageLayout
-	opts.Badges = m.badgeMode
-	opts.FullUsername = m.fullUsername
-	opts.HighlightEmoji = m.highlightEmoji
-	opts.Assets.ShowAvatars = m.avatarMode != "off"
+	opts := m.renderOptions(m.revealRowWidth())
 	opts.Meta = render.AuthorMeta{
 		Role:            authorRole(message.Author),
 		MemberMonths:    message.Author.MemberMonths,
@@ -1453,17 +1491,10 @@ func (m shellModel) revealRenderOptions(message youtube.Message) render.Options 
 	return opts
 }
 
-// revealRowWidth is the content width a chat row is wrapped to. It matches the
-// view's own budget: the pane borders, its padding, and any visible side pane.
+// revealRowWidth is the content width a chat row is wrapped to, solved by the
+// same layout the view draws with.
 func (m shellModel) revealRowWidth() int {
-	width := m.width - 4
-	if m.sidebarVisibility == paneVisibilityShown || (m.sidebarVisibility == paneVisibilityAuto && m.width >= 72 && m.chatCount() > 1) {
-		width -= m.sidebarWidth()
-	}
-	if m.activityVisibility == paneVisibilityShown || (m.activityVisibility == paneVisibilityAuto && m.width >= 100) {
-		width -= m.activityWidth()
-	}
-	return clampMin(width, render.MinimumRenderWidth)
+	return m.chatMessageContentWidth(m.layout())
 }
 
 func authorRole(author youtube.Author) string {
@@ -1559,7 +1590,6 @@ func (m *shellModel) completeReveals(completed []animation.CompletedReveal) {
 		delete(state.activeMessages, reveal.ID)
 		state.removeActiveReveal(reveal.ID)
 		state.appendMessage(message)
-		state.trimScrollback(m.chats.scrollbackLimit)
 	}
 }
 
@@ -1746,17 +1776,13 @@ func (m shellModel) completeComposerSend(msg composerSendCompletedMsg) (tea.Mode
 	sent := *state.activeSend
 	state.activeSend = nil
 
-	switch {
-	case msg.err != nil:
-		state.sendState = composerSendFailed
-		state.sendFeedback = "failed: " + credentialSafeDetail(msg.err)
-		drafts, reply := state.drainUnsentComposerSends(sent)
-		state.restoreComposerText(drafts...)
-		state.replyTo = reply
-		return m, nil
-	case msg.result.RateLimited:
-		state.sendState = composerSendRateLimited
-		state.sendFeedback = "rate limited: " + sendResultDetail(msg.result)
+	// A refused send and a rate-limited one are handled identically: the queue
+	// stops, and everything still unsent - including the reply it was aimed at
+	// - goes back into the composer so the user keeps their words. Only the
+	// label the status line shows differs.
+	if failure, sendState, failed := composerSendFailure(msg); failed {
+		state.sendState = sendState
+		state.sendFeedback = failure
 		drafts, reply := state.drainUnsentComposerSends(sent)
 		state.restoreComposerText(drafts...)
 		state.replyTo = reply
@@ -1768,6 +1794,18 @@ func (m shellModel) completeComposerSend(msg composerSendCompletedMsg) (tea.Mode
 	m.appendLocalEcho(sent, msg.result, m.now())
 	m.clampScroll()
 	return m, m.startNextComposerSend(state)
+}
+
+// composerSendFailure reports whether a completed send has to be handed back
+// to the composer, with the feedback and send state that describe why.
+func composerSendFailure(msg composerSendCompletedMsg) (feedback string, state composerSendState, failed bool) {
+	switch {
+	case msg.err != nil:
+		return "failed: " + credentialSafeDetail(msg.err), composerSendFailed, true
+	case msg.result.RateLimited:
+		return "rate limited: " + sendResultDetail(msg.result), composerSendRateLimited, true
+	}
+	return "", composerSendSucceeded, false
 }
 
 // now is the model's clock for state transitions. Update may read the wall

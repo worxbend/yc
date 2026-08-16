@@ -106,10 +106,10 @@ func hostileShellModel(t *testing.T, width, height int) shellModel {
 
 	keys := model.chats.chatKeys()
 	// A hostile broadcast title on a chat the sidebar has to label.
-	model.chats.ensureKey(keys[1]).target.Title = hostileNames[0]
-	model.chats.ensureKey(keys[1]).target.LiveChatID = keys[1]
+	model.chats.stateForKey(keys[1]).target.Title = hostileNames[0]
+	model.chats.stateForKey(keys[1]).target.LiveChatID = keys[1]
 
-	state := model.chats.ensureKey(keys[0])
+	state := model.chats.stateForKey(keys[0])
 	state.target.LiveChatID = keys[0]
 	state.target.Title = "\U0001F468\u200d\U0001F469\u200d\U0001F467\u200d\U0001F466 Launch 日本語 Stream"
 	state.status = youtube.ConnectionState{Status: youtube.ConnectionConnected, Detail: "polling"}

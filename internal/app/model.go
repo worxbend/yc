@@ -206,6 +206,9 @@ type shellModel struct {
 	// confirmation, only one can exist at a time and it belongs to the chat
 	// the user is looking at. See internal/app/moderation.go.
 	moderation moderationState
+	// moderationNote is the last moderation status line. It outlives the
+	// action that produced it, which is why it is a separate field.
+	moderationNote moderationNote
 
 	sidebarVisibility     paneVisibility
 	activityVisibility    paneVisibility
@@ -308,7 +311,7 @@ func newLiveModel(cfg config.Config, client ChatClient, clock animation.Clock, o
 	// Every open chat starts in "connecting": the transport has not reported
 	// anything yet, and a blank status reads as a stalled app.
 	for _, key := range model.chats.chatKeys() {
-		state := model.chats.ensureKey(key)
+		state := model.chats.stateForKey(key)
 		if state == nil {
 			continue
 		}
@@ -502,13 +505,15 @@ func splashDeadline(animationMode string) time.Time {
 // paints, so this deliberately errs on the generous side: over-scrolling is
 // corrected on the next frame, under-scrolling would strand the user.
 func (m shellModel) chatViewportHeight() int {
-	// tab bar, status line, help line, and the composer block.
-	chrome := 3 + 4
+	// The layout solver in view.go is the authority on these; the constants
+	// are shared with it so a taller composer cannot silently skew the page
+	// keys while leaving the frame correct.
+	chrome := chatChromeRows + composerBlockHeight
 	if m.overlay.open() {
-		chrome += 5
+		chrome += dockedOverlayHeight
 	}
 	if m.activeChatState().inspectOpen {
-		chrome += 5
+		chrome += dockedOverlayHeight
 	}
 	height := m.height - chrome
 	if height < 1 {
@@ -525,7 +530,7 @@ func (m shellModel) chatViewportHeight() int {
 // the user holds page-up on a short buffer.
 func (m shellModel) maxScrollOffset() int {
 	visible := len(m.visibleMessages()) + len(m.activeChatState().activeOrder)
-	bound := visible*4 - m.chatViewportHeight()
+	bound := visible*scrollRowsPerMessageBound - m.chatViewportHeight()
 	if bound < 0 {
 		return 0
 	}

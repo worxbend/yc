@@ -94,7 +94,7 @@ func (m *shellModel) scheduleAutoFollowTick(chatKey string) tea.Cmd {
 // handleAutoFollowTick spends one check: it re-resolves the ended chat's
 // channel in a command and reports back as autoFollowResolvedMsg.
 func (m shellModel) handleAutoFollowTick(msg autoFollowTickMsg) (tea.Model, tea.Cmd) {
-	state := m.chats.ensureKey(msg.chatKey)
+	state := m.chats.stateForKey(msg.chatKey)
 	if state == nil || !state.autoFollowActive || m.broadcastResolver == nil {
 		return m, nil
 	}
@@ -122,7 +122,7 @@ func (m shellModel) handleAutoFollowTick(msg autoFollowTickMsg) (tea.Model, tea.
 // broadcast, so the old chat can stay resolvable for a short window after it
 // closed.
 func (m shellModel) handleAutoFollowResolved(msg autoFollowResolvedMsg) (tea.Model, tea.Cmd) {
-	state := m.chats.ensureKey(msg.chatKey)
+	state := m.chats.stateForKey(msg.chatKey)
 	if state == nil || !state.autoFollowActive {
 		return m, nil
 	}

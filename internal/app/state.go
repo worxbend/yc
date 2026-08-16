@@ -31,6 +31,40 @@ const seenMessageRingSize = 4096
 // accumulate an Author per distinct chatter for the whole session.
 const rosterRingSize = 2048
 
+// boundedRing is a fixed-capacity, insertion-ordered ring of string keys. It
+// backs every per-chat "remember the last N of these" structure: recording a
+// key claims the oldest slot and hands back whatever was evicted from it, so
+// the caller can drop the evicted key from its own maps.
+//
+// The zero value is unallocated; the first record with a positive size lazily
+// builds the slots, so a chat that never files anything allocates nothing.
+type boundedRing struct {
+	slots  []string
+	cursor int
+}
+
+// record stores key in the oldest slot and returns the key it displaced, or ""
+// while the ring is still filling.
+func (r *boundedRing) record(key string, size int) (evicted string) {
+	if r.slots == nil {
+		if size <= 0 {
+			return ""
+		}
+		r.slots = make([]string, size)
+		r.cursor = 0
+	}
+	evicted = r.slots[r.cursor]
+	r.slots[r.cursor] = key
+	r.cursor = (r.cursor + 1) % len(r.slots)
+	return evicted
+}
+
+// reset drops every slot, returning the ring to its zero state.
+func (r *boundedRing) reset() {
+	r.slots = nil
+	r.cursor = 0
+}
+
 func replyMessageID(reply *composerReplyContext) string {
 	if reply == nil {
 		return ""
@@ -71,6 +105,11 @@ type chatState struct {
 	target youtube.ChatTarget
 	status youtube.ConnectionState
 
+	// scrollbackLimit caps messages. It is fixed at construction and applied
+	// by appendMessage itself, so no append path can forget to trim and let a
+	// long broadcast grow frame time without bound.
+	scrollbackLimit int
+
 	messages     []youtube.Message
 	scrollOffset int
 	filters      messageFilterSet
@@ -99,7 +138,7 @@ type chatState struct {
 	// from the poller replaces the echo instead of duplicating it.
 	localEchoes map[string]struct{}
 
-	// seenIDs and seenOrder are the bounded ring of message IDs this chat has
+	// seenIDs and seenRing are the bounded ring of message IDs this chat has
 	// already filed, and the only defense against a re-delivered backlog.
 	//
 	// The poller dedupes within one session, but its ring dies with it: ctrl+r
@@ -107,9 +146,8 @@ type chatState struct {
 	// no page token and an empty ring, so YouTube re-sends the whole recent
 	// history. Without this the user's own reconnect key printed every message
 	// on screen a second time.
-	seenIDs    map[string]struct{}
-	seenOrder  []string
-	seenCursor int
+	seenIDs  map[string]struct{}
+	seenRing boundedRing
 
 	// moderations retains deletions, bans, and timeouts for the activity
 	// column.
@@ -160,14 +198,13 @@ type chatState struct {
 
 	// roster is best-effort: YouTube reports no presence, so it is only the
 	// authors seen speaking, used for @mention completion and author meta.
-	// It is bounded by rosterOrder/rosterCursor, an insertion-ordered ring
-	// that evicts the least recently new speaker; mention completion only
-	// ever needs recent speakers, and firstSeen degrades to "unknown".
-	roster       map[string]youtube.Author
-	rosterOrder  []string
-	rosterCursor int
-	firstSeen    map[string]time.Time
-	activePoll   *youtube.PollState
+	// It is bounded by rosterRing, an insertion-ordered ring that evicts the
+	// least recently new speaker; mention completion only ever needs recent
+	// speakers, and firstSeen degrades to "unknown".
+	roster     map[string]youtube.Author
+	rosterRing boundedRing
+	firstSeen  map[string]time.Time
+	activePoll *youtube.PollState
 
 	live         bool
 	liveKnown    bool
@@ -191,6 +228,18 @@ type chatStateSet struct {
 	animationConfig animation.Config
 	clock           animation.Clock
 	scrollbackLimit int
+
+	// rowBlocks and rowCache are the view's render scratch. They live on the
+	// set rather than on shellModel because shellModel is copied by value on
+	// every Update - a cache held as a model field would be thrown away on
+	// each keystroke - and they used to be package-level vars, which meant two
+	// programs or two parallel tests in one process shared one buffer and one
+	// cache. Hanging them off the set gives each program its own.
+	//
+	// Bubble Tea runs Update and View for one program on a single goroutine,
+	// so neither needs synchronizing.
+	rowBlocks []chatRowBlock
+	rowCache  *chatRowCache
 
 	// placeholder backs the no-chats-open empty state. It is never in order
 	// or states, so it cannot be switched to or listed in the sidebar; it
@@ -342,14 +391,22 @@ func (s *chatStateSet) ensure(target youtube.ChatTarget) *chatState {
 	return state
 }
 
-// ensureKey returns the state already stored under a key without creating one.
-func (s *chatStateSet) ensureKey(key string) *chatState {
+// stateForKey looks up the state already stored under a routing key. It never
+// creates one: a key that names no open chat has no state, and inventing one
+// here would resurrect a chat the user closed.
+//
+// A blank key names no chat either, so it answers nil rather than quietly
+// standing in the active chat. The caller that does want the active chat when
+// its key has gone - completeReconnect is the one - says so in a line of its
+// own, because "apply this to whatever is on screen" is a decision worth
+// reading at the call site.
+func (s *chatStateSet) stateForKey(key string) *chatState {
 	if s == nil {
 		return nil
 	}
 	key = strings.ToLower(strings.TrimSpace(key))
 	if key == "" {
-		return s.activeState()
+		return nil
 	}
 	if state, ok := s.states[key]; ok {
 		return state
@@ -359,8 +416,9 @@ func (s *chatStateSet) ensureKey(key string) *chatState {
 
 func (s *chatStateSet) newState(target youtube.ChatTarget) *chatState {
 	return &chatState{
-		key:    target.Key(),
-		target: target,
+		key:             target.Key(),
+		target:          target,
+		scrollbackLimit: s.scrollbackLimit,
 		status: youtube.ConnectionState{
 			Status: youtube.ConnectionDisconnected,
 			ChatID: target.LiveChatID,
@@ -389,7 +447,7 @@ func (s *chatStateSet) setActive(key string) bool {
 	// The chat being left stops being animated the instant it stops being
 	// active, so anything still mid-reveal has to land in its history now.
 	if outgoing := s.states[s.active]; outgoing != nil {
-		outgoing.flushActiveReveals(s.animationConfig, s.clock, s.scrollbackLimit)
+		outgoing.flushActiveReveals(s.animationConfig, s.clock)
 	}
 	s.active = key
 	state.unread = 0
@@ -432,7 +490,6 @@ func (s *chatStateSet) applyMessage(message youtube.Message) (*chatState, bool) 
 	state.observeAuthor(message)
 	if state.key != s.active {
 		state.appendMessage(message)
-		state.trimScrollback(s.scrollbackLimit)
 		state.unread++
 		return state, false
 	}
@@ -583,7 +640,8 @@ func (s *chatState) mergeTarget(target youtube.ChatTarget) {
 }
 
 // appendMessage adds a message to the retained history, replacing the local
-// echo it confirms rather than printing the same line twice.
+// echo it confirms rather than printing the same line twice. It also enforces
+// the scrollback limit, so no append path can retain more than the cap.
 func (s *chatState) appendMessage(message youtube.Message) {
 	if s == nil {
 		return
@@ -592,6 +650,7 @@ func (s *chatState) appendMessage(message youtube.Message) {
 		return
 	}
 	s.messages = append(s.messages, message)
+	s.trimScrollback(s.scrollbackLimit)
 }
 
 // replaceLocalEcho swaps an optimistic local row for the authoritative one.
@@ -661,12 +720,6 @@ func (s *chatState) observeAuthor(message youtube.Message) {
 	if s.roster == nil {
 		s.roster = make(map[string]youtube.Author, rosterRingSize)
 	}
-	// Guarded independently of roster: a caller may hand us a pre-populated
-	// roster map, and the ring still has to exist before it is indexed.
-	if s.rosterOrder == nil {
-		s.rosterOrder = make([]string, rosterRingSize)
-		s.rosterCursor = 0
-	}
 	if s.firstSeen == nil {
 		s.firstSeen = make(map[string]time.Time, rosterRingSize)
 	}
@@ -676,12 +729,10 @@ func (s *chatState) observeAuthor(message youtube.Message) {
 		// cache - and without this one a long broadcast with a large
 		// distinct-chatter count grows an Author and a timestamp per person
 		// for the life of the session.
-		if evicted := s.rosterOrder[s.rosterCursor]; evicted != "" {
+		if evicted := s.rosterRing.record(identity, rosterRingSize); evicted != "" {
 			delete(s.roster, evicted)
 			delete(s.firstSeen, evicted)
 		}
-		s.rosterOrder[s.rosterCursor] = identity
-		s.rosterCursor = (s.rosterCursor + 1) % len(s.rosterOrder)
 	}
 	s.roster[identity] = message.Author
 	if _, ok := s.firstSeen[identity]; !ok && !message.Timestamp.IsZero() {
@@ -705,18 +756,15 @@ func (s *chatState) markSeen(id string) bool {
 	}
 	if s.seenIDs == nil {
 		s.seenIDs = make(map[string]struct{}, seenMessageRingSize)
-		s.seenOrder = make([]string, seenMessageRingSize)
 	}
 	if _, echoed := s.localEchoes[id]; !echoed {
 		if _, ok := s.seenIDs[id]; ok {
 			return false
 		}
 	}
-	if evicted := s.seenOrder[s.seenCursor]; evicted != "" {
+	if evicted := s.seenRing.record(id, seenMessageRingSize); evicted != "" {
 		delete(s.seenIDs, evicted)
 	}
-	s.seenOrder[s.seenCursor] = id
-	s.seenCursor = (s.seenCursor + 1) % len(s.seenOrder)
 	s.seenIDs[id] = struct{}{}
 	return true
 }
@@ -727,7 +775,7 @@ func (s *chatState) markSeen(id string) bool {
 // so a chat switched away from mid-reveal would otherwise hold its newest
 // messages in activeMessages forever: invisible to the filters, to j/k, and to
 // the retained history the user scrolls back through.
-func (s *chatState) flushActiveReveals(cfg animation.Config, clock animation.Clock, scrollbackLimit int) {
+func (s *chatState) flushActiveReveals(cfg animation.Config, clock animation.Clock) {
 	if s == nil || len(s.activeOrder) == 0 {
 		return
 	}
@@ -742,7 +790,6 @@ func (s *chatState) flushActiveReveals(cfg animation.Config, clock animation.Clo
 	s.activeOrder = nil
 	s.activeMessages = make(map[string]youtube.Message)
 	s.revealQueue = animation.NewQueue(cfg, clock)
-	s.trimScrollback(scrollbackLimit)
 }
 
 // firstSeenAt reports when an author was first seen in this chat, for the
@@ -780,35 +827,70 @@ func (s *chatState) applyTerminalStatus(state youtube.ConnectionState) {
 	}
 }
 
-// markMessagesDeleted redacts every message matching the predicate in place.
+// redact blanks every message matching the predicate in place.
 //
-// The text is not kept anywhere the UI can reach: the point of a deletion is
-// that the words leave the screen, on a terminal that is frequently on stream.
-// Returns how many rows changed so the caller can report the moderation.
-func (s *chatState) markMessagesDeleted(match func(youtube.Message) bool) int {
+// The text does not survive anywhere the UI can reach: the point of a deletion
+// is that the words leave the screen, on a terminal that is frequently on
+// stream. When keepRollback is set the removed text is handed back to the
+// caller instead, which is what an optimistic redaction needs - it is a claim
+// about what YouTube is going to do, and a claim that turns out to be wrong
+// has to be retractable.
+func (s *chatState) redact(match func(youtube.Message) bool, keepRollback bool) []moderationRollbackEntry {
 	if s == nil || match == nil {
-		return 0
+		return nil
 	}
-	count := 0
+	var entries []moderationRollbackEntry
 	for i := range s.messages {
 		if s.messages[i].Deleted || !match(s.messages[i]) {
 			continue
 		}
+		if keepRollback {
+			entries = append(entries, moderationRollbackEntry{
+				id:        s.messages[i].ID,
+				text:      s.messages[i].Text,
+				fragments: s.messages[i].Fragments,
+			})
+		}
 		s.messages[i].Deleted = true
 		s.messages[i].Text = ""
 		s.messages[i].Fragments = nil
-		count++
 	}
 	for id, message := range s.activeMessages {
 		if message.Deleted || !match(message) {
 			continue
 		}
+		if keepRollback {
+			entries = append(entries, moderationRollbackEntry{
+				id:        id,
+				text:      message.Text,
+				fragments: message.Fragments,
+				active:    true,
+			})
+		}
 		message.Deleted = true
 		message.Text = ""
 		message.Fragments = nil
 		s.activeMessages[id] = message
-		count++
 	}
+	return entries
+}
+
+// markMessagesDeleted redacts every matching message and discards the text
+// outright. It reports how many rows changed so the caller can report the
+// moderation.
+func (s *chatState) markMessagesDeleted(match func(youtube.Message) bool) int {
+	if s == nil || match == nil {
+		return 0
+	}
+	count := 0
+	counting := func(message youtube.Message) bool {
+		if !match(message) {
+			return false
+		}
+		count++
+		return true
+	}
+	s.redact(counting, false)
 	return count
 }
 
@@ -827,8 +909,7 @@ func (s *chatState) clearHistory(cfg animation.Config, clock animation.Clock) {
 	// followed by a reconnect suppress the very backlog the reconnect fetched,
 	// leaving the user staring at an empty chat they cannot refill.
 	s.seenIDs = nil
-	s.seenOrder = nil
-	s.seenCursor = 0
+	s.seenRing.reset()
 	s.moderations = nil
 	s.selected = nil
 	s.replyTo = nil

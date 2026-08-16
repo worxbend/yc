@@ -227,6 +227,20 @@ const (
 	chatFramedMinWidth       = 5
 	messageGutterWideWidth   = 24
 	messageGutterNarrowWidth = 12
+
+	// composerBlockHeight is the composer's full height: its frame, its input
+	// line, and the send-status line under it.
+	composerBlockHeight = 4
+	// composerShortBlockHeight is what the composer shrinks to when the
+	// terminal cannot spare the full block.
+	composerShortBlockHeight = 3
+	// chatChromeRows counts the fixed single rows around chat - the tab bar,
+	// the status line, and the help line.
+	chatChromeRows = 3
+	// scrollRowsPerMessageBound is how many rendered rows one message is
+	// assumed to be worth when bounding the scroll offset without rendering.
+	// A message occupies at least one row; the rest is headroom for wrapping.
+	scrollRowsPerMessageBound = 4
 )
 
 // layout solves the frame geometry.
@@ -273,19 +287,19 @@ func (m shellModel) layout() shellLayout {
 	}
 
 	if m.activeTab == tabChat {
-		layout.composerHeight = 4
+		layout.composerHeight = composerBlockHeight
 		if m.activeChatState().replyTo != nil {
 			layout.composerHeight++
 		}
 		if height < composerShortTerminal {
-			layout.composerHeight = 3
+			layout.composerHeight = composerShortBlockHeight
 		}
 		layout.composerFramed = width >= composerFramedMinWidth
 	}
 
 	remaining := height - layout.tabBarHeight - layout.statusHeight - layout.helpHeight - layout.composerHeight
-	if remaining < 3 && layout.composerHeight > 3 {
-		layout.composerHeight = 3
+	if remaining < composerShortBlockHeight && layout.composerHeight > composerShortBlockHeight {
+		layout.composerHeight = composerShortBlockHeight
 		remaining = height - layout.tabBarHeight - layout.statusHeight - layout.helpHeight - layout.composerHeight
 	}
 	if remaining < 1 && layout.helpHeight > 0 {
@@ -624,18 +638,22 @@ func (m shellModel) chatRowCount(layout shellLayout) int {
 // Grouping runs before rendering because LayoutGrouped needs to know whether a
 // message continues the previous author's block, and it runs after filtering so
 // the groups reflect what is on screen rather than hidden history.
+//
+// The returned slice is frame-scoped and aliases the set's scratch buffer: the
+// next call overwrites it. Callers must finish with it - style it, measure it,
+// turn it into strings - before asking for another frame's blocks, and must not
+// retain it.
 func (m shellModel) chatRowBlocks(layout shellLayout) []chatRowBlock {
 	contentWidth := m.chatMessageContentWidth(layout)
 	messages := m.visibleMessages()
 	order, frames := m.revealFrames()
 
 	// The block slice is rebuilt on every repaint and never outlives the
-	// frame, so it reuses one package-level scratch buffer instead of
-	// allocating a backlog-sized slice per frame. Reuse is safe for the
-	// same reason sharedRowCache is: Update and View run on one goroutine,
-	// and no caller retains the returned slice past the frame it styled.
-	sharedChatRowBlocks = sharedChatRowBlocks[:0]
-	blocks := sharedChatRowBlocks
+	// frame, so it reuses the set's scratch buffer instead of allocating a
+	// backlog-sized slice per frame. Reuse is safe for the same reason the
+	// row cache is: Update and View run on one goroutine, and no caller
+	// retains the returned slice past the frame it styled.
+	blocks := m.rowBlockScratch()
 	for _, message := range messages {
 		blocks = append(blocks, chatRowBlock{message: message})
 	}
@@ -669,24 +687,31 @@ func (m shellModel) chatRowBlocks(layout shellLayout) []chatRowBlock {
 			return render.Rows(message, opts)
 		})
 	}
-	sharedChatRowBlocks = blocks
+	if m.chats != nil {
+		m.chats.rowBlocks = blocks
+	}
 	return blocks
 }
 
-// sharedChatRowBlocks is the frame-scoped scratch buffer chatRowBlocks fills.
+// rowBlockScratch hands back the set's block buffer, emptied and ready to fill.
 // Its capacity settles at one backlog's worth of blocks and stays there.
-var sharedChatRowBlocks []chatRowBlock
+func (m shellModel) rowBlockScratch() []chatRowBlock {
+	if m.chats == nil {
+		return nil
+	}
+	return m.chats.rowBlocks[:0]
+}
 
-// sharedRowCache is the per-process memo for rendered chat rows.
-//
-// shellModel is copied by value on every Update, so a cache held as a field
-// would be discarded on each keystroke unless it were a pointer; keeping the
-// pointer here rather than on the model means the state lane does not have to
-// carry a view-only field. Bubble Tea runs Update and View on one goroutine, so
-// unsynchronized sharing is safe.
-var sharedRowCache = newChatRowCache()
-
-func (m shellModel) rowCache() *chatRowCache { return sharedRowCache }
+// rowCache is the memo for rendered chat rows, one per open program.
+func (m shellModel) rowCache() *chatRowCache {
+	if m.chats == nil {
+		return newChatRowCache()
+	}
+	if m.chats.rowCache == nil {
+		m.chats.rowCache = newChatRowCache()
+	}
+	return m.chats.rowCache
+}
 
 // authorMeta resolves the per-author context rendered beside a username.
 //

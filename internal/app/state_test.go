@@ -117,7 +117,7 @@ func TestCloseChatMovesActiveToNeighbor(t *testing.T) {
 func TestApplyMessageCountsUnreadForBackgroundChats(t *testing.T) {
 	model := newModelForTest(t, "one", "two")
 	keys := model.chats.chatKeys()
-	background := model.chats.ensureKey(keys[1])
+	background := model.chats.stateForKey(keys[1])
 	background.target.LiveChatID = "chat-two"
 
 	state, isActive := model.chats.applyMessage(testMessage(t, "m1", "chat-two", "alice", "hi"))
@@ -205,7 +205,7 @@ func TestMarkMessagesDeletedRemovesTheText(t *testing.T) {
 func TestMergeTargetUpgradesAChatInPlace(t *testing.T) {
 	model := newModelForTest(t, "dQw4w9WgXcQ")
 	key := model.chats.chatKeys()[0]
-	state := model.chats.ensureKey(key)
+	state := model.chats.stateForKey(key)
 	state.messages = append(state.messages, testMessage(t, "m1", "", "alice", "hi"))
 
 	state.mergeTarget(youtube.ChatTarget{
@@ -213,7 +213,7 @@ func TestMergeTargetUpgradesAChatInPlace(t *testing.T) {
 		LiveChatID: "live-chat-id",
 		Title:      "Tonight's stream",
 	})
-	if got := model.chats.ensureKey(key); got == nil || len(got.messages) != 1 {
+	if got := model.chats.stateForKey(key); got == nil || len(got.messages) != 1 {
 		t.Fatal("resolving a target must not move the chat's history to a new key")
 	}
 	if state.target.Label() != "Tonight's stream" {
@@ -256,5 +256,21 @@ func TestConfiguredTargetsDeduplicatesAndPreservesOrder(t *testing.T) {
 		if target.Raw != want[i] {
 			t.Fatalf("target[%d] = %q, want %q", i, target.Raw, want[i])
 		}
+	}
+}
+
+// TestSeenRingHoldsAPrimingPage pins the cross-package invariant the ring size
+// exists for: the dedupe ring has to hold at least one priming page.
+//
+// ctrl+r rebuilds the poller, which primes with no page token and so re-fetches
+// the whole recent history - up to youtube.MaxResultsPerPoll rows in one go. A
+// ring smaller than that page would have evicted the head of the backlog by the
+// time the tail arrives, and the user's own reconnect key would reprint history
+// on screen. Until now that was only a sentence in a comment, which is not
+// something the compiler or a page-size change will ever check.
+func TestSeenRingHoldsAPrimingPage(t *testing.T) {
+	if seenMessageRingSize < youtube.MaxResultsPerPoll {
+		t.Fatalf("seenMessageRingSize = %d, want at least one priming page (%d); a reconnect would reprint history",
+			seenMessageRingSize, youtube.MaxResultsPerPoll)
 	}
 }

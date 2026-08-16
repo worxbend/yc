@@ -28,7 +28,7 @@ func armModeration(t *testing.T, model shellModel, key rune) shellModel {
 	model, _ = pressModeration(t, model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
 	if model.moderation.stage != moderationStageConfirm {
 		t.Fatalf("pressing %q left stage %v, want an armed confirmation (feedback %q)",
-			key, model.moderation.stage, model.moderation.feedback)
+			key, model.moderation.stage, model.moderationNote.text)
 	}
 	return model
 }
@@ -40,7 +40,7 @@ func commitArmed(t *testing.T, model shellModel, key rune) (shellModel, tea.Cmd)
 	t.Helper()
 	model, cmd := pressModeration(t, model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
 	if cmd == nil {
-		t.Fatalf("confirming %q produced no command (feedback %q)", key, model.moderation.feedback)
+		t.Fatalf("confirming %q produced no command (feedback %q)", key, model.moderationNote.text)
 	}
 	if model.moderation.stage != moderationStageInFlight {
 		t.Fatalf("after confirming %q stage is %v, want in-flight", key, model.moderation.stage)
@@ -154,15 +154,15 @@ func TestRollbackRestoresAMessageThatWasStillRevealing(t *testing.T) {
 			t.Fatalf("settled row %q stayed redacted after a failed ban", message.ID)
 		}
 	}
-	line := model.moderation.feedback
+	line := model.moderationNote.text
 	if !strings.Contains(line, "nothing was removed") {
 		t.Fatalf("failure line does not say the rows came back: %q", line)
 	}
 	if strings.Contains(line, "animating") {
 		t.Fatalf("failure line reprinted the removed text: %q", line)
 	}
-	if model.moderation.level != moderationLevelError {
-		t.Fatalf("failure level = %v, want error", model.moderation.level)
+	if model.moderationNote.level != moderationLevelError {
+		t.Fatalf("failure level = %v, want error", model.moderationNote.level)
 	}
 }
 
@@ -211,7 +211,7 @@ func twoChatModerationModel(t *testing.T) (shellModel, *fakeModeratingClient, []
 
 	keys := model.chats.chatKeys()
 	for index, key := range keys {
-		state := model.chats.ensureKey(key)
+		state := model.chats.stateForKey(key)
 		state.target.ChannelID = "UC-owner"
 		state.target.LiveChatID = key
 		state.messages = []youtube.Message{
@@ -245,8 +245,8 @@ func TestModerationCompletionLandsInTheArmedChatNotTheActiveOne(t *testing.T) {
 
 	model = runModerationCmd(t, model, cmd)
 
-	armedState := model.chats.ensureKey(armed)
-	otherState := model.chats.ensureKey(other)
+	armedState := model.chats.stateForKey(armed)
+	otherState := model.chats.stateForKey(other)
 	if len(armedState.moderations) != 1 {
 		t.Fatalf("armed chat recorded %d moderations, want 1", len(armedState.moderations))
 	}
@@ -292,8 +292,8 @@ func TestModerationCompletionDoesNotResurrectAClosedChat(t *testing.T) {
 		}
 	}
 	// The user still learns the request failed, without a rollback target.
-	if !strings.Contains(model.moderation.feedback, "nothing was removed") {
-		t.Fatalf("feedback = %q, want the failure still reported", model.moderation.feedback)
+	if !strings.Contains(model.moderationNote.text, "nothing was removed") {
+		t.Fatalf("feedback = %q, want the failure still reported", model.moderationNote.text)
 	}
 }
 
@@ -380,11 +380,11 @@ func TestCapabilityLostBetweenArmingAndConfirmingRefusesWithoutRedacting(t *test
 	if len(client.deletedIDs) != 0 {
 		t.Fatalf("deletes = %v, want none", client.deletedIDs)
 	}
-	if model.moderation.level != moderationLevelError {
-		t.Fatalf("level = %v, want error", model.moderation.level)
+	if model.moderationNote.level != moderationLevelError {
+		t.Fatalf("level = %v, want error", model.moderationNote.level)
 	}
-	if !strings.Contains(model.moderation.feedback, "moderation unavailable") {
-		t.Fatalf("feedback = %q, want it to name the withdrawn capability", model.moderation.feedback)
+	if !strings.Contains(model.moderationNote.text, "moderation unavailable") {
+		t.Fatalf("feedback = %q, want it to name the withdrawn capability", model.moderationNote.text)
 	}
 	// Nothing was blanked on the way out.
 	for _, message := range model.activeChatState().messages {
@@ -453,7 +453,7 @@ func TestModerationStatusLevelsAreVisuallyDistinct(t *testing.T) {
 func TestModerationLineSurvivesTheStatusBarBudget(t *testing.T) {
 	model, _ := moderationModel(t)
 	model = armModeration(t, model, moderationBanRune)
-	line := model.moderation.feedback
+	line := model.moderationNote.text
 	if strings.TrimSpace(line) == "" {
 		t.Fatal("arming produced no status line")
 	}
@@ -534,8 +534,8 @@ func TestConfirmedTimeoutReachesTheTransportUnchanged(t *testing.T) {
 	if model.moderation.stage != moderationStageConfirm {
 		t.Fatalf("enter left stage %v, want an armed confirmation", model.moderation.stage)
 	}
-	if !strings.Contains(model.moderation.feedback, "1m30s") {
-		t.Fatalf("confirmation = %q, want it to name the parsed duration", model.moderation.feedback)
+	if !strings.Contains(model.moderationNote.text, "1m30s") {
+		t.Fatalf("confirmation = %q, want it to name the parsed duration", model.moderationNote.text)
 	}
 
 	model, cmd := commitArmed(t, model, moderationTimeoutRune)
@@ -547,8 +547,8 @@ func TestConfirmedTimeoutReachesTheTransportUnchanged(t *testing.T) {
 	if got := client.bans[0].Duration; got != 90*time.Second {
 		t.Fatalf("ban duration = %v, want 90s", got)
 	}
-	if !strings.Contains(model.moderation.feedback, "1m30s") {
-		t.Fatalf("success line = %q, want it to name the duration served", model.moderation.feedback)
+	if !strings.Contains(model.moderationNote.text, "1m30s") {
+		t.Fatalf("success line = %q, want it to name the duration served", model.moderationNote.text)
 	}
 }
 

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -726,5 +727,81 @@ func TestCtrlCQuitsFromEverywhere(t *testing.T) {
 	_, cmd := model.Update(key(tea.KeyCtrlC))
 	if cmd == nil {
 		t.Fatal("ctrl+c must quit unconditionally")
+	}
+}
+
+// TestPaletteDisplayTogglesMatchTheirKeys pins that the command palette and the
+// key bindings run the same code for the four display cycles. The palette used
+// to carry its own copies which skipped refreshActiveRevealRows, so cycling the
+// layout from the palette while a message was still animating left that reveal
+// drawn at the layout it started in.
+func TestPaletteDisplayTogglesMatchTheirKeys(t *testing.T) {
+	cases := []struct {
+		title string
+		key   tea.KeyType
+	}{
+		{title: "Cycle message layout", key: tea.KeyCtrlG},
+		{title: "Cycle badge mode", key: tea.KeyCtrlB},
+		{title: "Toggle emoji highlight", key: tea.KeyCtrlY},
+		{title: "Toggle full usernames", key: tea.KeyCtrlN},
+	}
+	for _, tc := range cases {
+		t.Run(tc.title, func(t *testing.T) {
+			inFlight := func(t *testing.T) shellModel {
+				t.Helper()
+				model := newAnimatedModelForTest(t, "first")
+				next, _ := model.Update(chatClientMessageMsg{
+					message: testMessage(t, "m1", "", "alice",
+						"a fairly long message that will not reveal instantly"),
+					ok: true,
+				})
+				model = next.(shellModel)
+				if state := model.activeChatState(); len(state.activeOrder) == 0 {
+					t.Skip("message revealed immediately; nothing to keep in sync")
+				}
+				return model
+			}
+
+			byKey := inFlight(t)
+			if !byKey.handleDisplayToggleKey(tea.KeyMsg{Type: tc.key}) {
+				t.Fatalf("key %v was not handled as a display toggle", tc.key)
+			}
+
+			byPalette := inFlight(t)
+			updated, _ := byPalette.runPaletteCommand(tc.title)
+			byPalette = updated.(shellModel)
+
+			wantFrames := fmt.Sprintf("%v", byKey.activeChatState().revealQueue.Frames())
+			gotFrames := fmt.Sprintf("%v", byPalette.activeChatState().revealQueue.Frames())
+			if gotFrames != wantFrames {
+				t.Errorf("palette %q left the in-flight reveal rendered differently from its key:\n got %s\nwant %s",
+					tc.title, gotFrames, wantFrames)
+			}
+			if fmt.Sprintf("%v", byPalette.effectiveConfig.Features) != fmt.Sprintf("%v", byKey.effectiveConfig.Features) {
+				t.Errorf("palette %q recorded different feature config from its key", tc.title)
+			}
+
+		})
+	}
+}
+
+// TestRevealAndViewAgreeOnAvatarMode pins that the reveal animation and the
+// view normalize avatarMode the same way. They used to each decide for
+// themselves - the reveal lane compared the raw string to "off" while the view
+// trimmed and case-folded it - so an avatarMode of "Off " animated a message
+// with avatars and then settled it without them.
+func TestRevealAndViewAgreeOnAvatarMode(t *testing.T) {
+	for _, mode := range []string{"off", "Off", " off ", "OFF", "on", "auto", ""} {
+		model := newModelForTest(t, "demo")
+		model.avatarMode = mode
+		reveal := model.revealRenderOptions(testMessage(t, "m1", "", "alice", "hello"))
+		view := model.renderOptions(model.revealRowWidth())
+		if reveal.Assets.ShowAvatars != view.Assets.ShowAvatars {
+			t.Errorf("avatarMode %q: reveal shows avatars=%v, view shows avatars=%v",
+				mode, reveal.Assets.ShowAvatars, view.Assets.ShowAvatars)
+		}
+		if reveal.Width != view.Width {
+			t.Errorf("avatarMode %q: reveal width %d, view width %d", mode, reveal.Width, view.Width)
+		}
 	}
 }

@@ -62,11 +62,11 @@ func BenchmarkChatViewColdCache(b *testing.B) {
 	model, _ := benchModel(b, stressScrollback)
 	b.ReportAllocs()
 	for b.Loop() {
-		sharedRowCache = newChatRowCache()
+		model.chats.rowCache = newChatRowCache()
 		_ = model.View()
 	}
 	b.StopTimer()
-	sharedRowCache = newChatRowCache()
+	model.chats.rowCache = newChatRowCache()
 }
 
 // BenchmarkChatPipelineUpdateAndView measures the full per-message cost the

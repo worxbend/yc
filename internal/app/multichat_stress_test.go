@@ -63,7 +63,7 @@ func newMultiChatStressModel(t *testing.T, clock *stressClock, width, height int
 		t.Fatalf("opened %d chats, want %d", len(keys), multiChatCount)
 	}
 	for index, key := range keys {
-		state := model.chats.ensureKey(key)
+		state := model.chats.stateForKey(key)
 		state.target.LiveChatID = multiChatKeys()[index]
 		state.target.Title = "Stream " + strconv.Itoa(index)
 		state.status = youtube.ConnectionState{Status: youtube.ConnectionConnected, Detail: "polling"}
@@ -91,7 +91,7 @@ func TestMultiChatHighThroughputKeepsEveryTargetSeparate(t *testing.T) {
 	drafts := make(map[string]string, len(keys))
 	for index, key := range keys {
 		draft := "draft-" + strconv.Itoa(index)
-		model.chats.ensureKey(key).composerText = draft
+		model.chats.stateForKey(key).composerText = draft
 		drafts[key] = draft
 	}
 
@@ -116,18 +116,18 @@ func TestMultiChatHighThroughputKeepsEveryTargetSeparate(t *testing.T) {
 			if key == targetKey {
 				continue
 			}
-			before[key] = fingerprint(model.chats.ensureKey(key))
+			before[key] = fingerprint(model.chats.stateForKey(key))
 		}
 
 		activeBefore := model.activeChatKey()
-		targetLenBefore := len(model.chats.ensureKey(targetKey).messages)
+		targetLenBefore := len(model.chats.stateForKey(targetKey).messages)
 
 		model = feedStress(t, model, message)
 		delivered[chatID]++
 		newest[chatID] = message.ID
 
 		// --- the delivery landed in exactly one chat ------------------------
-		target := model.chats.ensureKey(targetKey)
+		target := model.chats.stateForKey(targetKey)
 		grew := len(target.messages) - targetLenBefore
 		if grew <= 0 && target.revealQueue.Len() == 0 && len(target.messages) < stressScrollback {
 			t.Fatalf("message %d for %q landed nowhere: history %d, reveals 0",
@@ -135,7 +135,7 @@ func TestMultiChatHighThroughputKeepsEveryTargetSeparate(t *testing.T) {
 		}
 		for key, snapshot := range before {
 			assertUnchanged(t, fmt.Sprintf("chat %q while %q received message %d", key, chatID, i),
-				snapshot, fingerprint(model.chats.ensureKey(key)))
+				snapshot, fingerprint(model.chats.stateForKey(key)))
 		}
 
 		// --- only the chat on screen animates -------------------------------
@@ -144,7 +144,7 @@ func TestMultiChatHighThroughputKeepsEveryTargetSeparate(t *testing.T) {
 		// nobody can see and would still be draining them minutes after the
 		// user switched away.
 		for _, key := range keys {
-			state := model.chats.ensureKey(key)
+			state := model.chats.stateForKey(key)
 			if got := state.revealQueue.Len(); got > animation.DefaultMaxQueued {
 				t.Fatalf("message %d: chat %q holds %d reveals, above the bound of %d",
 					i, key, got, animation.DefaultMaxQueued)
@@ -162,13 +162,13 @@ func TestMultiChatHighThroughputKeepsEveryTargetSeparate(t *testing.T) {
 		}
 
 		// --- unread belongs to the chats nobody is reading -------------------
-		if got := model.chats.ensureKey(model.activeChatKey()).unread; got != 0 {
+		if got := model.chats.stateForKey(model.activeChatKey()).unread; got != 0 {
 			t.Fatalf("message %d: the chat on screen shows %d unread", i, got)
 		}
 
 		// --- drafts never follow the user -----------------------------------
 		for key, draft := range drafts {
-			if got := model.chats.ensureKey(key).composerText; got != draft {
+			if got := model.chats.stateForKey(key).composerText; got != draft {
 				t.Fatalf("message %d: chat %q holds the draft %q, want %q", i, key, got, draft)
 			}
 		}
@@ -209,7 +209,7 @@ func TestMultiChatHighThroughputKeepsEveryTargetSeparate(t *testing.T) {
 		// Drafts are re-checked after interaction too: switching chats with a
 		// draft in the composer is exactly how a draft leaks.
 		for key, draft := range drafts {
-			if got := model.chats.ensureKey(key).composerText; got != draft {
+			if got := model.chats.stateForKey(key).composerText; got != draft {
 				t.Fatalf("message %d: interaction moved chat %q's draft to %q, want %q",
 					i, key, got, draft)
 			}
@@ -237,7 +237,7 @@ func TestMultiChatHighThroughputKeepsEveryTargetSeparate(t *testing.T) {
 		t.Fatalf("delivered %d of %d messages", totalDelivered, len(burst))
 	}
 	for index, key := range keys {
-		state := model.chats.ensureKey(key)
+		state := model.chats.stateForKey(key)
 		chatID := chatIDs[index]
 		held := len(state.messages) + len(state.activeMessages)
 		if held > stressScrollback+animation.DefaultMaxQueued {
@@ -306,7 +306,7 @@ func TestModerationDuringAMultiChatFloodStaysInItsOwnChat(t *testing.T) {
 	}
 	model.identityKnown = true
 	for _, key := range keys {
-		model.chats.ensureKey(key).target.ChannelID = "UC-owner"
+		model.chats.stateForKey(key).target.ChannelID = "UC-owner"
 	}
 
 	// A single channel says the same thing in every chat, which is the shape
@@ -324,7 +324,7 @@ func TestModerationDuringAMultiChatFloodStaysInItsOwnChat(t *testing.T) {
 	armedKey := keys[0]
 	model.chats.setActive(keys[1])
 	model.chats.setActive(armedKey)
-	armedState := model.chats.ensureKey(armedKey)
+	armedState := model.chats.stateForKey(armedKey)
 	if len(armedState.messages) == 0 {
 		t.Fatal("the armed chat has no settled message to moderate")
 	}
@@ -347,7 +347,7 @@ func TestModerationDuringAMultiChatFloodStaysInItsOwnChat(t *testing.T) {
 	model = runModerationCmd(t, model, cmd)
 
 	for index, key := range keys {
-		state := model.chats.ensureKey(key)
+		state := model.chats.stateForKey(key)
 		var spamVisible bool
 		for _, message := range state.messages {
 			if strings.Contains(message.Text, "buy followers") {

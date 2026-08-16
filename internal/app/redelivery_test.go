@@ -66,7 +66,7 @@ func TestSwitchingChatsDoesNotStrandAnInFlightReveal(t *testing.T) {
 		ok:      true,
 	})
 	model = next.(shellModel)
-	first := model.chats.ensureKey("first")
+	first := model.chats.stateForKey("first")
 	if len(first.activeOrder) == 0 {
 		t.Skip("message revealed immediately; nothing to strand")
 	}
@@ -80,7 +80,7 @@ func TestSwitchingChatsDoesNotStrandAnInFlightReveal(t *testing.T) {
 		model = next.(shellModel)
 	}
 
-	first = model.chats.ensureKey("first")
+	first = model.chats.stateForKey("first")
 	if len(first.activeOrder) != 0 || len(first.activeMessages) != 0 {
 		t.Fatalf("reveal stranded after switching away: activeOrder=%v activeMessages=%d",
 			first.activeOrder, len(first.activeMessages))

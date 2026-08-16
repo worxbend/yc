@@ -486,8 +486,8 @@ func TestBackgroundChatFloodNeverAnimates(t *testing.T) {
 	if len(keys) != 2 {
 		t.Fatalf("opened %d chats, want 2", len(keys))
 	}
-	foreground := model.chats.ensureKey(keys[0])
-	background := model.chats.ensureKey(keys[1])
+	foreground := model.chats.stateForKey(keys[0])
+	background := model.chats.stateForKey(keys[1])
 	foreground.target.LiveChatID = "chat-foreground"
 	background.target.LiveChatID = "chat-background"
 

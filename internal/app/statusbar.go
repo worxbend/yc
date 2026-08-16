@@ -170,61 +170,11 @@ func statusSegments(width int, st statusBarState) []statusSegment {
 			groups = append(groups, segments)
 		}
 	}
-	text := func(value, foreground string, bold bool) []statusSegment {
-		if value == "" {
-			return nil
+	for _, rule := range statusSegmentRules {
+		if width < rule.minWidth {
+			continue
 		}
-		return []statusSegment{{text: value, foreground: foreground, bold: bold}}
-	}
-
-	if st.Dropped > 0 {
-		add(text(fmt.Sprintf("dropped=%d", st.Dropped), st.Palette.Error, true)...)
-	}
-	if st.PendingClear {
-		add(text("clear chat? ctrl+L again to confirm", st.Palette.Warning, true)...)
-	}
-	if st.Moderation != "" {
-		add(text(st.Moderation, moderationStatusColor(st.Palette, st.ModerationLevel), true)...)
-	}
-	// The search line sits ahead of the meters: while the user is typing a
-	// query, the query is the thing they are looking for on screen.
-	if st.Search != "" && width >= statusWidthSearch {
-		add(text(st.Search, st.Palette.Warning, true)...)
-	}
-	if st.QuotaKnown {
-		add(quotaSegments(width, st)...)
-	}
-	switch {
-	case width >= statusWidthFullMetrics:
-		add(fullMetricsSegments(st)...)
-	case width >= statusWidthMetrics:
-		add(compactMetricsSegments(st)...)
-	}
-	add(chatIdentitySegments(st)...)
-
-	if st.ChatCount > 1 && width >= statusWidthChatCount {
-		add(text(fmt.Sprintf("chats=%d", st.ChatCount), "", false)...)
-	}
-	if st.Unread > 0 && width >= statusWidthUnread {
-		add(text(fmt.Sprintf("unread=%d", st.Unread), st.Palette.Warning, true)...)
-	}
-	if st.Notification != "" && width >= statusWidthNotify {
-		add(text("notify: "+st.Notification, "", false)...)
-	}
-	if st.Filter != "" && width >= statusWidthFilter {
-		add(text("filter="+st.Filter, st.Palette.Warning, false)...)
-	}
-	switch {
-	case st.SendFeedback != "" && width >= statusWidthSendFeedback:
-		add(text("send: "+st.SendFeedback, st.Palette.Warning, false)...)
-	case st.StatusDetail != "" && width >= statusWidthDetail &&
-		(st.ChatCount <= 1 || width >= statusWidthWideDetail):
-		add(text(st.StatusDetail, st.Palette.Muted, false)...)
-	}
-	if width >= statusWidthFocusMode {
-		add(text(fmt.Sprintf("focus=%s layout=%s", emptyOr(st.Focus, "chat"), emptyOr(st.Layout, "inline")), "", false)...)
-	} else if width >= statusWidthFocus {
-		add(text("focus="+emptyOr(st.Focus, "chat"), "", false)...)
+		add(rule.build(width, st)...)
 	}
 
 	// Groups are joined here rather than as they are added, so a group that
@@ -238,6 +188,123 @@ func statusSegments(width int, st statusBarState) []statusSegment {
 		segments = append(segments, group...)
 	}
 	return segments
+}
+
+// statusSegmentRule is one candidate group on the status line, with the width
+// below which it is not drawn at all.
+type statusSegmentRule struct {
+	// minWidth is the narrowest line this group may appear on. Zero means the
+	// group never drops for width - only for having nothing to say.
+	minWidth int
+	// build returns the group, or nil when the state has nothing to show. It
+	// is handed the width too, because a few groups have their own internal
+	// tiers: the quota meter, the metrics pair, and the focus readout each
+	// shed detail before they disappear entirely.
+	build func(width int, st statusBarState) []statusSegment
+}
+
+// statusSegmentRules is the whole drop-priority ladder, in the order the line
+// is assembled left to right.
+//
+// It is one table rather than fifteen inline width checks so the answer to
+// "what disappears first as the terminal narrows" can be read top to bottom in
+// one place. Earlier entries are both further left and more important: fitting
+// drops from the right, so a group placed here is also a claim about what a
+// narrow terminal must keep.
+var statusSegmentRules = []statusSegmentRule{
+	// A silent message loss and an invisible confirmation prompt are both
+	// worse than losing every decoration on the line, so these never drop.
+	{minWidth: 0, build: func(_ int, st statusBarState) []statusSegment {
+		if st.Dropped <= 0 {
+			return nil
+		}
+		return statusText(fmt.Sprintf("dropped=%d", st.Dropped), st.Palette.Error, true)
+	}},
+	{minWidth: 0, build: func(_ int, st statusBarState) []statusSegment {
+		if !st.PendingClear {
+			return nil
+		}
+		return statusText("clear chat? ctrl+L again to confirm", st.Palette.Warning, true)
+	}},
+	{minWidth: 0, build: func(_ int, st statusBarState) []statusSegment {
+		return statusText(st.Moderation, moderationStatusColor(st.Palette, st.ModerationLevel), true)
+	}},
+	// The search line sits ahead of the meters: while the user is typing a
+	// query, the query is the thing they are looking for on screen.
+	{minWidth: statusWidthSearch, build: func(_ int, st statusBarState) []statusSegment {
+		return statusText(st.Search, st.Palette.Warning, true)
+	}},
+	{minWidth: 0, build: func(width int, st statusBarState) []statusSegment {
+		if !st.QuotaKnown {
+			return nil
+		}
+		return quotaSegments(width, st)
+	}},
+	{minWidth: statusWidthMetrics, build: func(width int, st statusBarState) []statusSegment {
+		if width >= statusWidthFullMetrics {
+			return fullMetricsSegments(st)
+		}
+		return compactMetricsSegments(st)
+	}},
+	{minWidth: 0, build: func(_ int, st statusBarState) []statusSegment {
+		return chatIdentitySegments(st)
+	}},
+	{minWidth: statusWidthChatCount, build: func(_ int, st statusBarState) []statusSegment {
+		if st.ChatCount <= 1 {
+			return nil
+		}
+		return statusText(fmt.Sprintf("chats=%d", st.ChatCount), "", false)
+	}},
+	{minWidth: statusWidthUnread, build: func(_ int, st statusBarState) []statusSegment {
+		if st.Unread <= 0 {
+			return nil
+		}
+		return statusText(fmt.Sprintf("unread=%d", st.Unread), st.Palette.Warning, true)
+	}},
+	{minWidth: statusWidthNotify, build: func(_ int, st statusBarState) []statusSegment {
+		if st.Notification == "" {
+			return nil
+		}
+		return statusText("notify: "+st.Notification, "", false)
+	}},
+	{minWidth: statusWidthFilter, build: func(_ int, st statusBarState) []statusSegment {
+		if st.Filter == "" {
+			return nil
+		}
+		return statusText("filter="+st.Filter, st.Palette.Warning, false)
+	}},
+	// Send feedback and the connection detail compete for the same slot, and
+	// send feedback wins where it fits: it answers a question the user asked
+	// a moment ago.
+	// The detail additionally waits for a wider line when several chats are
+	// open, because the identity of the chat has to fit first.
+	{minWidth: statusWidthDetail, build: func(width int, st statusBarState) []statusSegment {
+		if st.SendFeedback != "" && width >= statusWidthSendFeedback {
+			return statusText("send: "+st.SendFeedback, st.Palette.Warning, false)
+		}
+		// Feedback too wide to fit does not block the detail: the original
+		// ladder fell through to it, and a connection detail is better than
+		// an empty slot.
+		if st.StatusDetail == "" || (st.ChatCount > 1 && width < statusWidthWideDetail) {
+			return nil
+		}
+		return statusText(st.StatusDetail, st.Palette.Muted, false)
+	}},
+	{minWidth: statusWidthFocus, build: func(width int, st statusBarState) []statusSegment {
+		if width >= statusWidthFocusMode {
+			return statusText(fmt.Sprintf("focus=%s layout=%s",
+				emptyOr(st.Focus, "chat"), emptyOr(st.Layout, "inline")), "", false)
+		}
+		return statusText("focus="+emptyOr(st.Focus, "chat"), "", false)
+	}},
+}
+
+// statusText is one plain run of text, or nothing when the value is empty.
+func statusText(value, foreground string, bold bool) []statusSegment {
+	if value == "" {
+		return nil
+	}
+	return []statusSegment{{text: value, foreground: foreground, bold: bold}}
 }
 
 // quotaSegments renders the quota meter and the effective poll interval, the
