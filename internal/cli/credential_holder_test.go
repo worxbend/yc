@@ -11,6 +11,7 @@ import (
 	"github.com/worxbend/yc/internal/auth"
 	"github.com/worxbend/yc/internal/config"
 	"github.com/worxbend/yc/internal/storage"
+	"github.com/worxbend/yc/internal/storage/storagetest"
 )
 
 // scriptedRefresher returns queued outcomes so a failure path is reachable
@@ -137,7 +138,7 @@ func TestCredentialHolderRefreshWithoutARefresherIsReportedNotAttempted(t *testi
 // one you have" rather than "you lost it". A rotated one replaces it.
 func TestCredentialHolderKeepsOrRotatesTheRefreshTokenAsGoogleSays(t *testing.T) {
 	t.Run("omitted keeps the current one", func(t *testing.T) {
-		store := storage.NewMemoryCredentialStore()
+		store := storagetest.NewMemoryCredentialStore()
 		holder := newCredentialHolder(storage.CredentialRecord{
 			RefreshToken: auth.NewSecret("original-" + fakeToken),
 			Scopes:       auth.LoginScopes(),
@@ -164,7 +165,7 @@ func TestCredentialHolderKeepsOrRotatesTheRefreshTokenAsGoogleSays(t *testing.T)
 	})
 
 	t.Run("returned replaces it", func(t *testing.T) {
-		store := storage.NewMemoryCredentialStore()
+		store := storagetest.NewMemoryCredentialStore()
 		holder := newCredentialHolder(storage.CredentialRecord{
 			RefreshToken: auth.NewSecret("original-" + fakeToken),
 		}, store, &scriptedRefresher{results: []refreshOutcome{{
@@ -198,7 +199,7 @@ func TestCredentialHolderReportsAFailedWriteButKeepsTheNewToken(t *testing.T) {
 	saveErr := errors.New("disk is read-only")
 	holder := newCredentialHolder(storage.CredentialRecord{
 		RefreshToken: auth.NewSecret("refresh-" + fakeToken),
-	}, failingStore{CredentialStore: storage.NewMemoryCredentialStore(), err: saveErr}, &scriptedRefresher{})
+	}, failingStore{CredentialStore: storagetest.NewMemoryCredentialStore(), err: saveErr}, &scriptedRefresher{})
 
 	err := holder.Refresh(context.Background())
 	if !errors.Is(err, saveErr) {
@@ -213,7 +214,7 @@ func TestCredentialHolderReportsAFailedWriteButKeepsTheNewToken(t *testing.T) {
 // process start would otherwise read a refresh token Google already rotated
 // away, and the user would be locked out with no indication why.
 func TestCredentialHolderKeepsTheOldTokenWhenTheExchangeFails(t *testing.T) {
-	store := storage.NewMemoryCredentialStore()
+	store := storagetest.NewMemoryCredentialStore()
 	holder := newCredentialHolder(storage.CredentialRecord{
 		AccessToken:  auth.NewSecret("stale-" + fakeToken),
 		RefreshToken: auth.NewSecret("refresh-" + fakeToken),
@@ -239,7 +240,7 @@ func TestRefreshCredentialsTreatsAnUnwritableStoreAsAWarning(t *testing.T) {
 	saveErr := errors.New("disk is read-only")
 	holder := newCredentialHolder(storage.CredentialRecord{
 		RefreshToken: auth.NewSecret("refresh-" + fakeToken),
-	}, failingStore{CredentialStore: storage.NewMemoryCredentialStore(), err: saveErr}, &scriptedRefresher{})
+	}, failingStore{CredentialStore: storagetest.NewMemoryCredentialStore(), err: saveErr}, &scriptedRefresher{})
 
 	var reported []error
 	holder.startRefreshLoop(context.Background(), func(err error) { reported = append(reported, err) })
@@ -272,7 +273,7 @@ func TestRefreshCredentialsReportsARejectedExchange(t *testing.T) {
 	holder := newCredentialHolder(storage.CredentialRecord{
 		AccessToken:  auth.NewSecret("stale-" + fakeToken),
 		RefreshToken: auth.NewSecret("refresh-" + fakeToken),
-	}, storage.NewMemoryCredentialStore(), &scriptedRefresher{results: []refreshOutcome{{err: auth.ErrLoginRequired}}})
+	}, storagetest.NewMemoryCredentialStore(), &scriptedRefresher{results: []refreshOutcome{{err: auth.ErrLoginRequired}}})
 
 	if err := holder.RefreshCredentials(context.Background()); !errors.Is(err, auth.ErrLoginRequired) {
 		t.Fatalf("RefreshCredentials error = %v, want the rejection", err)
@@ -295,7 +296,7 @@ func TestRefreshCredentialsSharesTheSingleFlightWithRefresh(t *testing.T) {
 	refresher := &countingRefresher{release: release, token: auth.NewSecret("fresh-" + fakeToken)}
 	holder := newCredentialHolder(storage.CredentialRecord{
 		RefreshToken: auth.NewSecret("refresh-" + fakeToken),
-	}, storage.NewMemoryCredentialStore(), refresher)
+	}, storagetest.NewMemoryCredentialStore(), refresher)
 
 	const callers = 8
 	errs := make(chan error, callers)
@@ -327,7 +328,7 @@ func TestCredentialHolderRefreshIsRepeatable(t *testing.T) {
 	refresher := &scriptedRefresher{}
 	holder := newCredentialHolder(storage.CredentialRecord{
 		RefreshToken: auth.NewSecret("refresh-" + fakeToken),
-	}, storage.NewMemoryCredentialStore(), refresher)
+	}, storagetest.NewMemoryCredentialStore(), refresher)
 
 	for i := 0; i < 3; i++ {
 		if err := holder.Refresh(context.Background()); err != nil {
@@ -348,7 +349,7 @@ func TestCredentialHolderRefreshHonorsTheCallerContext(t *testing.T) {
 	blocking := &countingRefresher{release: release, token: auth.NewSecret("fresh-" + fakeToken)}
 	holder := newCredentialHolder(storage.CredentialRecord{
 		RefreshToken: auth.NewSecret("refresh-" + fakeToken),
-	}, storage.NewMemoryCredentialStore(), blocking)
+	}, storagetest.NewMemoryCredentialStore(), blocking)
 
 	started := make(chan struct{})
 	go func() {
@@ -391,7 +392,7 @@ func TestStartRefreshLoopRefreshesAheadOfExpiry(t *testing.T) {
 		// Already inside the lead time, so the loop fires on its first pass
 		// against its own one-second floor rather than after a real hour.
 		ExpiresAt: time.Now().Add(time.Second),
-	}, storage.NewMemoryCredentialStore(), refresher)
+	}, storagetest.NewMemoryCredentialStore(), refresher)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -414,14 +415,14 @@ func TestStartRefreshLoopDeclinesWhenItCannotSchedule(t *testing.T) {
 
 	noExpiry := newCredentialHolder(storage.CredentialRecord{
 		RefreshToken: auth.NewSecret("refresh-" + fakeToken),
-	}, storage.NewMemoryCredentialStore(), refresher)
+	}, storagetest.NewMemoryCredentialStore(), refresher)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	noExpiry.startRefreshLoop(ctx, nil)
 
 	noRefreshToken := newCredentialHolder(storage.CredentialRecord{
 		ExpiresAt: time.Now().Add(time.Second),
-	}, storage.NewMemoryCredentialStore(), refresher)
+	}, storagetest.NewMemoryCredentialStore(), refresher)
 	noRefreshToken.startRefreshLoop(ctx, nil)
 
 	time.Sleep(50 * time.Millisecond)
@@ -437,7 +438,7 @@ func TestStartRefreshLoopStopsOnContextCancellation(t *testing.T) {
 	holder := newCredentialHolder(storage.CredentialRecord{
 		RefreshToken: auth.NewSecret("refresh-" + fakeToken),
 		ExpiresAt:    time.Now().Add(time.Hour),
-	}, storage.NewMemoryCredentialStore(), refresher)
+	}, storagetest.NewMemoryCredentialStore(), refresher)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	holder.startRefreshLoop(ctx, nil)

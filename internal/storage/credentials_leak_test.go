@@ -8,8 +8,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-
-	"github.com/worxbend/yc/internal/auth"
 )
 
 // TestNoCredentialStoreErrorEverCarriesASecret is the boundary guarantee the
@@ -164,32 +162,5 @@ func TestCredentialFileStorePlanIsReadableAndNilSafe(t *testing.T) {
 	}
 	if got := nilStore.Path(); got != "" {
 		t.Errorf("nil store path = %q", got)
-	}
-}
-
-// SetCredentials is the test seam the whole suite depends on, so its own
-// behavior - a deep copy, marked loaded - is pinned rather than assumed.
-func TestMemoryCredentialStoreSetCredentialsCopiesDeeply(t *testing.T) {
-	store := NewMemoryCredentialStore()
-	record := CredentialRecord{
-		AccessToken: auth.NewSecret(testAccessToken),
-		Scopes:      auth.LoginScopes(),
-		ChannelID:   "UC123",
-	}
-	store.SetCredentials(record)
-
-	// Mutating the caller's copy must not reach the store.
-	record.Scopes[0] = auth.Scope("mutated")
-	record.ChannelID = "UC-changed"
-
-	got, ok, err := store.LoadCredentials(context.Background())
-	if err != nil || !ok {
-		t.Fatalf("LoadCredentials: ok=%v err=%v", ok, err)
-	}
-	if got.ChannelID != "UC123" {
-		t.Errorf("channel ID = %q, want the seeded value", got.ChannelID)
-	}
-	if string(got.Scopes[0]) == "mutated" {
-		t.Error("SetCredentials shared the caller's scope slice")
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/worxbend/yc/internal/debuglog"
 	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/storage"
+	"github.com/worxbend/yc/internal/storage/storagetest"
 	"github.com/worxbend/yc/internal/theme"
 	"github.com/worxbend/yc/internal/youtube"
 )
@@ -270,7 +271,7 @@ func TestCredentialRecordFromConfigDropsStaleExpiryForAnExternalToken(t *testing
 }
 
 func TestCredentialHolderRefreshIsSingleFlightAndPersists(t *testing.T) {
-	store := storage.NewMemoryCredentialStore()
+	store := storagetest.NewMemoryCredentialStore()
 	refresher := &countingRefresher{
 		release: make(chan struct{}),
 		token:   auth.NewSecret("fresh-" + fakeToken),
@@ -374,9 +375,9 @@ func writeTempConfig(t *testing.T, contents string) string {
 
 // withMemoryCredentialStore swaps the credential store for an in-memory one, so
 // no test can read or write a real credential file.
-func withMemoryCredentialStore(t *testing.T, record storage.CredentialRecord) *storage.MemoryCredentialStore {
+func withMemoryCredentialStore(t *testing.T, record storage.CredentialRecord) *storagetest.MemoryCredentialStore {
 	t.Helper()
-	store := storage.NewMemoryCredentialStore()
+	store := storagetest.NewMemoryCredentialStore()
 	if !record.Empty() {
 		if err := store.SaveCredentials(context.Background(), record); err != nil {
 			t.Fatalf("seed credential store: %v", err)

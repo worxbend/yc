@@ -13,6 +13,7 @@ import (
 
 	"github.com/worxbend/yc/internal/auth"
 	"github.com/worxbend/yc/internal/storage"
+	"github.com/worxbend/yc/internal/storage/storagetest"
 	"github.com/worxbend/yc/internal/youtube"
 )
 
@@ -91,7 +92,7 @@ func TestTheHolderIsWiredToTheTransports401Recovery(t *testing.T) {
 		ClientID:     "fake.apps.googleusercontent.com",
 		AccessToken:  auth.NewSecret(staleWireToken),
 		RefreshToken: auth.NewSecret(wireRefresh),
-	}, storage.NewMemoryCredentialStore(), refresher)
+	}, storagetest.NewMemoryCredentialStore(), refresher)
 
 	var presented []string
 	var mu sync.Mutex
@@ -142,7 +143,7 @@ func TestARevokedGrantEndsTheSessionWithAnInstruction(t *testing.T) {
 	holder := newCredentialHolder(storage.CredentialRecord{
 		AccessToken:  auth.NewSecret(staleWireToken),
 		RefreshToken: auth.NewSecret(wireRefresh),
-	}, storage.NewMemoryCredentialStore(), refresher)
+	}, storagetest.NewMemoryCredentialStore(), refresher)
 
 	var requests int
 	var mu sync.Mutex
@@ -194,7 +195,7 @@ func TestAKeyOnlySessionDoesNotAttemptARefresh(t *testing.T) {
 	refresher := &staticRefresher{token: freshWireToken}
 	holder := newCredentialHolder(storage.CredentialRecord{
 		APIKey: auth.NewSecret("AIzaSyFAKE00000000000000000000000000010"),
-	}, storage.NewMemoryCredentialStore(), refresher)
+	}, storagetest.NewMemoryCredentialStore(), refresher)
 
 	var requests int
 	var mu sync.Mutex
@@ -229,7 +230,7 @@ func TestAnUnwritableStoreStillLetsTheRequestThrough(t *testing.T) {
 	holder := newCredentialHolder(storage.CredentialRecord{
 		AccessToken:  auth.NewSecret(staleWireToken),
 		RefreshToken: auth.NewSecret(wireRefresh),
-	}, failingStore{CredentialStore: storage.NewMemoryCredentialStore(), err: saveErr}, refresher)
+	}, failingStore{CredentialStore: storagetest.NewMemoryCredentialStore(), err: saveErr}, refresher)
 
 	reported := make(chan error, 4)
 	holder.onError = func(err error) { reported <- err }
@@ -276,7 +277,7 @@ func TestConcurrent401sShareOneExchangeThroughTheHolder(t *testing.T) {
 	holder := newCredentialHolder(storage.CredentialRecord{
 		AccessToken:  auth.NewSecret(staleWireToken),
 		RefreshToken: auth.NewSecret(wireRefresh),
-	}, storage.NewMemoryCredentialStore(), refresher)
+	}, storagetest.NewMemoryCredentialStore(), refresher)
 
 	// Every caller is held at the barrier until all of them have had their
 	// token rejected, so each one provably reaches the refresh path. Without
