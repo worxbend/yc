@@ -239,49 +239,53 @@ func TestMissingRequiredScopesReadsWhicheverListWasPopulated(t *testing.T) {
 // clock - and a machine whose clock is wrong is a machine that would refresh
 // constantly or never.
 func TestTokenInfoPrefersTheRelativeLifetime(t *testing.T) {
+	// The absolute-exp cases are measured against this fixed instant rather
+	// than the wall clock, which is what taking now as a parameter buys: the
+	// expectations are exact seconds instead of tolerance windows that would
+	// flake on a slow machine.
+	now := time.Unix(1_700_000_000, 0)
+
 	tests := []struct {
-		name      string
-		response  tokenInfoResponse
-		wantAtMin int64
-		wantAtMax int64
+		name     string
+		response tokenInfoResponse
+		want     int64
 	}{
 		{
-			name:      "expires_in wins",
-			response:  tokenInfoResponse{ExpiresIn: "3599", Expires: "1"},
-			wantAtMin: 3599, wantAtMax: 3599,
+			name:     "expires_in wins",
+			response: tokenInfoResponse{ExpiresIn: "3599", Expires: "1"},
+			want:     3599,
 		},
 		{
-			name:      "expires_in with surrounding whitespace",
-			response:  tokenInfoResponse{ExpiresIn: "  120 "},
-			wantAtMin: 120, wantAtMax: 120,
+			name:     "expires_in with surrounding whitespace",
+			response: tokenInfoResponse{ExpiresIn: "  120 "},
+			want:     120,
 		},
 		{
-			name:      "absolute exp is used when expires_in is absent",
-			response:  tokenInfoResponse{Expires: fmt.Sprint(time.Now().Add(10 * time.Minute).Unix())},
-			wantAtMin: 595, wantAtMax: 601,
+			name:     "absolute exp is used when expires_in is absent",
+			response: tokenInfoResponse{Expires: fmt.Sprint(now.Add(10 * time.Minute).Unix())},
+			want:     600,
 		},
 		{
-			name:      "neither field is zero rather than a guess",
-			response:  tokenInfoResponse{},
-			wantAtMin: 0, wantAtMax: 0,
+			name:     "neither field is zero rather than a guess",
+			response: tokenInfoResponse{},
+			want:     0,
 		},
 		{
-			name:      "an unparseable pair is zero rather than a guess",
-			response:  tokenInfoResponse{ExpiresIn: "soon", Expires: "later"},
-			wantAtMin: 0, wantAtMax: 0,
+			name:     "an unparseable pair is zero rather than a guess",
+			response: tokenInfoResponse{ExpiresIn: "soon", Expires: "later"},
+			want:     0,
 		},
 		{
-			name:      "an already expired absolute value is negative, not clamped",
-			response:  tokenInfoResponse{Expires: fmt.Sprint(time.Now().Add(-time.Minute).Unix())},
-			wantAtMin: -65, wantAtMax: -55,
+			name:     "an already expired absolute value is negative, not clamped",
+			response: tokenInfoResponse{Expires: fmt.Sprint(now.Add(-time.Minute).Unix())},
+			want:     -60,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := test.response.expiresInSeconds()
-			if got < test.wantAtMin || got > test.wantAtMax {
-				t.Fatalf("expiresInSeconds = %d, want between %d and %d", got, test.wantAtMin, test.wantAtMax)
+			if got := test.response.expiresInSeconds(now); got != test.want {
+				t.Fatalf("expiresInSeconds = %d, want %d", got, test.want)
 			}
 		})
 	}

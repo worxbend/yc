@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -102,6 +103,14 @@ type GoogleOAuthConfig struct {
 	// ResolveIdentity overrides the built-in channels.list?mine=true lookup.
 	// Tests inject a stub; production leaves it nil.
 	ResolveIdentity func(ctx context.Context, accessToken Secret) (Identity, error)
+
+	// AllowExternalCallbacks lets CompleteLogin accept a callback whose state
+	// this flow instance never issued, provided the caller supplies the PKCE
+	// verifier itself. That is how a resumed or externally-driven login works,
+	// but it also disables the pending-attempt half of the CSRF check, so it
+	// is off by default: an unknown or expired state is then rejected with
+	// ErrStateMismatch instead of being quietly completed.
+	AllowExternalCallbacks bool
 }
 
 // ErrUnexpectedRedirect reports that a credential-bearing request was answered
@@ -150,11 +159,32 @@ type GoogleOAuthLoginFlow struct {
 	mu      sync.Mutex
 	pending map[string]*oauthLoginAttempt
 
-	// refreshMu guards refreshCalls, which makes Refresh single-flight: N
-	// concurrent 401s share one exchange with Google instead of racing to
-	// rotate the same refresh token N times.
+	// refreshMu guards refreshCalls and refreshMemo. refreshCalls makes
+	// Refresh single-flight: N concurrent 401s share one exchange with Google
+	// instead of racing to rotate the same refresh token N times.
+	// refreshMemo remembers recently rotated results a little longer, so a
+	// caller that shows up with the pre-rotation token after the in-flight
+	// call is gone still receives the rotated set instead of sending Google a
+	// spent token and being forced back to an interactive login. Both maps
+	// are keyed by refreshKey - a digest, never the raw token.
 	refreshMu    sync.Mutex
 	refreshCalls map[string]*refreshCall
+	refreshMemo  map[string]refreshMemoEntry
+}
+
+// Bounds for the rotated-refresh memo. The TTL only needs to cover the window
+// between a rotation and the last straggler retrying with the old token -
+// seconds in practice - and the size cap keeps a pathological caller from
+// growing the map without bound; the oldest entry is evicted first.
+const (
+	refreshMemoTTL     = 2 * time.Minute
+	refreshMemoEntries = 8
+)
+
+// refreshMemoEntry is one remembered rotation, keyed by the old token's digest.
+type refreshMemoEntry struct {
+	tokens   TokenSet
+	storedAt time.Time
 }
 
 var (
@@ -224,6 +254,7 @@ func NewGoogleOAuthLoginFlow(cfg GoogleOAuthConfig) *GoogleOAuthLoginFlow {
 		cfg:          cfg,
 		pending:      make(map[string]*oauthLoginAttempt),
 		refreshCalls: make(map[string]*refreshCall),
+		refreshMemo:  make(map[string]refreshMemoEntry, refreshMemoEntries),
 	}
 }
 
@@ -306,14 +337,26 @@ func (f *GoogleOAuthLoginFlow) CompleteLogin(ctx context.Context, callback Login
 	if err != nil {
 		return LoginResult{}, err
 	}
-	attempt := f.consumeAttempt(state, callback)
+	// A denial is reported before the attempt lookup: it carries no
+	// authorization code, so nothing is exchanged either way, and the user
+	// deserves the real reason rather than a state error.
+	if callback.Denied() {
+		return LoginResult{}, deniedError(callback, callback.Redactor())
+	}
+	attempt, ok := f.consumeAttempt(state, callback)
+	if !ok {
+		// The pending-attempt lookup is the second half of the CSRF check:
+		// completing a callback this flow never began would let an attacker
+		// log the victim into the attacker's account (login CSRF). Only the
+		// explicit AllowExternalCallbacks opt-in relaxes it.
+		return LoginResult{}, safeErrorf("complete Google OAuth login",
+			"this login attempt is unknown or has expired; run `yc login` again",
+			callback.Redactor(), ErrStateMismatch)
+	}
 	defer attempt.close()
 
 	redactor := NewRedactor(attempt.clientSecret, attempt.state, attempt.verifier, callback.Code, callback.State)
 
-	if callback.Denied() {
-		return LoginResult{}, deniedError(callback, redactor)
-	}
 	if strings.TrimSpace(callback.Code.Reveal()) == "" {
 		return LoginResult{}, safeErrorf("complete Google OAuth login",
 			"the callback did not include an authorization code; run `yc login` again",
@@ -381,9 +424,17 @@ func (f *GoogleOAuthLoginFlow) Refresh(ctx context.Context, refreshToken Secret)
 			Redactor{}, ErrLoginRequired)
 	}
 
-	key := strings.TrimSpace(refreshToken.Reveal())
+	key := refreshKey(refreshToken)
 
 	f.refreshMu.Lock()
+	// A caller holding the pre-rotation token after the in-flight call has
+	// already finished is served from the memo. Without it that caller would
+	// send Google a token the rotation just spent, earn invalid_grant, and be
+	// pushed into an interactive login even though a valid set exists.
+	if tokens, ok := f.lookupRefreshMemo(key); ok {
+		f.refreshMu.Unlock()
+		return tokens, nil
+	}
 	if call, ok := f.refreshCalls[key]; ok {
 		f.refreshMu.Unlock()
 		select {
@@ -402,9 +453,66 @@ func (f *GoogleOAuthLoginFlow) Refresh(ctx context.Context, refreshToken Secret)
 
 	f.refreshMu.Lock()
 	delete(f.refreshCalls, key)
+	if call.err == nil {
+		f.rememberRefresh(key, call.tokens)
+	}
 	f.refreshMu.Unlock()
 
 	return call.tokens, call.err
+}
+
+// refreshKey digests a refresh token into a map key.
+//
+// The rest of this package keeps token material inside Secret so a stray %+v
+// cannot print it; using the raw token as a map key would undo that for the
+// one value most worth protecting, so callers index by digest instead.
+func refreshKey(refreshToken Secret) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(refreshToken.Reveal())))
+	return hex.EncodeToString(sum[:])
+}
+
+// lookupRefreshMemo returns a remembered rotation for key if one is still
+// within its TTL. The caller must hold refreshMu.
+func (f *GoogleOAuthLoginFlow) lookupRefreshMemo(key string) (TokenSet, bool) {
+	entry, ok := f.refreshMemo[key]
+	if !ok {
+		return TokenSet{}, false
+	}
+	if f.cfg.Now().Sub(entry.storedAt) > refreshMemoTTL {
+		delete(f.refreshMemo, key)
+		return TokenSet{}, false
+	}
+	return entry.tokens, true
+}
+
+// rememberRefresh records a successful rotation against the old token's digest.
+// The caller must hold refreshMu.
+func (f *GoogleOAuthLoginFlow) rememberRefresh(key string, tokens TokenSet) {
+	if f.refreshMemo == nil {
+		f.refreshMemo = make(map[string]refreshMemoEntry, refreshMemoEntries)
+	}
+	now := f.cfg.Now()
+	// Expired entries are swept on every write, so the size cap below is a
+	// backstop for a burst rather than the usual way entries leave.
+	for existing, entry := range f.refreshMemo {
+		if now.Sub(entry.storedAt) > refreshMemoTTL {
+			delete(f.refreshMemo, existing)
+		}
+	}
+	for len(f.refreshMemo) >= refreshMemoEntries {
+		oldest, found := "", time.Time{}
+		for existing, entry := range f.refreshMemo {
+			if !found.IsZero() && !entry.storedAt.Before(found) {
+				continue
+			}
+			oldest, found = existing, entry.storedAt
+		}
+		if oldest == "" {
+			break
+		}
+		delete(f.refreshMemo, oldest)
+	}
+	f.refreshMemo[key] = refreshMemoEntry{tokens: tokens, storedAt: now}
 }
 
 // doRefresh performs the single exchange behind Refresh.
@@ -522,7 +630,7 @@ func (f *GoogleOAuthLoginFlow) TokenInfo(ctx context.Context, accessToken Secret
 		}
 	}
 
-	expiresIn := decoded.expiresInSeconds()
+	expiresIn := decoded.expiresInSeconds(f.cfg.Now())
 	if expiresIn <= 0 {
 		return TokenSet{}, safeErrorf("inspect Google OAuth token",
 			"Google reports the access token as expired",
@@ -662,13 +770,16 @@ func (f *GoogleOAuthLoginFlow) storeAttempt(attempt *oauthLoginAttempt) error {
 	return nil
 }
 
-// consumeAttempt removes and returns the pending attempt for state.
+// consumeAttempt removes and returns the pending attempt for state, reporting
+// whether the callback may proceed.
 //
-// A callback that arrives without a recorded attempt is still completable when
-// the caller supplied the verifier itself, which is how a resumed or
-// externally-driven login works; the flow config then supplies the client
-// identity.
-func (f *GoogleOAuthLoginFlow) consumeAttempt(state string, callback LoginCallback) *oauthLoginAttempt {
+// A callback whose state is unknown or expired is refused by default: the
+// pending map is what proves this flow began the login, and fabricating an
+// attempt in its place used to silently skip that half of the CSRF check.
+// With AllowExternalCallbacks set, and only then, such a callback is still
+// completable when the caller supplied the verifier itself - the resumed or
+// externally-driven login - and the flow config supplies the client identity.
+func (f *GoogleOAuthLoginFlow) consumeAttempt(state string, callback LoginCallback) (*oauthLoginAttempt, bool) {
 	f.mu.Lock()
 	attempt, ok := f.pending[state]
 	if ok {
@@ -677,10 +788,13 @@ func (f *GoogleOAuthLoginFlow) consumeAttempt(state string, callback LoginCallba
 	f.mu.Unlock()
 
 	if ok && !f.cfg.Now().After(attempt.expiresAt) {
-		return attempt
+		return attempt, true
 	}
 	if ok {
 		attempt.close()
+	}
+	if !f.cfg.AllowExternalCallbacks {
+		return nil, false
 	}
 	return &oauthLoginAttempt{
 		clientID:     f.cfg.ClientID,
@@ -689,7 +803,7 @@ func (f *GoogleOAuthLoginFlow) consumeAttempt(state string, callback LoginCallba
 		scopes:       cloneScopes(f.cfg.Scopes),
 		state:        callback.State,
 		verifier:     callback.CodeVerifier,
-	}
+	}, true
 }
 
 // expireLocked drops attempts past their TTL. The caller holds f.mu.
@@ -1044,13 +1158,15 @@ type tokenInfoResponse struct {
 }
 
 // expiresInSeconds returns the remaining lifetime in seconds, preferring the
-// relative value Google documents for installed apps.
-func (r tokenInfoResponse) expiresInSeconds() int64 {
+// relative value Google documents for installed apps. The absolute exp claim
+// is measured against the caller's clock rather than time.Now, because this
+// package promises the whole flow can be driven by an injected Now.
+func (r tokenInfoResponse) expiresInSeconds(now time.Time) int64 {
 	if seconds, err := strconv.ParseInt(strings.TrimSpace(r.ExpiresIn), 10, 64); err == nil {
 		return seconds
 	}
 	if expires, err := strconv.ParseInt(strings.TrimSpace(r.Expires), 10, 64); err == nil {
-		return expires - time.Now().Unix()
+		return expires - now.Unix()
 	}
 	return 0
 }

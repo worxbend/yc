@@ -295,6 +295,86 @@ func TestCompleteLoginRejectsStateMismatch(t *testing.T) {
 	assertNoSecrets(t, err)
 }
 
+// A callback this flow never issued must not complete a login. Accepting one
+// is login CSRF: an attacker who gets their own authorization code delivered
+// to the victim's callback would sign the victim into the attacker's account,
+// where the victim's next actions are visible to them.
+func TestCompleteLoginRejectsAnUnknownStateByDefault(t *testing.T) {
+	stub := newOAuthTestServer(t)
+	flow := stub.flow(t, nil)
+
+	// No BeginLogin: nothing is pending, so the state below was never issued.
+	_, err := flow.CompleteLogin(context.Background(), LoginCallback{
+		Code:  NewSecret(testCode),
+		State: NewSecret("attacker-supplied-state"),
+	})
+	if !errors.Is(err, ErrStateMismatch) {
+		t.Fatalf("expected ErrStateMismatch, got %v", err)
+	}
+	if stub.tokenRequestCount() != 0 {
+		t.Fatal("an unknown state must not reach the token endpoint")
+	}
+	assertNoSecrets(t, err)
+}
+
+// The resumed / externally-driven login still works, but only for a caller
+// that opted in and supplied the PKCE verifier itself.
+func TestCompleteLoginAllowsAnUnknownStateWhenExplicitlyEnabled(t *testing.T) {
+	stub := newOAuthTestServer(t)
+	flow := stub.flow(t, func(cfg *GoogleOAuthConfig) {
+		cfg.AllowExternalCallbacks = true
+	})
+
+	if _, err := flow.CompleteLogin(context.Background(), LoginCallback{
+		Code:         NewSecret(testCode),
+		State:        NewSecret("externally-driven-state"),
+		CodeVerifier: NewSecret(testVerifier),
+	}); err != nil {
+		t.Fatalf("CompleteLogin: %v", err)
+	}
+	if stub.tokenRequestCount() != 1 {
+		t.Fatalf("token requests = %d, want 1", stub.tokenRequestCount())
+	}
+}
+
+// Google rotates the refresh token, so a caller that was still holding the old
+// one when the rotation landed would spend a dead token and be told to log in
+// again. The memo hands it the rotated set instead, without a second exchange.
+func TestRefreshServesAStaleTokenHolderFromTheMemo(t *testing.T) {
+	stub := newOAuthTestServer(t)
+	flow := stub.flow(t, nil)
+
+	first, err := flow.Refresh(context.Background(), NewSecret(testRefreshToken))
+	if err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	// The in-flight call is gone by now; this caller arrives late with the
+	// pre-rotation token.
+	second, err := flow.Refresh(context.Background(), NewSecret(testRefreshToken))
+	if err != nil {
+		t.Fatalf("second Refresh: %v", err)
+	}
+	if second.AccessToken.Reveal() != first.AccessToken.Reveal() {
+		t.Fatal("the late caller did not receive the rotated token set")
+	}
+	if stub.tokenRequestCount() != 1 {
+		t.Fatalf("token requests = %d, want 1: the memo must not re-exchange", stub.tokenRequestCount())
+	}
+}
+
+// The memo is keyed by digest so a raw refresh token never sits in an ordinary
+// map key, where a debug dump of the flow would expose it.
+func TestRefreshKeyDoesNotContainTheToken(t *testing.T) {
+	key := refreshKey(NewSecret(testRefreshToken))
+	if strings.Contains(key, testRefreshToken) {
+		t.Fatalf("refresh key leaks the token: %q", key)
+	}
+	if key == "" {
+		t.Fatal("refresh key is empty")
+	}
+}
+
 func TestCompleteLoginReportsDenial(t *testing.T) {
 	stub := newOAuthTestServer(t)
 	flow := stub.flow(t, nil)
