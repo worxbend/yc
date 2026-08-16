@@ -98,7 +98,7 @@ func runExportSuperchats(args []string, stdout, stderr io.Writer) int {
 		out = file
 	}
 
-	rows, err := exportSuperchatsCSV(dir, out)
+	rows, skipped, err := exportSuperchatsCSV(dir, out)
 	if err != nil {
 		if outFile != nil {
 			_ = outFile.Close()
@@ -114,6 +114,12 @@ func runExportSuperchats(args []string, stdout, stderr io.Writer) int {
 			return ExitFailure
 		}
 	}
+	if skipped > 0 {
+		// A damaged line is skipped rather than ending the read, so the export
+		// is complete apart from those lines. Saying so is the difference
+		// between a known-partial ledger and one quietly missing rows.
+		fmt.Fprintf(stderr, "skipped %d unreadable chat log line(s)\n", skipped)
+	}
 	fmt.Fprintf(stderr, "wrote %d super chat rows from %s\n", rows, config.RedactDisplayValue(dir))
 	return ExitOK
 }
@@ -122,13 +128,14 @@ func runExportSuperchats(args []string, stdout, stderr io.Writer) int {
 // returning how many data rows it wrote. Files are read oldest first, which
 // keeps the ledger in roughly chronological order without loading everything
 // into memory to sort it.
-func exportSuperchatsCSV(dir string, out io.Writer) (int, error) {
+func exportSuperchatsCSV(dir string, out io.Writer) (int, int, error) {
 	writer := csv.NewWriter(out)
 	if err := writer.Write(superChatCSVHeader); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	rows := 0
+	skipped := 0
 	for _, path := range chatlog.ListLogFiles(dir) {
 		file, err := os.Open(path)
 		if err != nil {
@@ -136,20 +143,21 @@ func exportSuperchatsCSV(dir string, out io.Writer) (int, error) {
 			// pruned it) is not a reason to abandon the rest.
 			continue
 		}
-		err = chatlog.Records(file, func(event chatlog.Event) error {
+		fileSkipped, err := chatlog.Records(file, func(event chatlog.Event) error {
 			if !isSuperChatEvent(event) {
 				return nil
 			}
 			rows++
 			return writer.Write(superChatCSVRow(event))
 		})
+		skipped += fileSkipped
 		_ = file.Close()
 		if err != nil {
-			return rows, err
+			return rows, skipped, err
 		}
 	}
 	writer.Flush()
-	return rows, writer.Error()
+	return rows, skipped, writer.Error()
 }
 
 // isSuperChatEvent selects the paid events the ledger reports: Super Chats and

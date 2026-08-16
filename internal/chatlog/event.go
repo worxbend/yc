@@ -1,6 +1,8 @@
 package chatlog
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -75,34 +77,45 @@ func FromMessage(message youtube.Message) Event {
 }
 
 // Records streams every decodable event from one JSONL log to fn, in file
-// order.
+// order, and returns how many lines it could not decode.
 //
-// A malformed line is skipped rather than failing the whole read: a log cut
-// off mid-line by a crash still has every complete record before it, and those
-// records are the reason the log exists. An error from fn stops the scan and
-// is returned as-is.
-func Records(r io.Reader, fn func(Event) error) error {
-	decoder := json.NewDecoder(&limitedLineReader{r: r})
-	for {
-		var event Event
-		err := decoder.Decode(&event)
-		if errors.Is(err, io.EOF) {
-			return nil
+// The log is one JSON object per line, so a damaged line damages exactly one
+// record: the scan drops it, moves to the next newline, and carries on. That
+// resynchronization is the whole point of the returned count. An earlier
+// version stopped at the first syntax error, which meant a single torn line -
+// the shape a failed or short write leaves behind - silently hid every record
+// after it while the export still reported success. Callers are expected to
+// surface a non-zero skipped count so a partial export is never mistaken for a
+// complete one. An error from fn stops the scan and is returned as-is.
+func Records(r io.Reader, fn func(Event) error) (skipped int, err error) {
+	scanner := bufio.NewScanner(&limitedLineReader{r: r})
+	// A single record is far smaller than this, but a corrupt file can hold
+	// a line of any length and the scanner's 64 KiB default would turn that
+	// into a whole-file failure.
+	scanner.Buffer(make([]byte, 0, 64*1024), maxLogLineBytes)
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
 		}
-		if err != nil {
-			// The decoder cannot resync after a syntax error, and a line cut
-			// off by a crash surfaces as an unexpected EOF. Either way the
-			// corrupt tail ends the scan; everything decoded before it stands.
-			var syntaxErr *json.SyntaxError
-			if errors.As(err, &syntaxErr) || errors.Is(err, io.ErrUnexpectedEOF) {
-				return nil
-			}
-			return fmt.Errorf("read chat log: %w", err)
+		var event Event
+		if decodeErr := json.Unmarshal(line, &event); decodeErr != nil {
+			skipped++
+			continue
 		}
 		if err := fn(event); err != nil {
-			return err
+			return skipped, err
 		}
 	}
+	if scanErr := scanner.Err(); scanErr != nil {
+		// A line too long to buffer is corruption rather than a read failure,
+		// and the records around it are still worth returning.
+		if errors.Is(scanErr, bufio.ErrTooLong) {
+			return skipped + 1, nil
+		}
+		return skipped, fmt.Errorf("read chat log: %w", scanErr)
+	}
+	return skipped, nil
 }
 
 // limitedLineReader caps how much a single Records call can pull through, so a
@@ -115,6 +128,11 @@ type limitedLineReader struct {
 // maxLogReadBytes bounds one whole log file read (current rotation budget
 // times a generous safety factor).
 const maxLogReadBytes = int64(1) << 30
+
+// maxLogLineBytes bounds one line. A chat message plus its metadata is a few
+// hundred bytes; this leaves room for an unusually long one without letting a
+// corrupt file be buffered without bound.
+const maxLogLineBytes = 4 << 20
 
 func (l *limitedLineReader) Read(p []byte) (int, error) {
 	if l.read >= maxLogReadBytes {

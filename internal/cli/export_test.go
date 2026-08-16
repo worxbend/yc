@@ -33,7 +33,7 @@ func TestExportSuperchatsSelectsOnlyPaidEventsAcrossFiles(t *testing.T) {
 	writeLogFile(t, dir, "notes.jsonl", superChatLine+"\n")
 
 	var out bytes.Buffer
-	rows, err := exportSuperchatsCSV(dir, &out)
+	rows, _, err := exportSuperchatsCSV(dir, &out)
 	if err != nil {
 		t.Fatalf("exportSuperchatsCSV: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestExportSuperchatsSelectsOnlyPaidEventsAcrossFiles(t *testing.T) {
 
 func TestExportSuperchatsEmptyDirectoryIsHeaderOnly(t *testing.T) {
 	var out bytes.Buffer
-	rows, err := exportSuperchatsCSV(t.TempDir(), &out)
+	rows, _, err := exportSuperchatsCSV(t.TempDir(), &out)
 	if err != nil {
 		t.Fatalf("exportSuperchatsCSV: %v", err)
 	}

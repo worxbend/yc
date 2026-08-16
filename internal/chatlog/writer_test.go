@@ -230,7 +230,7 @@ func TestRecordsSkipsACorruptTailButKeepsCompleteRecords(t *testing.T) {
 	input := `{"ts":"2026-08-15T12:00:00Z","chat_id":"c1","kind":"text","type":"chat","text":"hello"}
 {"ts":"2026-08-15T12:00:01Z","chat_id":"c1","kind":"text","ty` // truncated mid-line
 	var texts []string
-	err := Records(strings.NewReader(input), func(event Event) error {
+	skipped, err := Records(strings.NewReader(input), func(event Event) error {
 		texts = append(texts, event.Text)
 		return nil
 	})
@@ -239,5 +239,133 @@ func TestRecordsSkipsACorruptTailButKeepsCompleteRecords(t *testing.T) {
 	}
 	if len(texts) != 1 || texts[0] != "hello" {
 		t.Fatalf("texts = %v, want the one complete record", texts)
+	}
+	if skipped != 1 {
+		t.Fatalf("skipped = %d, want 1 for the truncated tail", skipped)
+	}
+}
+
+func TestRecordsResynchronizesAfterATornMiddleLine(t *testing.T) {
+	// This is the shape a failed write used to leave behind: a fragment with
+	// no newline, then more complete records after it. The reader must report
+	// the loss of the one bad line and still deliver everything after it.
+	input := `{"ts":"2026-08-15T12:00:00Z","chat_id":"c1","kind":"text","type":"chat","text":"first"}
+{"ts":"2026-08-15T12:00:01Z","chat_id":"c1","kind":"text","ty
+{"ts":"2026-08-15T12:00:02Z","chat_id":"c1","kind":"text","type":"chat","text":"third"}
+`
+	var texts []string
+	skipped, err := Records(strings.NewReader(input), func(event Event) error {
+		texts = append(texts, event.Text)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Records: %v", err)
+	}
+	if len(texts) != 2 || texts[0] != "first" || texts[1] != "third" {
+		t.Fatalf("texts = %v, want the records on both sides of the torn line", texts)
+	}
+	if skipped != 1 {
+		t.Fatalf("skipped = %d, want 1", skipped)
+	}
+}
+
+func TestRollbackCutsAPartialLineBackOff(t *testing.T) {
+	// A disk-full write can land some of the bytes before it fails, which is
+	// the case rollback has to undo. os.File gives no way to force a short
+	// write, so the fragment is planted directly and the rollback is driven
+	// the way Append drives it.
+	writer, dir := newTestWriter(t, Options{})
+	if err := writer.Append(testMessage("m1", "kept")); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	writer.mu.Lock()
+	good := writer.size
+	partial, err := writer.file.Write([]byte(`{"ts":"2026-08-15T12:00:01Z","chat_i`))
+	if err != nil {
+		t.Fatalf("plant partial line: %v", err)
+	}
+	writer.size += int64(partial)
+	writer.rollbackLocked(good)
+	size := writer.size
+	writer.mu.Unlock()
+
+	if size != good {
+		t.Fatalf("size = %d after rollback, want %d", size, good)
+	}
+	data := readOnlyLogFile(t, dir)
+	if !strings.HasSuffix(data, "\n") {
+		t.Fatalf("log ends mid-line after rollback: %q", data)
+	}
+	if strings.Contains(data, "chat_i\"") {
+		t.Fatalf("fragment survived rollback: %q", data)
+	}
+	skipped, err := Records(strings.NewReader(data), func(Event) error { return nil })
+	if err != nil {
+		t.Fatalf("Records: %v", err)
+	}
+	if skipped != 0 {
+		t.Fatalf("skipped = %d, want 0 after a rollback", skipped)
+	}
+}
+
+// readOnlyLogFile returns the contents of dir's single log file.
+func readOnlyLogFile(t *testing.T, dir string) string {
+	t.Helper()
+	files := ListLogFiles(dir)
+	if len(files) != 1 {
+		t.Fatalf("log files = %v, want one", files)
+	}
+	data, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	return string(data)
+}
+
+func TestAppendRewindsThePartialLineOnAWriteError(t *testing.T) {
+	writer, dir := newTestWriter(t, Options{})
+	if err := writer.Append(testMessage("m1", "kept")); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	// Closing the file underneath the writer makes the next write fail after
+	// the writer has already committed to an offset, which is exactly the
+	// situation the rollback exists for.
+	writer.mu.Lock()
+	good := writer.size
+	if err := writer.file.Close(); err != nil {
+		t.Fatalf("close log file: %v", err)
+	}
+	writer.mu.Unlock()
+
+	if err := writer.Append(testMessage("m2", "lost")); err == nil {
+		t.Fatal("Append succeeded on a closed file")
+	}
+
+	writer.mu.Lock()
+	size := writer.size
+	writer.mu.Unlock()
+	if size != good {
+		t.Fatalf("size = %d after a failed write, want the pre-write %d", size, good)
+	}
+
+	files := ListLogFiles(dir)
+	if len(files) != 1 {
+		t.Fatalf("log files = %v, want one", files)
+	}
+	data, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	if !strings.HasSuffix(string(data), "\n") {
+		t.Fatalf("log ends mid-line: %q", string(data))
+	}
+	skipped, err := Records(strings.NewReader(string(data)), func(Event) error { return nil })
+	if err != nil {
+		t.Fatalf("Records: %v", err)
+	}
+	if skipped != 0 {
+		t.Fatalf("skipped = %d, want 0 - the partial line should have been rolled back", skipped)
 	}
 }

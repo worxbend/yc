@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -69,6 +70,10 @@ type Writer struct {
 	file   *os.File
 	size   int64
 	closed bool
+	// rotateErr remembers a failure to close a rotated-away file so Close can
+	// report it. Rotation happens inside an Append that otherwise succeeded,
+	// and failing that Append would misreport which message was lost.
+	rotateErr error
 }
 
 // NewWriter returns a writer that will log into dir. No file is created until
@@ -112,25 +117,61 @@ func (w *Writer) Append(message youtube.Message) error {
 	if err := w.ensureFileLocked(int64(len(line))); err != nil {
 		return err
 	}
+	start := w.size
 	n, err := w.file.Write(line)
 	w.size += int64(n)
 	if err != nil {
+		// A short or failed write leaves a fragment of JSON with no newline
+		// after it, and every later record then sits behind that fragment.
+		// Rewinding to where this line started keeps the file a sequence of
+		// whole lines, so at worst this one message is lost instead of all of
+		// the ones that follow it.
+		w.rollbackLocked(start)
 		return fmt.Errorf("write chat log: %w", err)
 	}
 	return nil
 }
 
-// Close closes the current file. Further appends return ErrWriterClosed.
-// It is safe to call more than once.
+// rollbackLocked discards a partially written line by cutting the file back to
+// the offset the line started at.
+//
+// If the rollback itself fails there is nothing better to do than keep the
+// recorded size honest: the next append then writes after the fragment, and the
+// reader skips the one damaged line rather than stopping at it.
+func (w *Writer) rollbackLocked(offset int64) {
+	if w.file == nil {
+		return
+	}
+	if err := w.file.Truncate(offset); err != nil {
+		return
+	}
+	if _, err := w.file.Seek(offset, io.SeekStart); err != nil {
+		return
+	}
+	w.size = offset
+}
+
+// Close flushes and closes the current file, and reports any error a rotation
+// hit while closing an earlier one. Further appends return ErrWriterClosed. It
+// is safe to call more than once.
 func (w *Writer) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.closed = true
 	if w.file == nil {
-		return nil
+		return w.rotateErr
 	}
-	err := w.file.Close()
+	// Close alone does not promise the bytes reached the disk, and this is the
+	// last moment anyone can ask for them, so the file is synced first.
+	err := w.file.Sync()
+	if closeErr := w.file.Close(); err == nil {
+		err = closeErr
+	}
 	w.file = nil
+	if err == nil {
+		err = w.rotateErr
+	}
+	w.rotateErr = nil
 	return err
 }
 
@@ -138,9 +179,17 @@ func (w *Writer) Close() error {
 // pending write would leave the current file over budget.
 func (w *Writer) ensureFileLocked(pending int64) error {
 	if w.file != nil && w.size+pending > w.opts.MaxFileBytes {
-		_ = w.file.Close()
+		// Close is where a buffered write-back failure finally surfaces, so
+		// discarding its error would hide the loss of a whole rotated file.
+		// Rotation still goes ahead - the new file is where the session
+		// continues - and the error is handed to whoever calls Close, which
+		// is the one place a caller already checks for write-out trouble.
+		closeErr := w.file.Close()
 		w.file = nil
 		w.size = 0
+		if closeErr != nil {
+			w.rotateErr = fmt.Errorf("close rotated chat log: %w", closeErr)
+		}
 	}
 	if w.file != nil {
 		return nil
