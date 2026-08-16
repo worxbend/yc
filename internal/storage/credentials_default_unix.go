@@ -25,3 +25,9 @@ func credentialPlatformSupported() error {
 func openCredentialFileNoFollow(path string) (*os.File, error) {
 	return os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 }
+
+// openCacheFileNoFollow opens a cache entry with the same refusal to follow a
+// symlink at the final path component that the credential reader uses.
+func openCacheFileNoFollow(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+}

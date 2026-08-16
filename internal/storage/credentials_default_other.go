@@ -26,3 +26,14 @@ func credentialPlatformSupported() error {
 func openCredentialFileNoFollow(path string) (*os.File, error) {
 	return nil, unsupportedCredentialsError()
 }
+
+// openCacheFileNoFollow falls back to an ordinary open off Unix.
+//
+// The credential reader refuses to open at all here because token material is
+// worth failing over. The cache holds only re-fetchable public data - stream
+// titles, quota bookkeeping - so refusing to read it would disable yc on this
+// platform to defend against a swapped symlink that can leak nothing secret.
+// Get still rejects anything that is not a regular file before calling this.
+func openCacheFileNoFollow(path string) (*os.File, error) {
+	return os.Open(path)
+}

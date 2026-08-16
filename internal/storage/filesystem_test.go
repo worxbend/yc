@@ -89,3 +89,28 @@ func TestProbeWritableDirRequiresAPath(t *testing.T) {
 		t.Fatal("an empty directory path must be rejected")
 	}
 }
+
+// TestProbeWritableDirClearsAStaleProbeFile covers a probe that was killed
+// before it could clean up: the next probe has to remove the leftover instead
+// of stepping around it forever.
+func TestProbeWritableDirClearsAStaleProbeFile(t *testing.T) {
+	dir := t.TempDir()
+	stale := filepath.Join(dir, ".yc-doctor-write-test")
+	if err := os.WriteFile(stale, []byte("stale"), 0o600); err != nil {
+		t.Fatalf("plant stale probe: %v", err)
+	}
+	if err := ProbeWritableDir(dir); err != nil {
+		t.Fatalf("ProbeWritableDir: %v", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	if len(entries) != 0 {
+		names := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			names = append(names, entry.Name())
+		}
+		t.Fatalf("probe left files behind: %v", names)
+	}
+}

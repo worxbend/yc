@@ -38,6 +38,17 @@ var ErrCredentialsInsecure = errors.New("insecure credential permissions")
 // future yc.
 var ErrCredentialsUnsupportedVersion = errors.New("unsupported credential file version")
 
+// ErrCredentialsVersionTooOld reports a credential file older than any version
+// this yc can decode. It is distinct from ErrCredentialsUnsupportedVersion so a
+// caller can tell "log in again" (too old) from "upgrade yc" (too new).
+var ErrCredentialsVersionTooOld = errors.New("credential file version is older than this yc supports")
+
+// ErrCredentialsConflict reports a save that would overwrite a credential file
+// another process replaced after this store last read it. Failing the save is
+// the safe direction: overwriting would destroy a refresh token the other
+// process may already have rotated.
+var ErrCredentialsConflict = errors.New("credential file was changed by another process")
+
 // CredentialRecordVersion is the on-disk schema version yc writes and accepts.
 const CredentialRecordVersion = 1
 
@@ -199,6 +210,17 @@ func (p CredentialFilePlan) Validate() error {
 // whose permissions yc cannot vouch for.
 type CredentialFileStore struct {
 	plan CredentialFilePlan
+
+	// mu guards the write basis below. The basis is the file modification
+	// time this store instance last observed (on load or on its own save);
+	// SaveCredentials refuses to overwrite a file whose mtime no longer
+	// matches it, which is what keeps two yc processes from silently
+	// destroying each other's rotated refresh tokens. A store that has never
+	// observed the file (a fresh `yc login`) has no basis and may overwrite,
+	// because replacing the stored grant is exactly what a login is for.
+	mu         sync.Mutex
+	basisKnown bool
+	basisMod   time.Time
 }
 
 var _ CredentialStore = (*CredentialFileStore)(nil)
@@ -304,7 +326,50 @@ func (s *CredentialFileStore) LoadCredentials(ctx context.Context) (CredentialRe
 	if err != nil {
 		return CredentialRecord{}, false, credentialMalformedError("load credential file", s.plan.Path, err)
 	}
+	s.rememberBasis(info.ModTime())
 	return record, true, nil
+}
+
+// rememberBasis records the file modification time this store last observed.
+func (s *CredentialFileStore) rememberBasis(mod time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.basisKnown = true
+	s.basisMod = mod
+}
+
+// forgetBasis clears the observed modification time, after a delete.
+func (s *CredentialFileStore) forgetBasis() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.basisKnown = false
+	s.basisMod = time.Time{}
+}
+
+// checkSaveConflict fails when the on-disk file changed since this store last
+// read or wrote it. A store with no basis - one that never loaded the file -
+// skips the check, so a fresh login can still replace stored credentials.
+func (s *CredentialFileStore) checkSaveConflict() error {
+	s.mu.Lock()
+	known, basis := s.basisKnown, s.basisMod
+	s.mu.Unlock()
+	if !known {
+		return nil
+	}
+	info, err := os.Lstat(s.plan.Path)
+	if errors.Is(err, fs.ErrNotExist) {
+		// The file this store read was deleted; treating that as a conflict
+		// would stop `yc login` after `yc logout` in another window from
+		// working, and there is nothing left to destroy.
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.ModTime().Equal(basis) {
+		return ErrCredentialsConflict
+	}
+	return nil
 }
 
 // SaveCredentials writes the record atomically with exact private permissions.
@@ -333,8 +398,17 @@ func (s *CredentialFileStore) SaveCredentials(ctx context.Context, record Creden
 	if err := validateCredentialReplacementTarget(s.plan.Path); err != nil {
 		return credentialError("prepare credential file", s.plan.Path, err, redactor)
 	}
+	if err := s.checkSaveConflict(); err != nil {
+		return credentialError("save credential file", s.plan.Path, err, redactor)
+	}
 	if err := writeCredentialFileAtomically(ctx, s.plan.Path, data, s.plan.Mode); err != nil {
 		return credentialError("save credential file", s.plan.Path, err, redactor)
+	}
+	// The just-renamed file's mtime is the new basis for this store's next
+	// save; without it a second save from the same store would conflict with
+	// its own first one.
+	if info, err := os.Lstat(s.plan.Path); err == nil {
+		s.rememberBasis(info.ModTime())
 	}
 	return nil
 }
@@ -353,6 +427,12 @@ func (s *CredentialFileStore) DeleteCredentials(ctx context.Context) error {
 	if err := credentialPlatformSupported(); err != nil {
 		return credentialError("delete credential file", s.plan.Path, err, auth.Redactor{})
 	}
+
+	// Temp siblings are swept even when the credential file itself is gone: a
+	// crash between CreateTemp and the rename leaves a temp file that holds
+	// live tokens, and `yc logout` must remove those too.
+	sweepCredentialTempFiles(s.plan.Dir, filepath.Base(s.plan.Path))
+	s.forgetBasis()
 
 	info, err := os.Lstat(s.plan.Path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -527,6 +607,19 @@ func unsupportedCredentialsError() error {
 // This is the one deliberate reveal path for auth.Secret values. Nothing else
 // in yc may call it: not diagnostics, not debug logging, not `yc config show`.
 func MarshalCredentialFile(record CredentialRecord) ([]byte, error) {
+	// The record's Version is honored, not overwritten: a caller that loaded
+	// a record carries its schema forward, and a zero Version - a record
+	// built in code rather than loaded - gets the current one. A version
+	// this build cannot decode is refused rather than written, because a
+	// file yc could not read back is a file it should not create.
+	version := record.Version
+	if version == 0 {
+		version = CredentialRecordVersion
+	}
+	if version != CredentialRecordVersion {
+		return nil, fmt.Errorf("%w: %d", ErrCredentialsUnsupportedVersion, version)
+	}
+	record.Version = version
 	data, err := json.MarshalIndent(credentialFileFromRecord(record), "", "  ")
 	if err != nil {
 		return nil, err
@@ -536,7 +629,31 @@ func MarshalCredentialFile(record CredentialRecord) ([]byte, error) {
 
 // ParseCredentialFile decodes the on-disk credential file. Its errors describe
 // the shape of the problem and never quote the file's contents.
+//
+// The version is read first and dispatched to a per-version decoder, so adding
+// a v2 means adding a case here rather than breaking every v1 user. A version
+// below the oldest supported one reports ErrCredentialsVersionTooOld ("log in
+// again"); one above the newest reports ErrCredentialsUnsupportedVersion
+// ("this file came from a newer yc").
 func ParseCredentialFile(data []byte) (CredentialRecord, error) {
+	var probe struct {
+		Version int `json:"version"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return CredentialRecord{}, ErrCredentialsMalformed
+	}
+	switch {
+	case probe.Version == CredentialRecordVersion:
+		return parseCredentialFileV1(data)
+	case probe.Version < CredentialRecordVersion:
+		return CredentialRecord{}, fmt.Errorf("%w: %d", ErrCredentialsVersionTooOld, probe.Version)
+	default:
+		return CredentialRecord{}, fmt.Errorf("%w: %d", ErrCredentialsUnsupportedVersion, probe.Version)
+	}
+}
+
+// parseCredentialFileV1 strictly decodes the version-1 schema.
+func parseCredentialFileV1(data []byte) (CredentialRecord, error) {
 	var file credentialFile
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -546,9 +663,6 @@ func ParseCredentialFile(data []byte) (CredentialRecord, error) {
 	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return CredentialRecord{}, ErrCredentialsMalformed
-	}
-	if file.Version != CredentialRecordVersion {
-		return CredentialRecord{}, fmt.Errorf("%w: %d", ErrCredentialsUnsupportedVersion, file.Version)
 	}
 	return file.toRecord()
 }
@@ -575,7 +689,7 @@ type credentialFileGoogle struct {
 
 func credentialFileFromRecord(record CredentialRecord) credentialFile {
 	return credentialFile{
-		Version: CredentialRecordVersion,
+		Version: record.Version,
 		Google: credentialFileGoogle{
 			ClientID:     record.ClientID,
 			AccessToken:  record.AccessToken.Reveal(),
@@ -719,6 +833,10 @@ func writeCredentialFileAtomically(ctx context.Context, path string, data []byte
 	}
 
 	dir := filepath.Dir(path)
+	// A crash between CreateTemp and the rename below strands a temp file
+	// full of live tokens. Sweeping before creating this write's own temp
+	// keeps at most one such orphan around, and only until the next save.
+	sweepCredentialTempFiles(dir, filepath.Base(path))
 	file, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-")
 	if err != nil {
 		return err
@@ -784,6 +902,25 @@ func validateCredentialTempFile(path string, mode fs.FileMode) error {
 	return nil
 }
 
+// sweepCredentialTempFiles removes leftover atomic-write temp files for base
+// under dir. Failures are ignored: the sweep is hygiene around the operation
+// that called it, and that operation's own error is the one that matters.
+func sweepCredentialTempFiles(dir, base string) {
+	matches, err := filepath.Glob(filepath.Join(dir, "."+base+".tmp-*"))
+	if err != nil {
+		return
+	}
+	for _, match := range matches {
+		// Only unlink what the atomic writer could have created: a regular
+		// file. Anything else under a matching name was not left by yc.
+		info, err := os.Lstat(match)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		_ = os.Remove(match)
+	}
+}
+
 // syncCredentialDir flushes the directory entry so the rename survives a crash.
 func syncCredentialDir(dir string) error {
 	file, err := os.Open(dir)
@@ -838,6 +975,9 @@ func credentialMalformedError(action, location string, err error) error {
 	if errors.Is(err, ErrCredentialsUnsupportedVersion) {
 		matches = append(matches, ErrCredentialsUnsupportedVersion)
 	}
+	if errors.Is(err, ErrCredentialsVersionTooOld) {
+		matches = append(matches, ErrCredentialsVersionTooOld)
+	}
 	return credentialStoreError{
 		message: sanitizedCredentialMessage(action, location, ErrCredentialsMalformed.Error(), auth.Redactor{}),
 		matches: matches,
@@ -870,6 +1010,8 @@ func credentialErrorMatches(err error) []error {
 		ErrCredentialsMalformed,
 		ErrCredentialsInsecure,
 		ErrCredentialsUnsupportedVersion,
+		ErrCredentialsVersionTooOld,
+		ErrCredentialsConflict,
 		ErrPathIsDirectory,
 		fs.ErrPermission,
 		fs.ErrExist,

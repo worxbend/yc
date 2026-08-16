@@ -558,3 +558,89 @@ func assertRedacted(t *testing.T, err error) {
 		}
 	}
 }
+
+// TestSaveSweepsAStrandedTempFile covers the crash window in the atomic write:
+// a temp file full of live tokens must not survive the next save.
+func TestSaveSweepsAStrandedTempFile(t *testing.T) {
+	store, path := newTestStore(t)
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, CredentialDirMode); err != nil {
+		t.Fatalf("create credential dir: %v", err)
+	}
+	stray := filepath.Join(dir, "."+filepath.Base(path)+".tmp-999999")
+	if err := os.WriteFile(stray, []byte(`{"stranded":true}`), 0o600); err != nil {
+		t.Fatalf("plant temp file: %v", err)
+	}
+
+	if err := store.SaveCredentials(context.Background(), testRecord()); err != nil {
+		t.Fatalf("SaveCredentials: %v", err)
+	}
+	if _, err := os.Lstat(stray); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("stranded temp file survived a save: err=%v", err)
+	}
+}
+
+func TestDeleteSweepsAStrandedTempFile(t *testing.T) {
+	store, path := newTestStore(t)
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, CredentialDirMode); err != nil {
+		t.Fatalf("create credential dir: %v", err)
+	}
+	stray := filepath.Join(dir, "."+filepath.Base(path)+".tmp-123")
+	if err := os.WriteFile(stray, []byte(`{"stranded":true}`), 0o600); err != nil {
+		t.Fatalf("plant temp file: %v", err)
+	}
+
+	// The credential file itself is absent on purpose: logout has to clean up
+	// the temp sibling even when there is nothing else left to delete.
+	if err := store.DeleteCredentials(context.Background()); err != nil {
+		t.Fatalf("DeleteCredentials: %v", err)
+	}
+	if _, err := os.Lstat(stray); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("stranded temp file survived a delete: err=%v", err)
+	}
+}
+
+// TestSaveFailsWhenTheFileChangedUnderneath is the lost-update case: two yc
+// windows logged in at once must not have the second silently overwrite the
+// first's tokens.
+func TestSaveFailsWhenTheFileChangedUnderneath(t *testing.T) {
+	store, path := newTestStore(t)
+	ctx := context.Background()
+	if err := store.SaveCredentials(ctx, testRecord()); err != nil {
+		t.Fatalf("SaveCredentials: %v", err)
+	}
+	// The basis is only established by a load, which is what a second window
+	// would have done before it tried to save.
+	if _, _, err := store.LoadCredentials(ctx); err != nil {
+		t.Fatalf("LoadCredentials: %v", err)
+	}
+
+	other := testRecord()
+	other.ClientID = "someone-else.apps.googleusercontent.com"
+	data, err := MarshalCredentialFile(other)
+	if err != nil {
+		t.Fatalf("MarshalCredentialFile: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("rewrite credential file: %v", err)
+	}
+	// Modification times can have coarse resolution, so the change is made
+	// explicit rather than relying on the clock having moved.
+	future := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(path, future, future); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	err = store.SaveCredentials(ctx, testRecord())
+	if !errors.Is(err, ErrCredentialsConflict) {
+		t.Fatalf("SaveCredentials error = %v, want ErrCredentialsConflict", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if string(got) != string(data) {
+		t.Fatal("the conflicting save overwrote the other process's file")
+	}
+}

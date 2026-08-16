@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -296,5 +297,66 @@ func TestDefaultCacheDir(t *testing.T) {
 	}
 	if filepath.Base(dir) != "yc" {
 		t.Fatalf("cache dir should be namespaced to yc, got %q", dir)
+	}
+}
+
+// TestPruneRemovesAStrandedTempEntry covers the orphan an interrupted atomic
+// write leaves behind: ".<name>.cache.tmp-<digits>" is cache-owned, so both
+// the age prune and the size accounting have to see it. Before that name was
+// recognized, a crashed Put left a file no prune would ever remove and no
+// budget would ever count.
+func TestPruneRemovesAStrandedTempEntry(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "cache")
+	cache := NewCache(root)
+	ctx := context.Background()
+	if err := cache.Put(ctx, "quota-ledger", []byte(`{"messages.list":1}`)); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	stray := filepath.Join(root, ".quota-ledger.cache.tmp-123")
+	if err := os.WriteFile(stray, []byte("stranded"), 0o600); err != nil {
+		t.Fatalf("plant temp entry: %v", err)
+	}
+	old := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(stray, old, old); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	entries, err := cache.entries(ctx)
+	if err != nil {
+		t.Fatalf("entries: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("entries = %d, want the record plus the stranded temp file", len(entries))
+	}
+
+	if err := cache.Prune(ctx, time.Hour); err != nil {
+		t.Fatalf("Prune: %v", err)
+	}
+	if _, err := os.Lstat(stray); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stranded temp entry survived Prune: err=%v", err)
+	}
+	if _, ok, err := cache.Get(ctx, "quota-ledger"); err != nil || !ok {
+		t.Fatalf("the fresh record must survive: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestPutCreatesAPrivateCacheDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix permission bits do not apply on windows")
+	}
+	root := filepath.Join(t.TempDir(), "cache", "nested")
+	cache := NewCache(root)
+	if err := cache.Put(context.Background(), "quota-ledger", []byte("{}")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	info, err := os.Stat(root)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	// MkdirAll subtracts the umask, so without the chmod that follows it this
+	// is 0755 on a default-umask machine.
+	if perm := info.Mode().Perm(); perm != 0o700 {
+		t.Fatalf("cache directory mode = %04o, want 0700", perm)
 	}
 }

@@ -67,6 +67,19 @@ func ProbeWritableDir(dir string) error {
 	probePath := filepath.Join(dir, ".yc-doctor-write-test")
 	file, err := os.OpenFile(probePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, cacheFileMode)
 	if errors.Is(err, fs.ErrExist) {
+		// The plain name being taken almost always means an earlier probe was
+		// killed before it could clean up. Removing it keeps this function's
+		// promise to leave nothing behind: without the remove, that stale file
+		// would sit in the directory forever and every later probe would fall
+		// through to a pid-suffixed name instead.
+		if removeErr := os.Remove(probePath); removeErr == nil {
+			file, err = os.OpenFile(probePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, cacheFileMode)
+		}
+	}
+	if errors.Is(err, fs.ErrExist) {
+		// Another yc is probing this directory right now and re-created the
+		// file between the remove and the open, so this probe uses a name of
+		// its own rather than fighting over the shared one.
 		probePath = filepath.Join(dir, ".yc-doctor-write-test-"+strconv.Itoa(os.Getpid()))
 		file, err = os.OpenFile(probePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, cacheFileMode)
 	}

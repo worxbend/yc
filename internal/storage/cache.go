@@ -136,13 +136,24 @@ func (c Cache) Get(ctx context.Context, key string) ([]byte, bool, error) {
 		return nil, false, fmt.Errorf("read cache entry: %w", err)
 	}
 	// A cache entry that is not a regular file was not written by yc, and
-	// following it would read whatever it points at.
+	// following it would read whatever it points at. It is removed rather
+	// than skipped: leaving it in place makes the key a permanent silent
+	// miss, and unlinking a symlink never touches its target.
 	if !info.Mode().IsRegular() {
+		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, false, fmt.Errorf("remove invalid cache entry: %w", err)
+		}
 		return nil, false, nil
 	}
 
-	file, err := os.Open(path)
+	// O_NOFOLLOW closes the window between the Lstat above and the open, the
+	// same way the credential reader does: a symlink swapped in after the
+	// check still fails here instead of being followed.
+	file, err := openCacheFileNoFollow(path)
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, false, nil
+		}
 		return nil, false, fmt.Errorf("read cache entry: %w", err)
 	}
 	defer func() { _ = file.Close() }()
@@ -152,6 +163,12 @@ func (c Cache) Get(ctx context.Context, key string) ([]byte, bool, error) {
 		return nil, false, fmt.Errorf("read cache entry: %w", err)
 	}
 	if len(data) > maxCacheEntryBytes {
+		// An oversized entry can only be corruption or foreign data - Put
+		// refuses to write one - so it is deleted rather than left behind as
+		// a permanent miss that pruning would still account for.
+		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, false, fmt.Errorf("remove oversized cache entry: %w", err)
+		}
 		return nil, false, nil
 	}
 	if err := ctx.Err(); err != nil {
@@ -172,13 +189,38 @@ func (c Cache) Put(ctx context.Context, key string, data []byte) error {
 	if len(data) > maxCacheEntryBytes {
 		return fmt.Errorf("write cache entry: record is larger than %d bytes", maxCacheEntryBytes)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), cacheDirMode); err != nil {
+	if err := ensureCacheDir(filepath.Dir(path)); err != nil {
 		return fmt.Errorf("prepare cache directory: %w", err)
 	}
 	if err := writeCacheFileAtomically(ctx, path, data); err != nil {
 		return fmt.Errorf("write cache entry: %w", err)
 	}
 	return nil
+}
+
+// ensureCacheDir creates the cache directory when it is missing and makes sure
+// the mode it was created with is the mode that was asked for.
+//
+// MkdirAll subtracts the process umask from the mode it is given, so a user
+// with a umask of 0o022 would end up with a world-readable 0o755 cache
+// directory. Chmod after the create puts the intended 0o700 back.
+//
+// A directory that already exists is left exactly as it is. That is a
+// deliberate difference from ensureCredentialDir, which refuses to touch a
+// credential directory it did not create because a wide mode there is a
+// finding the user must see. The cache holds re-fetchable public data, so
+// hard-failing a quota-ledger write over a directory the user chose to keep
+// open would cost more than it protects.
+func ensureCacheDir(dir string) error {
+	if _, err := os.Lstat(dir); err == nil {
+		return nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if err := os.MkdirAll(dir, cacheDirMode); err != nil {
+		return err
+	}
+	return os.Chmod(dir, cacheDirMode)
 }
 
 // Delete removes a cached record. A missing record is not an error.
@@ -349,9 +391,33 @@ func (c Cache) entryPath(key string) (string, error) {
 	return path + cacheFileSuffix, nil
 }
 
-// cacheOwnedFile reports whether Prune may remove a file by name.
+// cacheOwnedFile reports whether Prune may remove a file by name: either a
+// finished entry ("<name>.cache") or an orphan of the atomic writer, which
+// names its temp files ".<name>.cache.tmp-<digits>". Recognizing the temp
+// shape here is what lets pruning and byte accounting see orphans left by a
+// crash between CreateTemp and the rename.
 func cacheOwnedFile(name string) bool {
-	return strings.HasSuffix(name, cacheFileSuffix) || strings.HasSuffix(name, ".tmp")
+	if strings.HasSuffix(name, cacheFileSuffix) {
+		return true
+	}
+	if !strings.HasPrefix(name, ".") {
+		return false
+	}
+	marker := cacheFileSuffix + ".tmp-"
+	idx := strings.LastIndex(name, marker)
+	if idx < 0 {
+		return false
+	}
+	digits := name[idx+len(marker):]
+	if digits == "" {
+		return false
+	}
+	for _, r := range digits {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // safeCacheComponent sanitizes and validates one path component.
