@@ -235,7 +235,8 @@ func (m *shellModel) handleKey(msg tea.KeyMsg) tea.Cmd {
 	// The space leader chord is consumed before every other binding. It is
 	// only ever armed outside the composer, where space is literal text.
 	if m.leaderPending {
-		return adopt(m.handleLeaderKey(msg))
+		m.handleLeaderKey(msg)
+		return nil
 	}
 	if msg.Type == tea.KeySpace && m.focus != focusComposer {
 		m.leaderPending = true
@@ -454,10 +455,10 @@ func isInsertRune(r rune) bool {
 // handleLeaderKey consumes the key following a pending space leader. It always
 // clears the pending flag: a chord is exactly two keystrokes, so an unbound
 // second key cancels rather than trapping the user in a mode.
-func (m shellModel) handleLeaderKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *shellModel) handleLeaderKey(msg tea.KeyMsg) {
 	m.leaderPending = false
 	if msg.Type != tea.KeyRunes || len(msg.Runes) != 1 {
-		return m, nil
+		return
 	}
 	switch msg.Runes[0] {
 	case leaderSidebarRune:
@@ -473,7 +474,6 @@ func (m shellModel) handleLeaderKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.toggleActivityVisibility()
 		m.clampScroll()
 	}
-	return m, nil
 }
 
 // toggleSidebarVisibility and toggleActivityVisibility flip a pane between

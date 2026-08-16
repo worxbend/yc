@@ -707,7 +707,11 @@ func runProfileSet(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "usage: yc profile set <name> [%s]\n", paletteRoleFlagList())
 		return ExitUsage
 	}
-	name := strings.ToLower(strings.TrimSpace(args[0]))
+	// The flag arguments are taken here, next to the length check that proves
+	// the slice is in range, rather than at the Parse call further down. The
+	// two are equivalent, but gosec cannot carry the proof past the loop that
+	// registers the role flags and reports the later form as out of range.
+	name, flagArgs := strings.ToLower(strings.TrimSpace(args[0])), args[1:]
 
 	fs := flag.NewFlagSet("profile set", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -719,7 +723,7 @@ func runProfileSet(args []string, stdout, stderr io.Writer) int {
 	for i, role := range paletteRoles {
 		fs.StringVar(&overrides[i], role.name, "", role.usage)
 	}
-	if err := fs.Parse(args[1:]); err != nil {
+	if err := fs.Parse(flagArgs); err != nil {
 		return ExitUsage
 	}
 

@@ -567,7 +567,7 @@ func messagePrefix(msg youtube.Message, opts Options) []Fragment {
 // the notice marker, the event chips, and the body text.
 //
 // This is the one place that coalesces: every list it returns has had
-// same-styled neighbours merged. The helpers it calls append freely and leave
+// same-styled neighbors merged. The helpers it calls append freely and leave
 // the merging to the end, so a run of text split across two spans still
 // arrives as a single styled run.
 func messageContent(msg youtube.Message, opts Options) []Fragment {
@@ -1191,7 +1191,7 @@ func (r *Row) Append(fragment Fragment) {
 	r.Fragments = append(r.Fragments, fragment)
 }
 
-// coalesceAdjacent merges neighbouring fragments that share a kind and style.
+// coalesceAdjacent merges neighboring fragments that share a kind and style.
 // Callers building fragment lists by hand use it once, at the end.
 func coalesceAdjacent(in []Fragment) []Fragment {
 	if len(in) == 0 {
