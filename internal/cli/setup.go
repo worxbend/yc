@@ -88,29 +88,17 @@ func runSetup(args []string, stdout, stderr io.Writer) int {
 		fs.PrintDefaults()
 	}
 
-	if hasHelpArg(args) {
-		fmt.Fprint(stdout, setupUsage)
-		fs.SetOutput(stdout)
-		fs.PrintDefaults()
-		return ExitOK
-	}
-	if err := fs.Parse(args); err != nil {
-		return ExitUsage
-	}
-	if fs.NArg() != 0 {
-		fmt.Fprintf(stderr, "unexpected setup argument %q\n\n", fs.Arg(0))
-		fs.Usage()
-		return ExitUsage
+	if code, ok := parseCommandFlags(fs, args, setupUsage, "setup", stdout, stderr); !ok {
+		return code
 	}
 	if opts.login && opts.loginDryRun {
 		fmt.Fprintln(stderr, "choose only one of --login or --login-dry-run")
 		return ExitUsage
 	}
 
-	cfg, err := config.Load(os.Environ(), config.Overrides{ConfigPath: opts.cfgPath})
-	if err != nil {
-		fmt.Fprintf(stderr, "load config: %s\n", config.RedactDisplayValue(err.Error()))
-		return ExitFailure
+	cfg, code := loadCommandConfig(config.Overrides{ConfigPath: opts.cfgPath}, stderr)
+	if code != ExitOK {
+		return code
 	}
 	applySetupFlagOptions(&cfg, opts)
 
@@ -122,6 +110,7 @@ func runSetup(args []string, stdout, stderr io.Writer) int {
 		action = setupCredentialDryRun
 	}
 
+	var err error
 	if opts.nonInteractive {
 		cfg, err = runSetupNonInteractive(cfg, stdout, stderr)
 	} else {
@@ -275,49 +264,53 @@ func (w setupWizard) run(cfg *config.Config, defaultAction setupCredentialAction
 	fmt.Fprintf(w.stdout, "Config file: %s\n", config.RedactDisplayValue(cfg.Path))
 	fmt.Fprintln(w.stdout, "Setup writes non-secret settings only. It never asks for tokens, a client secret, or an API key.")
 
-	clientID, err := w.promptText("Google OAuth client ID", cfg.Google.ClientID)
-	if err != nil {
-		return "", err
+	// The wizard is a list of questions, so it is written as one. Each step
+	// asks for a setting and writes the answer straight back into cfg; the
+	// loop below is the only place the error check lives, instead of once
+	// per question.
+	steps := []func() error{
+		promptStep(&cfg.Google.ClientID, func() (string, error) {
+			return w.promptText("Google OAuth client ID", cfg.Google.ClientID)
+		}),
+		promptStep(&cfg.YouTube.ChannelID, func() (string, error) {
+			return w.promptText("Your own YouTube channel ID (optional)", cfg.YouTube.ChannelID)
+		}),
+		promptStep(&cfg.DefaultChats, func() ([]string, error) {
+			return w.promptChats("Default chats (video ID, URL, @handle, or channel ID)", cfg.DefaultChats)
+		}),
+		promptStep(&cfg.Features.AvatarMode, func() (string, error) {
+			return w.promptEnum("Avatar mode", cfg.Features.AvatarMode, avatarModes)
+		}),
+		promptStep(&cfg.Features.AnimationMode, func() (string, error) {
+			return w.promptEnum("Animation mode", cfg.Features.AnimationMode, animationModes)
+		}),
+		promptStep(&cfg.Features.MessageLayout, func() (string, error) {
+			return w.promptEnum("Message layout", cfg.Features.MessageLayout, layoutModes)
+		}),
+		promptStep(&cfg.Features.EnableMouse, func() (bool, error) {
+			return w.promptBool("Enable mouse", cfg.Features.EnableMouse)
+		}),
 	}
-	cfg.Google.ClientID = clientID
-
-	channelID, err := w.promptText("Your own YouTube channel ID (optional)", cfg.YouTube.ChannelID)
-	if err != nil {
-		return "", err
+	for _, ask := range steps {
+		if err := ask(); err != nil {
+			return "", err
+		}
 	}
-	cfg.YouTube.ChannelID = channelID
-
-	chats, err := w.promptChats("Default chats (video ID, URL, @handle, or channel ID)", cfg.DefaultChats)
-	if err != nil {
-		return "", err
-	}
-	cfg.DefaultChats = chats
-
-	avatarMode, err := w.promptEnum("Avatar mode", cfg.Features.AvatarMode, avatarModes)
-	if err != nil {
-		return "", err
-	}
-	cfg.Features.AvatarMode = avatarMode
-
-	animationMode, err := w.promptEnum("Animation mode", cfg.Features.AnimationMode, animationModes)
-	if err != nil {
-		return "", err
-	}
-	cfg.Features.AnimationMode = animationMode
-
-	layout, err := w.promptEnum("Message layout", cfg.Features.MessageLayout, layoutModes)
-	if err != nil {
-		return "", err
-	}
-	cfg.Features.MessageLayout = layout
-
-	enableMouse, err := w.promptBool("Enable mouse", cfg.Features.EnableMouse)
-	if err != nil {
-		return "", err
-	}
-	cfg.Features.EnableMouse = enableMouse
 
 	return w.promptCredentialAction(defaultAction)
+}
+
+// promptStep pairs one question with the setting it answers: it runs ask and,
+// unless the user cut the wizard short, stores the answer in target.
+func promptStep[T any](target *T, ask func() (T, error)) func() error {
+	return func() error {
+		answer, err := ask()
+		if err != nil {
+			return err
+		}
+		*target = answer
+		return nil
+	}
 }
 
 // promptText asks for a single value, keeping the current one on an empty

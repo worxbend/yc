@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/worxbend/yc/internal/config"
 	"github.com/worxbend/yc/internal/debuglog"
 	"github.com/worxbend/yc/internal/storage"
+	"github.com/worxbend/yc/internal/theme"
 	"github.com/worxbend/yc/internal/youtube"
 )
 
@@ -409,4 +411,51 @@ func clearCredentialEnv(t *testing.T) {
 	} {
 		t.Setenv(key, "")
 	}
+}
+
+// TestUsageListsEveryEnvironmentVariable walks the config structs and checks
+// that every YC_* variable yc actually reads is named in the usage text.
+//
+// The usage text is hand-written, so it can only drift one way: a setting gets
+// added and the help page keeps quiet about it. Reading the names off the
+// struct tags - the same tags the loader reads - means the test learns about a
+// new variable at the same moment the loader does.
+func TestUsageListsEveryEnvironmentVariable(t *testing.T) {
+	for _, name := range configEnvKeys(reflect.TypeOf(config.Config{})) {
+		if !strings.HasPrefix(name, "YC_") {
+			// GOOGLE_* aliases are listed beside their YC_ spellings, but
+			// they belong to Google's own conventions rather than yc's.
+			continue
+		}
+		if !strings.Contains(usage, name) {
+			t.Errorf("usage text does not mention %s; add it to the Environment section", name)
+		}
+	}
+}
+
+// configEnvKeys collects the environment variable names from the `env` struct
+// tags of a config struct and everything nested inside it. Palette roles carry
+// no tag - the loader derives YC_THEME_<ROLE> from the field name - so they are
+// derived the same way here.
+func configEnvKeys(structType reflect.Type) []string {
+	var keys []string
+	for i := 0; i < structType.NumField(); i++ {
+		field := structType.Field(i)
+		if field.Type == reflect.TypeOf(theme.Palette{}) {
+			for j := 0; j < field.Type.NumField(); j++ {
+				keys = append(keys, "YC_THEME_"+strings.ToUpper(field.Type.Field(j).Name))
+			}
+			continue
+		}
+		if field.Type.Kind() == reflect.Struct {
+			keys = append(keys, configEnvKeys(field.Type)...)
+			continue
+		}
+		for _, name := range strings.Split(field.Tag.Get("env"), ",") {
+			if name = strings.TrimSpace(name); name != "" {
+				keys = append(keys, name)
+			}
+		}
+	}
+	return keys
 }

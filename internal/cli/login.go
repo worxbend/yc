@@ -150,19 +150,8 @@ func runLogin(args []string, stdout, stderr io.Writer) int {
 		fs.PrintDefaults()
 	}
 
-	if hasHelpArg(args) {
-		fmt.Fprint(stdout, loginUsage)
-		fs.SetOutput(stdout)
-		fs.PrintDefaults()
-		return ExitOK
-	}
-	if err := fs.Parse(args); err != nil {
-		return ExitUsage
-	}
-	if fs.NArg() != 0 {
-		fmt.Fprintf(stderr, "unexpected login argument %q\n\n", fs.Arg(0))
-		fs.Usage()
-		return ExitUsage
+	if code, ok := parseCommandFlags(fs, args, loginUsage, "login", stdout, stderr); !ok {
+		return code
 	}
 	if timeout <= 0 {
 		fmt.Fprintln(stderr, "login timeout must be greater than zero")
@@ -178,10 +167,9 @@ func runLogin(args []string, stdout, stderr io.Writer) int {
 
 	overrides := config.Overrides{ConfigPath: cfgPath}
 	applyDebugFlagOverrides(&overrides, debugFlags)
-	cfg, err := config.Load(os.Environ(), overrides)
-	if err != nil {
-		fmt.Fprintf(stderr, "load config: %s\n", config.RedactDisplayValue(err.Error()))
-		return ExitFailure
+	cfg, code := loadCommandConfig(overrides, stderr)
+	if code != ExitOK {
+		return code
 	}
 	if !redirectExplicit {
 		redirectURI = strings.TrimSpace(cfg.Google.RedirectURL)
@@ -227,6 +215,32 @@ func runLogin(args []string, stdout, stderr io.Writer) int {
 	return performLogin(cfg, redirectURI, scopes, timeout, logger, stdout, stderr)
 }
 
+// failLogin ends a login attempt: it records the step that failed in the debug
+// log, prints one redacted line naming the step, and returns the exit code
+// performLogin should hand back. Passing an empty event skips the log entry,
+// for the few steps that have nothing worth recording.
+//
+// Every failure in performLogin goes through here so they all report the same
+// way. They used to be written out one by one, and had already drifted: some
+// printed a bare redacted error while others went through printLoginError,
+// which is the one that turns a cancellation or a timeout into plain words
+// instead of a Go error string.
+func failLogin(
+	ctx context.Context,
+	logger debuglog.Logger,
+	stderr io.Writer,
+	event, action string,
+	err error,
+	redactor auth.Redactor,
+	code int,
+) int {
+	if event != "" {
+		logger.Log(ctx, event, debuglog.Err("error", err))
+	}
+	printLoginError(stderr, action, err, redactor)
+	return code
+}
+
 // performLogin runs the interactive half of `yc login`.
 //
 // The order matters: the listener is bound before the authorization request is
@@ -248,9 +262,7 @@ func performLogin(cfg config.Config, redirectURI string, scopes []auth.Scope, ti
 		if err == nil {
 			err = errors.New("credential store unavailable")
 		}
-		logger.Log(context.Background(), "cli.login.storage_failed", debuglog.Err("error", err))
-		fmt.Fprintf(stderr, "prepare credential storage: %s\n", safeStartupError(baseRedactor, err))
-		return ExitFailure
+		return failLogin(context.Background(), logger, stderr, "cli.login.storage_failed", "prepare credential storage", err, baseRedactor, ExitFailure)
 	}
 
 	// State and the PKCE verifier are generated here and carried through the
@@ -263,20 +275,16 @@ func performLogin(cfg config.Config, redirectURI string, scopes []auth.Scope, ti
 	// cannot end the wait.
 	state, err := auth.NewState()
 	if err != nil {
-		fmt.Fprintf(stderr, "start login: %s\n", safeStartupError(baseRedactor, err))
-		return ExitFailure
+		return failLogin(context.Background(), logger, stderr, "", "start login", err, baseRedactor, ExitFailure)
 	}
 	verifier, err := auth.NewCodeVerifier()
 	if err != nil {
-		fmt.Fprintf(stderr, "start login: %s\n", safeStartupError(baseRedactor, err))
-		return ExitFailure
+		return failLogin(context.Background(), logger, stderr, "", "start login", err, baseRedactor, ExitFailure)
 	}
 
 	waiter, err := newLoginCallbackWaiter(redirectURI, state)
 	if err != nil {
-		logger.Log(context.Background(), "cli.login.callback_unavailable", debuglog.Err("error", err))
-		fmt.Fprintf(stderr, "login callback unavailable: %s\n", safeStartupError(baseRedactor, err))
-		return ExitUsage
+		return failLogin(context.Background(), logger, stderr, "cli.login.callback_unavailable", "login callback unavailable", err, baseRedactor, ExitUsage)
 	}
 	defer func() { _ = waiter.Close() }()
 
@@ -300,9 +308,7 @@ func performLogin(cfg config.Config, redirectURI string, scopes []auth.Scope, ti
 
 	challenge, err := flow.BeginLogin(ctx, request)
 	if err != nil {
-		logger.Log(ctx, "cli.login.begin_failed", debuglog.Err("error", err))
-		printLoginError(stderr, "start login", err, request.Redactor())
-		return ExitFailure
+		return failLogin(ctx, logger, stderr, "cli.login.begin_failed", "start login", err, request.Redactor(), ExitFailure)
 	}
 	logger = logger.WithSecrets(challenge.AuthorizationURL, challenge.State)
 	logger.Log(ctx, "cli.login.begin_succeeded", slog.Int("scope_count", len(challenge.Scopes)))
@@ -312,17 +318,13 @@ func performLogin(cfg config.Config, redirectURI string, scopes []auth.Scope, ti
 	fmt.Fprintln(stdout, "Tokens are saved privately and are never printed.")
 
 	if err := openLoginBrowser(ctx, challenge.AuthorizationURL.Reveal()); err != nil {
-		logger.Log(ctx, "cli.login.browser_failed", debuglog.Err("error", err))
-		printLoginError(stderr, "open browser", err, challenge.Redactor())
-		return ExitFailure
+		return failLogin(ctx, logger, stderr, "cli.login.browser_failed", "open browser", err, challenge.Redactor(), ExitFailure)
 	}
 	logger.Log(ctx, "cli.login.browser_opened")
 
 	callback, err := waiter.Wait(ctx, challenge.State)
 	if err != nil {
-		logger.Log(ctx, "cli.login.callback_failed", debuglog.Err("error", err))
-		printLoginError(stderr, "wait for the OAuth callback", err, challenge.Redactor())
-		return ExitFailure
+		return failLogin(ctx, logger, stderr, "cli.login.callback_failed", "wait for the OAuth callback", err, challenge.Redactor(), ExitFailure)
 	}
 	callback.CodeVerifier = verifier
 	callback.RedirectURI = request.RedirectURI
@@ -336,9 +338,7 @@ func performLogin(cfg config.Config, redirectURI string, scopes []auth.Scope, ti
 
 	result, err := flow.CompleteLogin(ctx, callback)
 	if err != nil {
-		logger.Log(ctx, "cli.login.complete_failed", debuglog.Err("error", err))
-		printLoginError(stderr, "complete login", err, callback.Redactor())
-		return ExitFailure
+		return failLogin(ctx, logger, stderr, "cli.login.complete_failed", "complete login", err, callback.Redactor(), ExitFailure)
 	}
 	logger = logger.WithSecrets(result.Tokens.AccessToken, result.Tokens.RefreshToken)
 	logger.Log(ctx, "cli.login.complete_succeeded",
@@ -347,9 +347,7 @@ func performLogin(cfg config.Config, redirectURI string, scopes []auth.Scope, ti
 	)
 
 	if err := persistLogin(ctx, cfg, result); err != nil {
-		logger.Log(ctx, "cli.login.save_failed", debuglog.Err("error", err))
-		fmt.Fprintf(stderr, "save credentials: %s\n", safeStartupError(result.Redactor(), err))
-		return ExitFailure
+		return failLogin(ctx, logger, stderr, "cli.login.save_failed", "save credentials", err, result.Redactor(), ExitFailure)
 	}
 	logger.Log(ctx, "cli.login.save_succeeded")
 	printLoginSuccess(stdout, result)
@@ -392,21 +390,17 @@ func runLogout(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stderr, logoutUsage)
 		fs.PrintDefaults()
 	}
-	if hasHelpArg(args) {
-		fmt.Fprint(stdout, logoutUsage)
-		fs.SetOutput(stdout)
-		fs.PrintDefaults()
-		return ExitOK
-	}
-	if err := fs.Parse(args); err != nil {
-		return ExitUsage
+	// No argument noun: logout takes no positional arguments and never
+	// checked for them, and starting to now would turn a stray word into a
+	// failure for someone trying to log out.
+	if code, ok := parseCommandFlags(fs, args, logoutUsage, "", stdout, stderr); !ok {
+		return code
 	}
 
 	ctx := context.Background()
-	cfg, err := config.Load(os.Environ(), config.Overrides{ConfigPath: cfgPath})
-	if err != nil {
-		fmt.Fprintf(stderr, "load config: %s\n", config.RedactDisplayValue(err.Error()))
-		return ExitFailure
+	cfg, code := loadCommandConfig(config.Overrides{ConfigPath: cfgPath}, stderr)
+	if code != ExitOK {
+		return code
 	}
 
 	store, err := newCredentialStore()
@@ -453,18 +447,21 @@ func runLogout(args []string, stdout, stderr io.Writer) int {
 	return ExitOK
 }
 
-// tokenRevoker is the optional revoke capability on a login flow.
+// tokenRevoker is the revoke capability `yc logout` needs from a login flow.
+//
+// The assertion below is what enforces it. Asking for the method at runtime
+// instead would turn a removed or renamed Revoke into a logout that quietly
+// reports "revocation is unavailable" and leaves a live token on Google's side,
+// where the build should have failed instead.
 type tokenRevoker interface {
 	Revoke(ctx context.Context, token auth.Secret) error
 }
 
+var _ tokenRevoker = (*auth.GoogleOAuthLoginFlow)(nil)
+
 // revokeToken asks Google to invalidate a token immediately.
 func revokeToken(ctx context.Context, cfg config.Config, token auth.Secret) error {
-	revoker, ok := any(newOAuthFlow(cfg)).(tokenRevoker)
-	if !ok {
-		return errors.New("revocation is unavailable")
-	}
-	return revoker.Revoke(ctx, token)
+	return newOAuthFlow(cfg).Revoke(ctx, token)
 }
 
 // writeDefaultConfigIfMissing writes the effective non-secret config to

@@ -49,16 +49,18 @@ Usage:
           [--debug-log] [--debug-log-path PATH] [--config PATH]
   yc config show [--config PATH]
   yc config path
-  yc doctor [--config PATH] [--debug-log]
+  yc doctor [--config PATH] [--debug-log] [--debug-log-path PATH]
   yc export superchats [--dir DIR] [--out FILE] [--config PATH]
-  yc login [--redirect-uri URL] [--dry-run] [--write-default-config]
-           [--debug-log] [--debug-log-path PATH] [--config PATH]
+  yc login [--redirect-uri URL] [--timeout DURATION] [--dry-run] [--read-only]
+           [--write-default-config] [--debug-log] [--debug-log-path PATH]
+           [--config PATH]
   yc logout [--config PATH] [--keep-remote]
   yc profile list|show|set <name> [--background '#rrggbb' ... --success '#rrggbb'] [--config PATH]
   yc quota [--config PATH]
   yc setup [--non-interactive] [--client-id ID] [--api-key-only] [--channel-id ID]
            [--chat ID] [--chats a,b] [--enable-mouse BOOL] [--avatar-mode MODE]
-           [--animation-mode MODE] [--login|--login-dry-run] [--config PATH]
+           [--animation-mode MODE] [--theme NAME] [--layout MODE]
+           [--login|--login-dry-run] [--config PATH]
   yc --version
 
 Chats:
@@ -182,14 +184,11 @@ func runChat(args []string, stdout, stderr io.Writer) int {
 	fs.BoolVar(&opts.followCadence, "follow-server-cadence", false, "poll at YouTube's advised interval, ignoring the daily budget floor")
 	addDebugFlags(fs, &opts.debug)
 
-	if hasHelpArg(args) {
-		fmt.Fprint(stdout, usage)
-		fs.SetOutput(stdout)
-		fs.PrintDefaults()
-		return ExitOK
-	}
-	if err := fs.Parse(args); err != nil {
-		return ExitUsage
+	// The positional check is kept here rather than handed to the harness:
+	// a stray argument to `yc` is nearly always a chat name, and the reply
+	// says so instead of printing the whole usage page.
+	if code, ok := parseCommandFlags(fs, args, usage, "", stdout, stderr); !ok {
+		return code
 	}
 	if fs.NArg() != 0 {
 		fmt.Fprintf(stderr, "unexpected chat argument %q; name a chat with --chat rather than positionally\n", fs.Arg(0))
@@ -202,10 +201,9 @@ func runChat(args []string, stdout, stderr io.Writer) int {
 		LiveChatID: strings.TrimSpace(opts.liveChatID),
 	}
 	applyDebugFlagOverrides(&overrides, opts.debug)
-	cfg, err := config.Load(os.Environ(), overrides)
-	if err != nil {
-		fmt.Fprintf(stderr, "load config: %s\n", config.RedactDisplayValue(err.Error()))
-		return ExitFailure
+	cfg, code := loadCommandConfig(overrides, stderr)
+	if code != ExitOK {
+		return code
 	}
 	applyChatFlagOverrides(&cfg, opts)
 
@@ -320,41 +318,11 @@ func runLiveChatSession(cfg config.Config, liveChatID string, stdout, stderr io.
 	record := credentialRecordFromConfig(cfg, status.Record)
 	holder := newCredentialHolder(record, status.Store, newTokenRefresher(cfg))
 
-	if capability.Mode == credentialModeOAuth {
-		validation := validateAccessToken(ctx, cfg, newTokenValidator(cfg))
-		switch {
-		case validation.Reachable && !validation.Valid:
-			// Google rejected it. One refresh is worth trying before
-			// sending the user back to the browser.
-			if refreshErr := holder.Refresh(ctx); refreshErr != nil {
-				logger.Log(ctx, "cli.chat.token_rejected", debuglog.Err("error", refreshErr))
-				fmt.Fprintln(stderr, tokenValidationError(validation))
-				if hint := credentialPrecedenceHint(status); hint != "" {
-					fmt.Fprintln(stderr, hint)
-				}
-				return ExitUsage
-			}
-			logger.Log(ctx, "cli.chat.token_refreshed")
-		case !validation.Reachable:
-			logger.Log(ctx, "cli.chat.token_validation_skipped")
-			fmt.Fprintf(stderr, "warning: could not validate the access token (%s); continuing to the API\n", validation.Detail)
-		default:
-			if warning := tokenScopeWarning(validation); warning != "" {
-				fmt.Fprintln(stderr, warning)
-			}
-		}
+	if !validateOAuthToken(ctx, cfg, capability, holder, status, logger, stderr) {
+		return ExitUsage
 	}
 
-	for _, warning := range []string{
-		refreshCapabilityWarning(cfg, capability),
-		clientSecretWarning(cfg),
-		quotaWarning(cfg),
-	} {
-		if warning != "" {
-			fmt.Fprintln(stderr, warning)
-		}
-	}
-	warnUnknownTheme(cfg, stderr)
+	printStartupWarnings(cfg, capability, stderr)
 
 	// One holder, one ledger, one REST client: a refresh reaches every
 	// feature, and the quota meter counts every call yc makes.
@@ -400,6 +368,67 @@ func runLiveChatSession(cfg config.Config, liveChatID string, stdout, stderr io.
 	}
 	logger.Log(ctx, "cli.chat.complete", slog.Bool("mock", false))
 	return ExitOK
+}
+
+// validateOAuthToken checks a stored OAuth access token with Google before the
+// first API call, and reports whether startup should continue.
+//
+// The policy: a token Google actively rejects gets one refresh attempt, because
+// an expired access token is the ordinary case and sending someone back to the
+// browser for it would be rude. If the refresh also fails, startup stops - the
+// alternative is a wall of 401s once the interface is up. If Google cannot be
+// reached at all, that is not evidence against the token, so yc warns and
+// carries on. A token that is valid but thin on scopes only earns a warning.
+func validateOAuthToken(
+	ctx context.Context,
+	cfg config.Config,
+	capability credentialCapability,
+	holder *credentialHolder,
+	status credentialLoadStatus,
+	logger debuglog.Logger,
+	stderr io.Writer,
+) bool {
+	if capability.Mode != credentialModeOAuth {
+		return true
+	}
+	validation := validateAccessToken(ctx, cfg, newTokenValidator(cfg))
+	switch {
+	case validation.Reachable && !validation.Valid:
+		if refreshErr := holder.Refresh(ctx); refreshErr != nil {
+			logger.Log(ctx, "cli.chat.token_rejected", debuglog.Err("error", refreshErr))
+			fmt.Fprintln(stderr, tokenValidationError(validation))
+			if hint := credentialPrecedenceHint(status); hint != "" {
+				fmt.Fprintln(stderr, hint)
+			}
+			return false
+		}
+		logger.Log(ctx, "cli.chat.token_refreshed")
+	case !validation.Reachable:
+		logger.Log(ctx, "cli.chat.token_validation_skipped")
+		fmt.Fprintf(stderr, "warning: could not validate the access token (%s); continuing to the API\n", validation.Detail)
+	default:
+		if warning := tokenScopeWarning(validation); warning != "" {
+			fmt.Fprintln(stderr, warning)
+		}
+	}
+	return true
+}
+
+// printStartupWarnings prints every non-fatal thing worth saying before the
+// interface takes over the screen. Each of these describes a session that will
+// run but is missing something - a refresh that cannot happen, a quota that is
+// close to the edge, a theme name nothing recognizes.
+func printStartupWarnings(cfg config.Config, capability credentialCapability, stderr io.Writer) {
+	for _, warning := range []string{
+		refreshCapabilityWarning(cfg, capability),
+		clientSecretWarning(cfg),
+		quotaWarning(cfg),
+	} {
+		if warning != "" {
+			fmt.Fprintln(stderr, warning)
+		}
+	}
+	warnUnknownTheme(cfg, stderr)
 }
 
 // warnUnknownTheme reports a theme name yc does not recognize.
@@ -479,8 +508,8 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 	var debugFlags debugFlagOptions
 	fs.StringVar(&cfgPath, "config", "", "config file path")
 	addDebugFlags(fs, &debugFlags)
-	if err := fs.Parse(args); err != nil {
-		return ExitUsage
+	if code, ok := parseCommandFlags(fs, args, "", "", stdout, stderr); !ok {
+		return code
 	}
 
 	ctx := context.Background()
@@ -622,6 +651,42 @@ func runProfileList(args []string, stdout, stderr io.Writer) int {
 	return ExitOK
 }
 
+// paletteRoles is the one list of the nine color roles a theme carries.
+//
+// `yc profile show` prints it and `yc profile set` registers a flag for each
+// entry, both by walking this table. Before, the nine roles were spelled out
+// separately in the show table, the flag variables, the flag registrations and
+// the assignments back into the config, so adding a role meant four edits that
+// had to agree and nothing complained when one was missed.
+var paletteRoles = []struct {
+	name string
+	// usage is the flag's help text on `yc profile set`.
+	usage string
+	// field points at this role's slot in a palette, for both reading and
+	// writing.
+	field func(*theme.Palette) *string
+}{
+	{"background", "custom theme background hex (only used with the 'custom' profile)", func(p *theme.Palette) *string { return &p.Background }},
+	{"foreground", "custom theme foreground hex", func(p *theme.Palette) *string { return &p.Foreground }},
+	{"accent", "custom theme accent hex", func(p *theme.Palette) *string { return &p.Accent }},
+	{"muted", "custom theme muted hex", func(p *theme.Palette) *string { return &p.Muted }},
+	{"border", "custom theme border hex", func(p *theme.Palette) *string { return &p.Border }},
+	{"surface", "custom theme surface hex", func(p *theme.Palette) *string { return &p.Surface }},
+	{"warning", "custom theme warning hex", func(p *theme.Palette) *string { return &p.Warning }},
+	{"error", "custom theme error hex", func(p *theme.Palette) *string { return &p.Error }},
+	{"success", "custom theme success hex", func(p *theme.Palette) *string { return &p.Success }},
+}
+
+// paletteRoleFlagList renders the per-role flags for the `yc profile set` usage
+// line, so the help text cannot drift from the flags actually registered.
+func paletteRoleFlagList() string {
+	flags := make([]string, 0, len(paletteRoles))
+	for _, role := range paletteRoles {
+		flags = append(flags, "--"+role.name+" '#rrggbb'")
+	}
+	return strings.Join(flags, " ")
+}
+
 // runProfileShow prints the resolved palette's nine roles.
 func runProfileShow(args []string, stdout, stderr io.Writer) int {
 	cfg, code := loadConfigForFlags("profile show", args, stderr)
@@ -630,18 +695,8 @@ func runProfileShow(args []string, stdout, stderr io.Writer) int {
 	}
 	palette := cfg.ResolveTheme()
 	fmt.Fprintf(stdout, "theme_name = %s\n", cfg.Features.ThemeName)
-	for _, role := range []struct{ name, value string }{
-		{"background", palette.Background},
-		{"foreground", palette.Foreground},
-		{"accent", palette.Accent},
-		{"muted", palette.Muted},
-		{"border", palette.Border},
-		{"surface", palette.Surface},
-		{"warning", palette.Warning},
-		{"error", palette.Error},
-		{"success", palette.Success},
-	} {
-		fmt.Fprintf(stdout, "%s = %s\n", role.name, role.value)
+	for _, role := range paletteRoles {
+		fmt.Fprintf(stdout, "%s = %s\n", role.name, *role.field(&palette))
 	}
 	return ExitOK
 }
@@ -649,7 +704,7 @@ func runProfileShow(args []string, stdout, stderr io.Writer) int {
 // runProfileSet selects a palette and persists it as a non-secret setting.
 func runProfileSet(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: yc profile set <name> [--background '#rrggbb' --foreground '#rrggbb' --accent '#rrggbb' --muted '#rrggbb' --border '#rrggbb' --surface '#rrggbb' --warning '#rrggbb' --error '#rrggbb' --success '#rrggbb']")
+		fmt.Fprintf(stderr, "usage: yc profile set <name> [%s]\n", paletteRoleFlagList())
 		return ExitUsage
 	}
 	name := strings.ToLower(strings.TrimSpace(args[0]))
@@ -657,23 +712,19 @@ func runProfileSet(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("profile set", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var cfgPath string
-	var background, foreground, accent, muted, border, surface, warning, errorColor, success string
 	fs.StringVar(&cfgPath, "config", "", "config file path")
-	fs.StringVar(&background, "background", "", "custom theme background hex (only used with the 'custom' profile)")
-	fs.StringVar(&foreground, "foreground", "", "custom theme foreground hex")
-	fs.StringVar(&accent, "accent", "", "custom theme accent hex")
-	fs.StringVar(&muted, "muted", "", "custom theme muted hex")
-	fs.StringVar(&border, "border", "", "custom theme border hex")
-	fs.StringVar(&surface, "surface", "", "custom theme surface hex")
-	fs.StringVar(&warning, "warning", "", "custom theme warning hex")
-	fs.StringVar(&errorColor, "error", "", "custom theme error hex")
-	fs.StringVar(&success, "success", "", "custom theme success hex")
+	// One flag per role, holding whatever the user passed. An empty value
+	// means the flag was not given and the stored color is left alone.
+	overrides := make([]string, len(paletteRoles))
+	for i, role := range paletteRoles {
+		fs.StringVar(&overrides[i], role.name, "", role.usage)
+	}
 	if err := fs.Parse(args[1:]); err != nil {
 		return ExitUsage
 	}
 
 	if name != "custom" {
-		if _, ok := theme.Presets()[name]; !ok {
+		if _, ok := theme.Preset(name); !ok {
 			fmt.Fprintf(stderr, "unknown theme %q; run `yc profile list` for available names\n", name)
 			return ExitUsage
 		}
@@ -686,15 +737,9 @@ func runProfileSet(args []string, stdout, stderr io.Writer) int {
 	}
 	cfg.Features.ThemeName = name
 	if name == "custom" {
-		setIfNonEmpty(&cfg.Features.ThemeCustom.Background, background)
-		setIfNonEmpty(&cfg.Features.ThemeCustom.Foreground, foreground)
-		setIfNonEmpty(&cfg.Features.ThemeCustom.Accent, accent)
-		setIfNonEmpty(&cfg.Features.ThemeCustom.Muted, muted)
-		setIfNonEmpty(&cfg.Features.ThemeCustom.Border, border)
-		setIfNonEmpty(&cfg.Features.ThemeCustom.Surface, surface)
-		setIfNonEmpty(&cfg.Features.ThemeCustom.Warning, warning)
-		setIfNonEmpty(&cfg.Features.ThemeCustom.Error, errorColor)
-		setIfNonEmpty(&cfg.Features.ThemeCustom.Success, success)
+		for i, role := range paletteRoles {
+			setIfNonEmpty(role.field(&cfg.Features.ThemeCustom), overrides[i])
+		}
 	}
 
 	if err := config.WriteNonSecretFile(cfg.Path, cfg); err != nil {
@@ -712,10 +757,49 @@ func loadConfigForFlags(name string, args []string, stderr io.Writer) (config.Co
 	fs.SetOutput(stderr)
 	var cfgPath string
 	fs.StringVar(&cfgPath, "config", "", "config file path")
-	if err := fs.Parse(args); err != nil {
-		return config.Config{}, ExitUsage
+	// No usage text and no argument noun: these subcommands take flags only
+	// and have no help page of their own.
+	if code, ok := parseCommandFlags(fs, args, "", "", nil, stderr); !ok {
+		return config.Config{}, code
 	}
-	cfg, err := config.Load(os.Environ(), config.Overrides{ConfigPath: cfgPath})
+	return loadCommandConfig(config.Overrides{ConfigPath: cfgPath}, stderr)
+}
+
+// parseCommandFlags runs the opening moves every subcommand makes: answer
+// --help, parse the flags, then reject leftover positional arguments. It
+// reports whether the command should carry on; when it should not, the returned
+// code is what the command returns.
+//
+// An empty usage skips the help shortcut, for subcommands with no help page.
+// An empty argNoun skips the positional check, for the two that either accept
+// positional arguments or word the complaint themselves.
+//
+// Help goes to stdout because someone asked for it, while errors go to stderr,
+// so `yc login --help | less` shows the page and a mistyped flag still reaches
+// the terminal.
+func parseCommandFlags(fs *flag.FlagSet, args []string, usage, argNoun string, stdout, stderr io.Writer) (int, bool) {
+	if usage != "" && hasHelpArg(args) {
+		fmt.Fprint(stdout, usage)
+		fs.SetOutput(stdout)
+		fs.PrintDefaults()
+		return ExitOK, false
+	}
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage, false
+	}
+	if argNoun != "" && fs.NArg() != 0 {
+		fmt.Fprintf(stderr, "unexpected %s argument %q\n\n", argNoun, fs.Arg(0))
+		fs.Usage()
+		return ExitUsage, false
+	}
+	return ExitOK, true
+}
+
+// loadCommandConfig loads the config and, on failure, prints the single
+// redacted line a subcommand exits on. Redaction matters here because a config
+// error can quote the file's contents, and that file holds an API key.
+func loadCommandConfig(overrides config.Overrides, stderr io.Writer) (config.Config, int) {
+	cfg, err := config.Load(os.Environ(), overrides)
 	if err != nil {
 		fmt.Fprintf(stderr, "load config: %s\n", config.RedactDisplayValue(err.Error()))
 		return config.Config{}, ExitFailure
