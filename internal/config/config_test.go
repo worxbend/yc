@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -366,4 +367,90 @@ func writeConfigFile(t *testing.T, contents string) string {
 		t.Fatalf("write config: %v", err)
 	}
 	return path
+}
+
+func TestLoadHandlesAVeryLongLine(t *testing.T) {
+	// bufio.Scanner's 64 KiB default used to fail the whole load with "token
+	// too long" once default_chats grew past it, so a user with a big chat
+	// list could not start yc at all.
+	chats := make([]string, 4000)
+	for i := range chats {
+		chats[i] = fmt.Sprintf("@channel-with-a-fairly-long-handle-%04d", i)
+	}
+	line := strings.Join(chats, ",")
+	if len(line) <= 64*1024 {
+		t.Fatalf("test line is only %d bytes, it must exceed the scanner default", len(line))
+	}
+	path := writeConfigFile(t, "default_chats = \""+line+"\"\ntheme_name = \"nord\"\n")
+
+	cfg, err := Load(nil, Overrides{ConfigPath: path})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.DefaultChats) != len(chats) {
+		t.Fatalf("DefaultChats = %d entries, want %d", len(cfg.DefaultChats), len(chats))
+	}
+	if cfg.Features.ThemeName != "nord" {
+		t.Fatalf("ThemeName = %q, want the key after the long line to still apply", cfg.Features.ThemeName)
+	}
+
+	// The writer reads the file back line by line too, so it needs the same
+	// headroom.
+	if err := WriteNonSecretFile(path, cfg); err != nil {
+		t.Fatalf("WriteNonSecretFile: %v", err)
+	}
+}
+
+func TestTrimValueStripsAtMostOneQuotePair(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"unquoted", `nord`, `nord`},
+		{"one double pair", `"nord"`, `nord`},
+		{"one single pair", `'nord'`, `nord`},
+		{"quotes are content", `""x""`, `"x"`},
+		{"inner quotes survive", `"he said "hi""`, `he said "hi"`},
+		{"empty quoted string", `""`, ``},
+		{"unbalanced left", `"nord`, `"nord`},
+		{"unbalanced right", `nord"`, `nord"`},
+		{"bracket list keeps its quoting for splitList", `["a", "b"]`, `"a", "b"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := trimValue(tt.input); got != tt.want {
+				t.Fatalf("trimValue(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSplitListKeepsQuotedCommasAndInnerQuotes(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  []string
+	}{
+		{"plain", `a,b`, []string{"a", "b"}},
+		{"spaced", ` a , b `, []string{"a", "b"}},
+		{"quoted entries", `"a", "b"`, []string{"a", "b"}},
+		{"comma inside quotes", `"a,b",c`, []string{"a,b", "c"}},
+		{"comma inside quotes after a space", `x, "a,b"`, []string{"x", "a,b"}},
+		{"inner quote is content", `a"b,c`, []string{`a"b`, "c"}},
+		{"empty entries dropped", `a,,b`, []string{"a", "b"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := splitList(tt.input)
+			if len(got) != len(tt.want) {
+				t.Fatalf("splitList(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("splitList(%q) = %v, want %v", tt.input, got, tt.want)
+				}
+			}
+		})
+	}
 }

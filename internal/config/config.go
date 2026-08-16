@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -14,6 +15,14 @@ import (
 
 // Redacted is the placeholder printed in place of any non-empty secret value.
 const Redacted = "[redacted]"
+
+// maxConfigLineBytes is the longest single line the config reader and writer
+// accept. bufio.Scanner defaults to 64 KiB and reports "token too long" for
+// anything past it, which would fail the whole load - not the one line - for a
+// user whose default_chats list has grown long. A megabyte is far past any
+// hand-written config while still keeping a corrupt file from being read into
+// memory without bound.
+const maxConfigLineBytes = 1 << 20
 
 // DefaultScrollbackLimit is the per-chat message cap applied when no
 // scrollback_limit is configured. Chat is unbounded upstream and every retained
@@ -365,6 +374,7 @@ func applyFile(cfg *Config, path string) error {
 
 	index := bindingIndex(cfg)
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxConfigLineBytes)
 	lineNo := 0
 	for scanner.Scan() {
 		lineNo++
@@ -546,6 +556,7 @@ func writeFlatConfigUpdates(path string, order []string, updates map[string]stri
 	seen := map[string]bool{}
 	var lines []string
 	scanner := bufio.NewScanner(strings.NewReader(existing))
+	scanner.Buffer(make([]byte, 0, 64*1024), maxConfigLineBytes)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if key, ok := configLineKey(line); ok {
@@ -617,32 +628,116 @@ func writeFilePrivate(path string, data []byte) error {
 		_ = tmp.Close()
 		return err
 	}
+	// Without this the rename can reach the disk before the bytes do, so a
+	// power loss right after a `yc config set` can leave an empty or
+	// half-written config where a complete one used to be. Syncing the file
+	// before the rename, and the directory after it, is the same order the
+	// credential file uses.
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmpPath, path)
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	return syncDir(dir)
+}
+
+// syncDir flushes a directory entry so a rename that just happened survives a
+// crash. It mirrors the helper in internal/storage - config cannot reach into
+// that package's unexported code, so the few lines are repeated here.
+func syncDir(dir string) error {
+	file, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = file.Close() }()
+	// Not every filesystem lets a directory be fsynced. An EINVAL there says
+	// the platform does not offer the guarantee, not that the write failed.
+	if err := file.Sync(); err != nil && !errors.Is(err, fs.ErrInvalid) && !errors.Is(err, os.ErrInvalid) {
+		return err
+	}
+	return nil
 }
 
 // trimValue strips the quoting and bracket forms the flat format tolerates, so
 // a value written by hand as `"fast"`, 'fast', or ["a", "b"] all parse.
 func trimValue(value string) string {
-	value = strings.TrimSpace(value)
-	value = strings.Trim(value, `"`)
-	value = strings.Trim(value, `'`)
+	value = unquoteOnce(strings.TrimSpace(value))
 	if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
-		value = strings.TrimPrefix(strings.TrimSuffix(value, "]"), "[")
-		value = strings.ReplaceAll(value, `"`, "")
-		value = strings.ReplaceAll(value, `'`, "")
+		// The brackets come off here, but the quotes inside the list do not:
+		// splitList has to see them to know which commas separate entries and
+		// which ones are part of an entry.
+		value = strings.TrimSpace(value[1 : len(value)-1])
+	}
+	return value
+}
+
+// unquoteOnce removes one matched pair of surrounding quotes and no more.
+//
+// The previous version used strings.Trim, which removes every quote at either
+// end: a value written as `""` (an intentional empty string wrapped in quotes)
+// and a value like `"he said "hi""` both came out mangled. Removing exactly one
+// pair means the quoting is undone the same way it was applied.
+func unquoteOnce(value string) string {
+	if len(value) < 2 {
+		return value
+	}
+	first, last := value[0], value[len(value)-1]
+	if first == last && (first == '"' || first == '\'') {
+		return value[1 : len(value)-1]
 	}
 	return value
 }
 
 // splitList parses a comma-separated list value.
+//
+// Commas inside a quoted entry do not separate entries, so a chat name that
+// legitimately contains one survives. Each entry then has one matched pair of
+// surrounding quotes removed, the same rule trimValue applies to scalars.
 func splitList(value string) []string {
 	if strings.TrimSpace(value) == "" {
 		return nil
 	}
-	return normalizeChats(strings.Split(value, ","))
+	var (
+		entries []string
+		current strings.Builder
+		quote   byte
+	)
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+			current.WriteByte(c)
+		case current.Len() == 0 && (c == ' ' || c == '\t'):
+			// Leading blanks are dropped here rather than trimmed later, so
+			// the quote in ` "a,b"` is still recognized as opening the entry.
+			continue
+		case (c == '"' || c == '\'') && current.Len() == 0:
+			// Only a quote that opens an entry starts a quoted section. A
+			// quote in the middle of an entry is content, and treating it as
+			// an opener would let one stray character swallow every comma
+			// after it and merge the rest of the list into a single entry.
+			quote = c
+			current.WriteByte(c)
+		case c == ',':
+			entries = append(entries, current.String())
+			current.Reset()
+		default:
+			current.WriteByte(c)
+		}
+	}
+	entries = append(entries, current.String())
+	for i, entry := range entries {
+		entries[i] = unquoteOnce(strings.TrimSpace(entry))
+	}
+	return normalizeChats(entries)
 }
 
 // normalizeChats trims and drops empty entries.
