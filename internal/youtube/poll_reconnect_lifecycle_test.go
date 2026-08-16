@@ -31,6 +31,13 @@ import (
 // than as a goroutine parked somewhere that only a stack dump would find.
 const busyPollerStep = 20 * time.Millisecond
 
+// busyPollerSettle is how long a stop is given to finish before a "nothing is
+// still polling" assertion starts counting. It only has to cover one in-flight
+// request to an in-process server, and it is several busyPollerStep intervals
+// so a loop that really is stranded still announces itself in the window that
+// follows.
+const busyPollerSettle = 100 * time.Millisecond
+
 // busyPoller is a poller driven against an in-process API at a fixed fast
 // cadence, with every dispatched list request counted.
 type busyPoller struct {
@@ -161,6 +168,13 @@ func (b *busyPoller) drainRequests() {
 // single stranded loop shows up here as dozens of calls.
 func (b *busyPoller) assertNoFurtherPolls(window time.Duration, why string) {
 	b.t.Helper()
+	// The counter is incremented by the test server's handler, not by the poll
+	// loop, so a request that was already on the wire when the loop was
+	// canceled still lands - once - after the cancel is complete. Waiting for
+	// that straggler before taking the baseline keeps the assertion about what
+	// it is meant to catch: a loop nobody canceled, which at busyPollerStep
+	// keeps dispatching for as long as anyone watches.
+	time.Sleep(busyPollerSettle)
 	before := b.dispatch.Load()
 	time.Sleep(window)
 	if after := b.dispatch.Load(); after != before {
