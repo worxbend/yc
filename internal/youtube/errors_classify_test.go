@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/worxbend/yc/internal/auth"
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // Classification is the one decision every other policy in yc reads off.
@@ -379,7 +380,7 @@ func TestAPIErrorLabelPrefersTheMostSpecificChannel(t *testing.T) {
 		Reason:          "liveChatEnded",
 		Status:          "PERMISSION_DENIED",
 		ErrorInfoReason: "SERVICE_DISABLED",
-		Method:          EndpointMessagesList,
+		Method:          quota.EndpointMessagesList,
 		sentinel:        ErrChatEnded,
 	}
 	text := err.Error()

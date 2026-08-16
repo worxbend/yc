@@ -1,4 +1,4 @@
-package youtube
+package quota
 
 import (
 	"context"
@@ -161,7 +161,7 @@ func TestLedgerDoesNotRollOverAcrossADaylightSavingTransition(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			now := test.before
-			ledger := NewQuotaLedger(LedgerConfig{Now: fixedClock(&now)})
+			ledger := NewLedger(Config{Now: fixedClock(&now)})
 			ledger.Charge(EndpointMessagesList)
 			if used := ledger.Snapshot().UsedUnits; used != 5 {
 				t.Fatalf("UsedUnits = %d before the transition, want 5", used)
@@ -192,8 +192,8 @@ func TestLedgerDoesNotRollOverAcrossADaylightSavingTransition(t *testing.T) {
 func TestChargeRollsTheDayOverByItself(t *testing.T) {
 	root := t.TempDir()
 	now := pacificTime(t, 2026, time.August, 8, 23, 59)
-	store := NewFileLedgerStore(root)
-	ledger := NewQuotaLedger(LedgerConfig{
+	store := NewFileStore(root)
+	ledger := NewLedger(Config{
 		Now:         fixedClock(&now),
 		Store:       store,
 		Fingerprint: "aaaaaaaaaaaaaaaa",
@@ -233,10 +233,10 @@ func TestChargeRollsTheDayOverByItself(t *testing.T) {
 func TestTheTwoQuotaBucketsNeverBleedIntoEachOther(t *testing.T) {
 	now := pacificTime(t, 2026, time.August, 8, 12, 0)
 	root := t.TempDir()
-	newLedger := func() *QuotaLedger {
-		return NewQuotaLedger(LedgerConfig{
+	newLedger := func() *Ledger {
+		return NewLedger(Config{
 			Now:         fixedClock(&now),
-			Store:       NewFileLedgerStore(root),
+			Store:       NewFileStore(root),
 			Fingerprint: "aaaaaaaaaaaaaaaa",
 		})
 	}
@@ -282,7 +282,7 @@ func TestTheTwoQuotaBucketsNeverBleedIntoEachOther(t *testing.T) {
 // negative remaining would produce a negative poll interval.
 func TestRemainingUnitsNeverGoesNegative(t *testing.T) {
 	now := pacificTime(t, 2026, time.August, 8, 12, 0)
-	ledger := NewQuotaLedger(LedgerConfig{DailyUnits: 10, Now: fixedClock(&now)})
+	ledger := NewLedger(Config{DailyUnits: 10, Now: fixedClock(&now)})
 	for i := 0; i < 5; i++ {
 		ledger.Charge(EndpointMessagesInsert) // 50 units each, against a 10-unit day
 	}
@@ -309,7 +309,7 @@ func TestRemainingUnitsNeverGoesNegative(t *testing.T) {
 // property of the data rather than a string the view remembers to add.
 func TestEverySnapshotIsLabelledAnEstimate(t *testing.T) {
 	now := pacificTime(t, 2026, time.August, 8, 12, 0)
-	ledger := NewQuotaLedger(LedgerConfig{Now: fixedClock(&now)})
+	ledger := NewLedger(Config{Now: fixedClock(&now)})
 	if !ledger.Snapshot().Estimated {
 		t.Fatal("a fresh snapshot is not labeled an estimate")
 	}
@@ -317,7 +317,7 @@ func TestEverySnapshotIsLabelledAnEstimate(t *testing.T) {
 	if !ledger.Snapshot().Estimated {
 		t.Fatal("a charged snapshot is not labeled an estimate")
 	}
-	var nilLedger *QuotaLedger
+	var nilLedger *Ledger
 	if !nilLedger.Snapshot().Estimated {
 		t.Fatal("the nil-ledger snapshot is not labeled an estimate")
 	}
@@ -347,7 +347,7 @@ func TestNoEndpointCanEverBeChargedNothing(t *testing.T) {
 	}
 
 	now := pacificTime(t, 2026, time.August, 8, 12, 0)
-	ledger := NewQuotaLedger(LedgerConfig{Costs: table, Now: fixedClock(&now)})
+	ledger := NewLedger(Config{Costs: table, Now: fixedClock(&now)})
 	if got := ledger.Charge(EndpointMessagesList); got != 1 {
 		t.Fatalf("Charge with a zero override = %d, want the 1-unit floor", got)
 	}
@@ -361,13 +361,13 @@ func TestNoEndpointCanEverBeChargedNothing(t *testing.T) {
 func TestPruneStopsWhenItsContextExpires(t *testing.T) {
 	root := t.TempDir()
 	for day := 1; day <= 40; day++ {
-		writeLedgerRecord(t, root, "aaaaaaaaaaaaaaaa", pacificDayOffset(-day-LedgerRetentionDays))
+		writeLedgerRecord(t, root, "aaaaaaaaaaaaaaaa", pacificDayOffset(-day-RetentionDays))
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := NewFileLedgerStore(root).Prune(ctx, LedgerRetentionDays)
+	err := NewFileStore(root).Prune(ctx, RetentionDays)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Prune error = %v, want context.Canceled", err)
 	}
@@ -390,7 +390,7 @@ func TestPruneWithNoWindowKeepsOnlyToday(t *testing.T) {
 			today := writeLedgerRecord(t, root, "aaaaaaaaaaaaaaaa", pacificDayOffset(0))
 			yesterday := writeLedgerRecord(t, root, "aaaaaaaaaaaaaaaa", pacificDayOffset(-1))
 
-			if err := NewFileLedgerStore(root).Prune(context.Background(), keepDays); err != nil {
+			if err := NewFileStore(root).Prune(context.Background(), keepDays); err != nil {
 				t.Fatalf("Prune error = %v", err)
 			}
 			if _, err := os.Stat(today); err != nil {
@@ -433,7 +433,7 @@ func TestPruneTouchesNothingItDoesNotRecognize(t *testing.T) {
 		t.Fatalf("create nested directory: %v", err)
 	}
 
-	if err := NewFileLedgerStore(root).Prune(context.Background(), LedgerRetentionDays); err != nil {
+	if err := NewFileStore(root).Prune(context.Background(), RetentionDays); err != nil {
 		t.Fatalf("Prune error = %v", err)
 	}
 
@@ -452,7 +452,7 @@ func TestPruneTouchesNothingItDoesNotRecognize(t *testing.T) {
 // must be a no-op rather than an error the caller has to think about.
 func TestPruneWithNoRootIsANoOp(t *testing.T) {
 	for _, root := range []string{"", "   "} {
-		if err := NewFileLedgerStore(root).Prune(context.Background(), LedgerRetentionDays); err != nil {
+		if err := NewFileStore(root).Prune(context.Background(), RetentionDays); err != nil {
 			t.Errorf("Prune with root %q = %v, want nil", root, err)
 		}
 	}
@@ -466,7 +466,7 @@ func TestPruneOnAFileRootReportsTheProblem(t *testing.T) {
 	if err := os.WriteFile(root, []byte("not a directory"), 0o600); err != nil {
 		t.Fatalf("write file at the ledger root: %v", err)
 	}
-	if err := NewFileLedgerStore(root).Prune(context.Background(), LedgerRetentionDays); err == nil {
+	if err := NewFileStore(root).Prune(context.Background(), RetentionDays); err == nil {
 		t.Fatal("Prune on a file root reported success")
 	}
 	if _, err := os.Stat(root); err != nil {

@@ -10,6 +10,7 @@ import (
 	"github.com/worxbend/yc/internal/app"
 	"github.com/worxbend/yc/internal/config"
 	"github.com/worxbend/yc/internal/debuglog"
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/storage"
 	"github.com/worxbend/yc/internal/youtube"
 )
@@ -225,12 +226,12 @@ func TestPollIntervalBoundsNeverSpeedYcUp(t *testing.T) {
 // The cost table is data precisely so a corrected figure is a config line
 // rather than a release, and zero means "not overridden" rather than "free".
 func TestCostTableTreatsZeroAsNotOverridden(t *testing.T) {
-	defaults := youtube.DefaultCostTable()
+	defaults := quota.DefaultCostTable()
 	table := costTable(config.QuotaCostConfig{})
 	for _, endpoint := range []string{
-		youtube.EndpointMessagesList, youtube.EndpointMessagesInsert, youtube.EndpointMessagesDelete,
-		youtube.EndpointBansInsert, youtube.EndpointBansDelete,
-		youtube.EndpointVideosList, youtube.EndpointChannelsList, youtube.EndpointSearchList,
+		quota.EndpointMessagesList, quota.EndpointMessagesInsert, quota.EndpointMessagesDelete,
+		quota.EndpointBansInsert, quota.EndpointBansDelete,
+		quota.EndpointVideosList, quota.EndpointChannelsList, quota.EndpointSearchList,
 	} {
 		if got, want := table.Cost(endpoint), defaults.Cost(endpoint); got != want {
 			t.Errorf("%s cost = %d with no overrides, want the default %d", endpoint, got, want)
@@ -238,13 +239,13 @@ func TestCostTableTreatsZeroAsNotOverridden(t *testing.T) {
 	}
 
 	overridden := costTable(config.QuotaCostConfig{List: 7, SearchList: 250})
-	if got := overridden.Cost(youtube.EndpointMessagesList); got != 7 {
+	if got := overridden.Cost(quota.EndpointMessagesList); got != 7 {
 		t.Errorf("list cost = %d, want the override", got)
 	}
-	if got := overridden.Cost(youtube.EndpointSearchList); got != 250 {
+	if got := overridden.Cost(quota.EndpointSearchList); got != 250 {
 		t.Errorf("search cost = %d, want the override", got)
 	}
-	if got := overridden.Cost(youtube.EndpointMessagesInsert); got != defaults.Cost(youtube.EndpointMessagesInsert) {
+	if got := overridden.Cost(quota.EndpointMessagesInsert); got != defaults.Cost(quota.EndpointMessagesInsert) {
 		t.Errorf("insert cost = %d, want it untouched", got)
 	}
 }

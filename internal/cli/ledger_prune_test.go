@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/worxbend/yc/internal/debuglog"
-	"github.com/worxbend/yc/internal/youtube"
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // awaitPrune waits for a started sweep to finish.
@@ -25,7 +25,7 @@ func awaitPrune(t *testing.T, done <-chan struct{}) {
 // record filename is keyed by.
 func pacificDay(t *testing.T, n int) string {
 	t.Helper()
-	loc, err := time.LoadLocation(youtube.QuotaResetLocation)
+	loc, err := time.LoadLocation(quota.ResetLocation)
 	if err != nil {
 		// tzdata is embedded, so this is a broken toolchain rather than a
 		// broken machine; standard Pacific time still keys the filenames.
@@ -59,7 +59,7 @@ func TestStartLedgerPruneSweepsStaleRecordsAtStartup(t *testing.T) {
 
 	today := write("aaaaaaaaaaaaaaaa-" + pacificDay(t, 0) + ".json")
 	yesterday := write("aaaaaaaaaaaaaaaa-" + pacificDay(t, -1) + ".json")
-	stale := write("aaaaaaaaaaaaaaaa-" + pacificDay(t, -(youtube.LedgerRetentionDays+1)) + ".json")
+	stale := write("aaaaaaaaaaaaaaaa-" + pacificDay(t, -(quota.RetentionDays+1)) + ".json")
 	ancient := write("bbbbbbbbbbbbbbbb-2021-03-04.json")
 
 	awaitPrune(t, startLedgerPrune(context.Background(), debuglog.Logger{}))

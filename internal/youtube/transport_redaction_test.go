@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/worxbend/yc/internal/auth"
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // The API key rides in the query string of every key-mode request, so the
@@ -80,7 +81,7 @@ func TestTransportFailureKeepsAPIKeyOutOfTheErrorChain(t *testing.T) {
 	}
 
 	var out any
-	callErr := client.doJSON(context.Background(), http.MethodGet, EndpointMessagesList,
+	callErr := client.doJSON(context.Background(), http.MethodGet, quota.EndpointMessagesList,
 		"liveChat/messages", map[string]string{"liveChatId": "abc"}, nil, &out)
 	if callErr == nil {
 		t.Fatal("expected the request to fail")
@@ -109,7 +110,7 @@ func TestTransportCancellationStaysClassifiable(t *testing.T) {
 	cancel()
 
 	var out any
-	callErr := client.doJSON(ctx, http.MethodGet, EndpointMessagesList, "liveChat/messages", nil, nil, &out)
+	callErr := client.doJSON(ctx, http.MethodGet, quota.EndpointMessagesList, "liveChat/messages", nil, nil, &out)
 	if !errors.Is(callErr, context.Canceled) {
 		t.Errorf("a canceled call must remain context.Canceled, got %v", callErr)
 	}
@@ -153,7 +154,7 @@ func TestErrorBodyEchoingCredentialsIsRedacted(t *testing.T) {
 				t.Fatalf("NewClient: %v", err)
 			}
 			var out any
-			callErr := client.doJSON(context.Background(), http.MethodGet, EndpointMessagesList,
+			callErr := client.doJSON(context.Background(), http.MethodGet, quota.EndpointMessagesList,
 				"liveChat/messages", nil, nil, &out)
 			if callErr == nil {
 				t.Fatal("expected the request to fail")

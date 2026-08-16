@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/youtube"
 )
 
@@ -117,9 +118,9 @@ func (c *MockChatClient) Send(ctx context.Context, _ youtube.SendRequest) (youtu
 // Quota returns a plausible simulated ledger so the status bar and the quota tab
 // are exercised without credentials. Like every quota figure in yc it is an
 // estimate, and in this mode it is not even a measurement.
-func (c *MockChatClient) Quota() youtube.QuotaSnapshot {
+func (c *MockChatClient) Quota() quota.Snapshot {
 	now := time.Now()
-	return youtube.QuotaSnapshot{
+	return quota.Snapshot{
 		UsedUnits:         3240,
 		LimitUnits:        10000,
 		RemainingUnits:    6760,
@@ -130,7 +131,7 @@ func (c *MockChatClient) Quota() youtube.QuotaSnapshot {
 		EffectiveInterval: 5 * time.Second,
 		ServerFloor:       5 * time.Second,
 		BudgetFloor:       43 * time.Second,
-		Mode:              youtube.QuotaModeLive,
+		Mode:              quota.ModeLive,
 		Estimated:         true,
 		At:                now,
 	}

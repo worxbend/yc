@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/worxbend/yc/internal/debuglog"
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/youtube"
 )
 
@@ -121,7 +122,7 @@ type MessageDropCounter interface {
 // model. Everything it reports is an estimate: Google publishes no quota costs
 // for live chat methods, so every rendered figure carries an explicit marker.
 type QuotaReporter interface {
-	Quota() youtube.QuotaSnapshot
+	Quota() quota.Snapshot
 }
 
 // PollIntervalSource is an optional ChatClient capability exposing the current

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/worxbend/yc/internal/debuglog"
-	"github.com/worxbend/yc/internal/youtube"
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // The startup sweep is housekeeping on an advisory meter riding on the launch
@@ -36,8 +36,8 @@ func TestThePruneDeadlineIsShort(t *testing.T) {
 	}
 	// The retention window is a constant precisely so it cannot be widened
 	// by configuration into a directory nobody ever sweeps.
-	if youtube.LedgerRetentionDays < 1 {
-		t.Fatalf("LedgerRetentionDays = %d, want at least today and yesterday kept", youtube.LedgerRetentionDays)
+	if quota.RetentionDays < 1 {
+		t.Fatalf("LedgerRetentionDays = %d, want at least today and yesterday kept", quota.RetentionDays)
 	}
 }
 
@@ -171,7 +171,7 @@ func TestASweepOfAYearOfRecordsIsWellInsideTheDeadline(t *testing.T) {
 		t.Fatalf("create ledger directory: %v", err)
 	}
 
-	loc, err := time.LoadLocation(youtube.QuotaResetLocation)
+	loc, err := time.LoadLocation(quota.ResetLocation)
 	if err != nil {
 		loc = time.FixedZone("PST", -8*60*60)
 	}
@@ -206,8 +206,8 @@ func TestASweepOfAYearOfRecordsIsWellInsideTheDeadline(t *testing.T) {
 	// records per account. The off-by-one is worth pinning rather than
 	// rounding off, because it is the difference between a session that
 	// crosses the Pacific reset finding yesterday and not.
-	if want := 4 * (youtube.LedgerRetentionDays + 1); len(remaining) != want {
+	if want := 4 * (quota.RetentionDays + 1); len(remaining) != want {
 		t.Fatalf("%d records remain, want %d (four accounts across the inclusive %d-day window)",
-			len(remaining), want, youtube.LedgerRetentionDays)
+			len(remaining), want, quota.RetentionDays)
 	}
 }

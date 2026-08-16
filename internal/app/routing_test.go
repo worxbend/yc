@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/worxbend/yc/internal/animation"
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/youtube"
 )
 
@@ -90,7 +91,7 @@ func TestForwardedEventsWearTheSessionRoutingKey(t *testing.T) {
 // constraint is quota.
 func TestQuotaSurvivesTheLastChatClosing(t *testing.T) {
 	transport := newFakeTransport()
-	transport.quota = youtube.QuotaSnapshot{LimitUnits: 10000, UsedUnits: 250, RemainingUnits: 9750}
+	transport.quota = quota.Snapshot{LimitUnits: 10000, UsedUnits: 250, RemainingUnits: 9750}
 
 	client, err := NewLiveChatClient(LiveChatConfig{
 		Factory: func(youtube.ChatTarget) (LiveChatTransport, error) { return transport, nil },

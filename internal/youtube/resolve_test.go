@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
+
+	"github.com/worxbend/yc/internal/quota"
 )
 
 func TestParseChatTarget(t *testing.T) {
@@ -245,7 +247,7 @@ func TestSearchLiveVideoIsMeteredAgainstItsOwnBucket(t *testing.T) {
 	if got.Get("eventType") != "live" || got.Get("type") != "video" {
 		t.Fatalf("query = %v, want a live video search", got)
 	}
-	if DefaultCostTable().Cost(EndpointSearchList) != 1 {
+	if quota.DefaultCostTable().Cost(quota.EndpointSearchList) != 1 {
 		t.Fatal("search.list cost is not 1; since the 2026-06-01 granular migration it is 1 unit from a separate 100/day bucket")
 	}
 }

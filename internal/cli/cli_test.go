@@ -15,6 +15,7 @@ import (
 	"github.com/worxbend/yc/internal/auth"
 	"github.com/worxbend/yc/internal/config"
 	"github.com/worxbend/yc/internal/debuglog"
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/storage"
 	"github.com/worxbend/yc/internal/theme"
 	"github.com/worxbend/yc/internal/youtube"
@@ -193,10 +194,10 @@ func TestPollIntervalCeilingNeverUndercutsTheFloor(t *testing.T) {
 
 func TestCostTableAppliesOverridesOnly(t *testing.T) {
 	table := costTable(config.QuotaCostConfig{List: 9, Insert: 0})
-	if got, want := table.Cost(youtube.EndpointMessagesList), 9; got != want {
+	if got, want := table.Cost(quota.EndpointMessagesList), 9; got != want {
 		t.Errorf("list cost = %d, want the override %d", got, want)
 	}
-	if got, want := table.Cost(youtube.EndpointMessagesInsert), youtube.DefaultCostTable().Cost(youtube.EndpointMessagesInsert); got != want {
+	if got, want := table.Cost(quota.EndpointMessagesInsert), quota.DefaultCostTable().Cost(quota.EndpointMessagesInsert); got != want {
 		t.Errorf("insert cost = %d, want the default %d; zero means 'not overridden'", got, want)
 	}
 }

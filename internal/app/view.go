@@ -1201,9 +1201,9 @@ func (m shellModel) activityView(layout shellLayout) string {
 
 func (m shellModel) statusBarState() statusBarState {
 	state := m.activeChatState()
-	quota, quotaKnown := m.quotaSnapshot()
-	if quota.EffectiveInterval <= 0 {
-		quota.EffectiveInterval = m.effectivePollInterval()
+	snapshot, quotaKnown := m.quotaSnapshot()
+	if snapshot.EffectiveInterval <= 0 {
+		snapshot.EffectiveInterval = m.effectivePollInterval()
 	}
 	st := statusBarState{
 		Palette:       m.theme,
@@ -1214,7 +1214,7 @@ func (m shellModel) statusBarState() statusBarState {
 		PendingClear:  m.pendingClearChat,
 		Focus:         m.focusName(),
 		Layout:        string(m.messageLayout),
-		Quota:         quota,
+		Quota:         snapshot,
 		QuotaKnown:    quotaKnown,
 		CostPerPoll:   m.estimatedPollCost(),
 		FPS:           float64(m.framesPerSecond()),
@@ -1388,7 +1388,7 @@ func (m shellModel) listOverlayState() listOverlayState {
 // for. Quota does not merely fill the gap - it is the constraint that decides
 // whether a session survives the broadcast, so it earns a whole screen.
 func (m shellModel) quotaLedgerLines() []string {
-	quota, known := m.quotaSnapshot()
+	snapshot, known := m.quotaSnapshot()
 	if !known {
 		return []string{
 			" No quota ledger yet.",
@@ -1400,25 +1400,25 @@ func (m shellModel) quotaLedgerLines() []string {
 	cost := m.estimatedPollCost()
 	lines := []string{
 		fmt.Sprintf(" Estimated usage   %s / %s units   (%.0f%% left)",
-			formatUnits(quota.UsedUnits), formatUnits(quota.LimitUnits), quota.RemainingPercent()),
-		fmt.Sprintf(" Daily searches    %d / %d", quota.SearchUsed, quota.SearchLimit),
+			formatUnits(snapshot.UsedUnits), formatUnits(snapshot.LimitUnits), snapshot.RemainingPercent()),
+		fmt.Sprintf(" Daily searches    %d / %d", snapshot.SearchUsed, snapshot.SearchLimit),
 		"",
 		fmt.Sprintf(" Poll cadence      %s   (server floor %s, budget floor %s)",
-			formatPollInterval(quota.EffectiveInterval),
-			formatPollInterval(quota.ServerFloor),
-			formatPollInterval(quota.BudgetFloor)),
-		fmt.Sprintf(" Cadence mode      %s", quotaModeDescription(quota.Mode)),
+			formatPollInterval(snapshot.EffectiveInterval),
+			formatPollInterval(snapshot.ServerFloor),
+			formatPollInterval(snapshot.BudgetFloor)),
+		fmt.Sprintf(" Cadence mode      %s", quotaModeDescription(snapshot.Mode)),
 	}
-	if remaining, ok := quota.ProjectedExhaustion(cost); ok {
+	if remaining, ok := snapshot.ProjectedExhaustion(cost); ok {
 		lines = append(lines, fmt.Sprintf(" Projected budget  %s at this cadence", formatCompactDuration(remaining)))
 	}
-	if !quota.ResetAt.IsZero() {
+	if !snapshot.ResetAt.IsZero() {
 		lines = append(lines, fmt.Sprintf(" Resets            %s (midnight America/Los_Angeles)",
-			quota.ResetAt.Local().Format("2006-01-02 15:04")))
+			snapshot.ResetAt.Local().Format("2006-01-02 15:04")))
 	}
 	lines = append(lines, "", " By endpoint (estimated cost per call)")
-	for _, endpoint := range sortedEndpoints(quota.ByEndpoint) {
-		lines = append(lines, fmt.Sprintf("   %-34s %s", endpoint, formatUnits(quota.ByEndpoint[endpoint])))
+	for _, endpoint := range sortedEndpoints(snapshot.ByEndpoint) {
+		lines = append(lines, fmt.Sprintf("   %-34s %s", endpoint, formatUnits(snapshot.ByEndpoint[endpoint])))
 	}
 	// The disclaimer is not decoration. Google publishes no quota costs for
 	// any live-chat method, so a figure presented as fact would be one the

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rivo/uniseg"
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // Local send allowance defaults.
@@ -113,11 +114,11 @@ type liveChatInsertRequest struct {
 // capped at MaxChatMessageRunes before dispatch so an over-long draft never
 // costs quota.
 func (c *Client) SendMessage(ctx context.Context, request SendRequest) (SendResult, error) {
-	result := SendResult{QuotaUnits: c.cost(EndpointMessagesInsert)}
+	result := SendResult{QuotaUnits: c.cost(quota.EndpointMessagesInsert)}
 
 	liveChatID := strings.TrimSpace(request.LiveChatID)
 	if liveChatID == "" {
-		return result, newSafeError(EndpointMessagesInsert+": no live chat id", ErrMessageRejected)
+		return result, newSafeError(quota.EndpointMessagesInsert+": no live chat id", ErrMessageRejected)
 	}
 	if !c.hasToken() {
 		// An API key can read a public chat but can never write to one.
@@ -145,7 +146,7 @@ func (c *Client) SendMessage(ctx context.Context, request SendRequest) (SendResu
 		} `json:"snippet"`
 	}
 	query := map[string]string{"part": "snippet"}
-	if err := c.doJSON(ctx, "POST", EndpointMessagesInsert, sendPath, query, body, &response); err != nil {
+	if err := c.doJSON(ctx, "POST", quota.EndpointMessagesInsert, sendPath, query, body, &response); err != nil {
 		if apiErr, ok := asAPIError(err); ok && apiErr.StatusCode == 429 {
 			// insert reports rate limiting as 429, unlike list, which uses
 			// a 403 with reason rateLimitExceeded.

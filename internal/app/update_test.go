@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/youtube"
 )
 
@@ -665,12 +666,12 @@ func TestQuotaSnapshotIsMirroredFromTheTransport(t *testing.T) {
 	model := newModelForTest(t, "demo")
 	client := NewFakeChatClient()
 	defer client.Close()
-	client.SetQuota(youtube.QuotaSnapshot{
+	client.SetQuota(quota.Snapshot{
 		UsedUnits:         3240,
 		LimitUnits:        10000,
 		RemainingUnits:    6760,
 		EffectiveInterval: 43 * time.Second,
-		Mode:              youtube.QuotaModeStretched,
+		Mode:              quota.ModeStretched,
 		Estimated:         true,
 	})
 	model.client = client

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/worxbend/yc/internal/debuglog"
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/youtube"
 )
 
@@ -50,7 +51,7 @@ type LiveChatTransport interface {
 	RoomEvents() <-chan youtube.RoomEvent
 	Polls() <-chan youtube.PollState
 	Send(ctx context.Context, request youtube.SendRequest) (youtube.SendResult, error)
-	Quota() youtube.QuotaSnapshot
+	Quota() quota.Snapshot
 	Close() error
 }
 
@@ -115,7 +116,7 @@ type LiveChatClient struct {
 	// lastQuota is the most recent snapshot any live transport reported. It
 	// outlives the sessions so closing the last chat does not blank the
 	// quota meter.
-	lastQuota youtube.QuotaSnapshot
+	lastQuota quota.Snapshot
 
 	wg      sync.WaitGroup
 	dropped atomic.Uint64
@@ -386,10 +387,10 @@ func (c *LiveChatClient) Reconnect(ctx context.Context) error {
 // from several places; the largest spend wins rather than being summed, because
 // summing a shared ledger would multiply the estimate by the number of open
 // chats and tell the user they have far less budget than they do.
-func (c *LiveChatClient) Quota() youtube.QuotaSnapshot {
+func (c *LiveChatClient) Quota() quota.Snapshot {
 	sessions := c.snapshotSessions()
 
-	var merged youtube.QuotaSnapshot
+	var merged quota.Snapshot
 	answered := false
 	for _, session := range sessions {
 		transport := session.currentTransport()

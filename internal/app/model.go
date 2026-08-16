@@ -9,6 +9,7 @@ import (
 	"github.com/worxbend/yc/internal/animation"
 	"github.com/worxbend/yc/internal/config"
 	"github.com/worxbend/yc/internal/debuglog"
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/render"
 	"github.com/worxbend/yc/internal/theme"
 	"github.com/worxbend/yc/internal/youtube"
@@ -223,7 +224,7 @@ type shellModel struct {
 
 	// quota mirrors the transport's estimated ledger. Every figure derived
 	// from it is an estimate and every surface that shows one says so.
-	quota        youtube.QuotaSnapshot
+	quota        quota.Snapshot
 	quotaKnown   bool
 	pollInterval time.Duration
 
@@ -447,7 +448,7 @@ func (m shellModel) droppedMessageCount() uint64 {
 // quotaSnapshot returns the last mirrored ledger and whether one has arrived.
 // Every figure in it is an estimate: Google publishes no quota costs for live
 // chat methods.
-func (m shellModel) quotaSnapshot() (youtube.QuotaSnapshot, bool) {
+func (m shellModel) quotaSnapshot() (quota.Snapshot, bool) {
 	return m.quota, m.quotaKnown
 }
 

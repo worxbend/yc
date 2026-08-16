@@ -14,6 +14,7 @@ import (
 	"github.com/muesli/termenv"
 	"github.com/rivo/uniseg"
 	"github.com/worxbend/yc/internal/config"
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/youtube"
 )
 
@@ -166,7 +167,7 @@ func screenshotModel(t *testing.T, themeName, layout string, width, height int) 
 		At:                at.Add(23 * time.Minute),
 	})
 
-	model.quota = screenshotQuota(now, youtube.QuotaModeStretched, 3240)
+	model.quota = screenshotQuota(now, quota.ModeStretched, 3240)
 	model.quotaKnown = true
 	model.pollInterval = 5 * time.Second
 	return model
@@ -175,9 +176,9 @@ func screenshotModel(t *testing.T, themeName, layout string, width, height int) 
 // screenshotQuota is a plausible mid-session ledger: enough units spent that
 // the meter has something to say, and a stretched cadence, which is the state
 // yc spends most of a long session in.
-func screenshotQuota(at time.Time, mode youtube.QuotaMode, used int) youtube.QuotaSnapshot {
+func screenshotQuota(at time.Time, mode quota.Mode, used int) quota.Snapshot {
 	const limit = 10000
-	return youtube.QuotaSnapshot{
+	return quota.Snapshot{
 		UsedUnits:      used,
 		LimitUnits:     limit,
 		RemainingUnits: limit - used,
@@ -359,7 +360,7 @@ func sceneThemePicker(t *testing.T) string {
 // without showing the thing it exists for.
 func sceneQuota(t *testing.T) string {
 	model := screenshotModel(t, "catppuccin-mocha", "inline", 132, 32)
-	model.quota = screenshotQuota(model.lastFrameAt, youtube.QuotaModeStretched, 8850)
+	model.quota = screenshotQuota(model.lastFrameAt, quota.ModeStretched, 8850)
 	model.quota.EffectiveInterval = 27500 * time.Millisecond
 	model.quota.BudgetFloor = 27500 * time.Millisecond
 	model.pollInterval = 27500 * time.Millisecond

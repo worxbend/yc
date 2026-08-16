@@ -12,6 +12,7 @@ import (
 	"github.com/worxbend/yc/internal/auth"
 	"github.com/worxbend/yc/internal/config"
 	"github.com/worxbend/yc/internal/debuglog"
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/youtube"
 )
 
@@ -78,7 +79,7 @@ var newLiveChatClient = func(client *youtube.Client, cfg config.Config, targets 
 // One client means one quota ledger: the meter in the status bar counts the
 // chat poll, the metadata refresh, and the send path together, which is the
 // only way the number matches what the Cloud Console will show.
-func newYouTubeClient(_ config.Config, credentials youtube.CredentialSource, ledger *youtube.QuotaLedger, logger debuglog.Logger) (*youtube.Client, error) {
+func newYouTubeClient(_ config.Config, credentials youtube.CredentialSource, ledger *quota.Ledger, logger debuglog.Logger) (*youtube.Client, error) {
 	return youtube.NewClient(youtube.ClientConfig{
 		Credentials: credentials,
 		HTTPClient:  youtube.NewAPIHTTPClient(chatHTTPTimeout),
@@ -93,17 +94,17 @@ func newYouTubeClient(_ config.Config, credentials youtube.CredentialSource, led
 //
 // A ledger that cannot find a cache directory still works; it just forgets on
 // exit, which is a degraded meter rather than a broken startup.
-func newQuotaLedger(cfg config.Config) *youtube.QuotaLedger {
-	ledgerCfg := youtube.LedgerConfig{
+func newQuotaLedger(cfg config.Config) *quota.Ledger {
+	ledgerCfg := quota.Config{
 		DailyUnits:  cfg.Quota.DailyQuotaUnits,
 		SearchCalls: cfg.Quota.SearchQuotaCalls,
 		Costs:       costTable(cfg.Quota.Costs),
-		Fingerprint: youtube.CredentialFingerprint(cfg.Google.ClientID, cfg.YouTube.ChannelID),
+		Fingerprint: quota.CredentialFingerprint(cfg.Google.ClientID, cfg.YouTube.ChannelID),
 	}
 	if dir := ledgerStoreDir(); dir != "" {
-		ledgerCfg.Store = youtube.NewFileLedgerStore(dir)
+		ledgerCfg.Store = quota.NewFileStore(dir)
 	}
-	return youtube.NewQuotaLedger(ledgerCfg)
+	return quota.NewLedger(ledgerCfg)
 }
 
 // ledgerStoreDir is where the persisted quota ledger lives, or "" on a machine
@@ -145,7 +146,7 @@ func startLedgerPrune(ctx context.Context, logger debuglog.Logger) <-chan struct
 		// runs that never get another chance to tidy up.
 		pruneCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ledgerPruneTimeout)
 		defer cancel()
-		if err := youtube.NewFileLedgerStore(dir).Prune(pruneCtx, youtube.LedgerRetentionDays); err != nil {
+		if err := quota.NewFileStore(dir).Prune(pruneCtx, quota.RetentionDays); err != nil {
 			logger.Log(pruneCtx, "cli.quota.ledger_prune_failed", debuglog.Err("error", err))
 		}
 	}()
@@ -158,17 +159,17 @@ func startLedgerPrune(ctx context.Context, logger debuglog.Logger) <-chan struct
 // for any live chat method, so the five liveChat values here are estimates and
 // yc labels them as such at every surface that shows a number. The table is
 // data precisely so a corrected figure is a config line rather than a release.
-func costTable(costs config.QuotaCostConfig) youtube.CostTable {
-	table := youtube.DefaultCostTable()
+func costTable(costs config.QuotaCostConfig) quota.CostTable {
+	table := quota.DefaultCostTable()
 	overrides := map[string]int{
-		youtube.EndpointMessagesList:   costs.List,
-		youtube.EndpointMessagesInsert: costs.Insert,
-		youtube.EndpointMessagesDelete: costs.Delete,
-		youtube.EndpointBansInsert:     costs.BansInsert,
-		youtube.EndpointBansDelete:     costs.BansDelete,
-		youtube.EndpointVideosList:     costs.VideosList,
-		youtube.EndpointChannelsList:   costs.ChannelsList,
-		youtube.EndpointSearchList:     costs.SearchList,
+		quota.EndpointMessagesList:   costs.List,
+		quota.EndpointMessagesInsert: costs.Insert,
+		quota.EndpointMessagesDelete: costs.Delete,
+		quota.EndpointBansInsert:     costs.BansInsert,
+		quota.EndpointBansDelete:     costs.BansDelete,
+		quota.EndpointVideosList:     costs.VideosList,
+		quota.EndpointChannelsList:   costs.ChannelsList,
+		quota.EndpointSearchList:     costs.SearchList,
 	}
 	for endpoint, cost := range overrides {
 		if cost > 0 {
@@ -183,14 +184,14 @@ func costTable(costs config.QuotaCostConfig) youtube.CostTable {
 // The server's pollingIntervalMillis is an absolute floor beneath both of
 // these and is enforced by the poller itself; these bounds only ever slow yc
 // down, never speed it up.
-func pollIntervalBounds(quota config.QuotaConfig) (minInterval, maxInterval time.Duration) {
-	minInterval = time.Duration(quota.PollIntervalFloorMS) * time.Millisecond
+func pollIntervalBounds(cfg config.QuotaConfig) (minInterval, maxInterval time.Duration) {
+	minInterval = time.Duration(cfg.PollIntervalFloorMS) * time.Millisecond
 	if minInterval <= 0 {
 		minInterval = time.Second
 	}
-	maxInterval = time.Duration(quota.PollIntervalCeilingMS) * time.Millisecond
+	maxInterval = time.Duration(cfg.PollIntervalCeilingMS) * time.Millisecond
 
-	switch strings.ToLower(strings.TrimSpace(quota.PollIntervalMode)) {
+	switch strings.ToLower(strings.TrimSpace(cfg.PollIntervalMode)) {
 	case "economy":
 		if minInterval < 5*time.Second {
 			minInterval = 5 * time.Second
@@ -263,13 +264,13 @@ func chatTargets(cfg config.Config, liveChatID string) ([]youtube.ChatTarget, er
 // QuotaReporter capability, so `yc doctor` can report today's estimated spend
 // without constructing a poller or spending a unit.
 type ledgerQuotaReporter struct {
-	ledger *youtube.QuotaLedger
+	ledger *quota.Ledger
 }
 
 // Quota returns the current estimated snapshot.
-func (r ledgerQuotaReporter) Quota() youtube.QuotaSnapshot {
+func (r ledgerQuotaReporter) Quota() quota.Snapshot {
 	if r.ledger == nil {
-		return youtube.QuotaSnapshot{}
+		return quota.Snapshot{}
 	}
 	return r.ledger.Snapshot()
 }
@@ -325,7 +326,7 @@ func clientSecretWarning(cfg config.Config) string {
 func quotaWarning(cfg config.Config) string {
 	cost := cfg.Quota.Costs.List
 	if cost <= 0 {
-		cost = youtube.DefaultCostTable().Cost(youtube.EndpointMessagesList)
+		cost = quota.DefaultCostTable().Cost(quota.EndpointMessagesList)
 	}
 	units := cfg.Quota.DailyQuotaUnits
 	if units <= 0 {

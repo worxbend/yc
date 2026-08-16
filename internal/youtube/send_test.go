@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rivo/uniseg"
+	"github.com/worxbend/yc/internal/quota"
 )
 
 func TestSendMessagePostsTheDocumentedInsertBody(t *testing.T) {
@@ -45,7 +46,7 @@ func TestSendMessagePostsTheDocumentedInsertBody(t *testing.T) {
 	if result.MessageID != "sent-1" {
 		t.Fatalf("MessageID = %q, want sent-1", result.MessageID)
 	}
-	if result.QuotaUnits != DefaultCostTable().Cost(EndpointMessagesInsert) {
+	if result.QuotaUnits != quota.DefaultCostTable().Cost(quota.EndpointMessagesInsert) {
 		t.Fatalf("QuotaUnits = %d, want the estimated insert cost", result.QuotaUnits)
 	}
 	if !result.AcceptedAt.Equal(time.Date(2026, 8, 8, 20, 20, 0, 0, time.UTC)) {

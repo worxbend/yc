@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/worxbend/yc/internal/config"
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/render"
 	"github.com/worxbend/yc/internal/storage"
 	"github.com/worxbend/yc/internal/theme"
@@ -260,16 +261,16 @@ func describeTarget(target youtube.ChatTarget) string {
 // meters with are community-observed estimates. Printing the table is the only
 // way a wrong constant becomes visible rather than merely wrong.
 func doctorCostTableCheck(cfg config.Config) DoctorCheck {
-	table := youtube.DefaultCostTable()
+	table := quota.DefaultCostTable()
 	overrides := map[string]int{
-		youtube.EndpointMessagesList:   cfg.Quota.Costs.List,
-		youtube.EndpointMessagesInsert: cfg.Quota.Costs.Insert,
-		youtube.EndpointMessagesDelete: cfg.Quota.Costs.Delete,
-		youtube.EndpointBansInsert:     cfg.Quota.Costs.BansInsert,
-		youtube.EndpointBansDelete:     cfg.Quota.Costs.BansDelete,
-		youtube.EndpointVideosList:     cfg.Quota.Costs.VideosList,
-		youtube.EndpointChannelsList:   cfg.Quota.Costs.ChannelsList,
-		youtube.EndpointSearchList:     cfg.Quota.Costs.SearchList,
+		quota.EndpointMessagesList:   cfg.Quota.Costs.List,
+		quota.EndpointMessagesInsert: cfg.Quota.Costs.Insert,
+		quota.EndpointMessagesDelete: cfg.Quota.Costs.Delete,
+		quota.EndpointBansInsert:     cfg.Quota.Costs.BansInsert,
+		quota.EndpointBansDelete:     cfg.Quota.Costs.BansDelete,
+		quota.EndpointVideosList:     cfg.Quota.Costs.VideosList,
+		quota.EndpointChannelsList:   cfg.Quota.Costs.ChannelsList,
+		quota.EndpointSearchList:     cfg.Quota.Costs.SearchList,
 	}
 	overridden := 0
 	for endpoint, cost := range overrides {
@@ -285,9 +286,9 @@ func doctorCostTableCheck(cfg config.Config) DoctorCheck {
 	// budget rests on - liveChatMessages.list - look no shakier than the rest.
 	parts := make([]string, 0, len(table))
 	estimated := 0
-	for _, endpoint := range youtube.SortedEndpoints(table) {
+	for _, endpoint := range quota.SortedEndpoints(table) {
 		mark := "est"
-		if youtube.IsPublishedCost(endpoint) {
+		if quota.IsPublishedCost(endpoint) {
 			mark = "pub"
 		} else {
 			estimated++
@@ -334,7 +335,7 @@ func doctorQuotaCheck(cfg config.Config, reporter QuotaReporter) DoctorCheck {
 
 	cost := cfg.Quota.Costs.List
 	if cost <= 0 {
-		cost = youtube.DefaultCostTable().Cost(youtube.EndpointMessagesList)
+		cost = quota.DefaultCostTable().Cost(quota.EndpointMessagesList)
 	}
 	if remaining, ok := snapshot.ProjectedExhaustion(cost); ok {
 		detail += "; projected exhaustion in " + remaining.Round(time.Minute).String() + " at the current cadence"

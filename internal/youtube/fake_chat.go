@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // FakeChatConfig configures the deterministic fake chat source.
@@ -397,7 +399,7 @@ func (f *FakeChatClient) Send(ctx context.Context, request SendRequest) (SendRes
 	f.mu.Lock()
 	f.sent++
 	id := fmt.Sprintf("fake-echo-%02d", f.sent)
-	f.quotaHit += DefaultCostTable().Cost(EndpointMessagesInsert)
+	f.quotaHit += quota.DefaultCostTable().Cost(quota.EndpointMessagesInsert)
 	f.mu.Unlock()
 
 	now := f.cfg.Now()
@@ -422,7 +424,7 @@ func (f *FakeChatClient) Send(ctx context.Context, request SendRequest) (SendRes
 	return SendResult{
 		MessageID:  id,
 		AcceptedAt: now,
-		QuotaUnits: DefaultCostTable().Cost(EndpointMessagesInsert),
+		QuotaUnits: quota.DefaultCostTable().Cost(quota.EndpointMessagesInsert),
 	}, nil
 }
 
@@ -432,29 +434,29 @@ func (f *FakeChatClient) Send(ctx context.Context, request SendRequest) (SendRes
 // Estimated is true here for the same reason it is true on the live path:
 // Google publishes no quota cost for any live chat method, and a mock that
 // implied otherwise would teach the wrong thing.
-func (f *FakeChatClient) Quota() QuotaSnapshot {
+func (f *FakeChatClient) Quota() quota.Snapshot {
 	f.mu.Lock()
 	spent := f.quotaHit
 	f.mu.Unlock()
 
-	costs := DefaultCostTable()
+	costs := quota.DefaultCostTable()
 	used := 240 + spent
 	now := f.cfg.Now()
-	return QuotaSnapshot{
+	return quota.Snapshot{
 		UsedUnits:      used,
 		LimitUnits:     10000,
 		RemainingUnits: 10000 - used,
 		SearchUsed:     1,
 		SearchLimit:    100,
 		ByEndpoint: map[string]int{
-			EndpointMessagesList: 240,
-			EndpointVideosList:   costs.Cost(EndpointVideosList),
+			quota.EndpointMessagesList: 240,
+			quota.EndpointVideosList:   costs.Cost(quota.EndpointVideosList),
 		},
 		ResetAt:           now.Add(6 * time.Hour),
 		EffectiveInterval: 5 * time.Second,
 		ServerFloor:       5 * time.Second,
 		BudgetFloor:       4 * time.Second,
-		Mode:              QuotaModeLive,
+		Mode:              quota.ModeLive,
 		Estimated:         true,
 		At:                now,
 	}

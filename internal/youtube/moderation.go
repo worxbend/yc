@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // bansPath is the liveChatBans collection.
@@ -33,13 +35,13 @@ type liveChatBanRequest struct {
 func (c *Client) DeleteMessage(ctx context.Context, messageID string) error {
 	identifier := strings.TrimSpace(messageID)
 	if identifier == "" {
-		return newSafeError(EndpointMessagesDelete+": no message id", ErrMessageRejected)
+		return newSafeError(quota.EndpointMessagesDelete+": no message id", ErrMessageRejected)
 	}
 	if !c.hasToken() {
 		return newSafeError("deleting messages requires signing in with Google (scope youtube.force-ssl)", ErrNotPermitted)
 	}
 	query := map[string]string{"id": identifier}
-	return c.doJSON(ctx, "DELETE", EndpointMessagesDelete, sendPath, query, nil, nil)
+	return c.doJSON(ctx, "DELETE", quota.EndpointMessagesDelete, sendPath, query, nil, nil)
 }
 
 // Ban times out or permanently bans a chatter through liveChatBans.insert. A
@@ -49,9 +51,9 @@ func (c *Client) Ban(ctx context.Context, request BanRequest) (BanResult, error)
 	channelID := strings.TrimSpace(request.ChannelID)
 	switch {
 	case liveChatID == "":
-		return BanResult{}, newSafeError(EndpointBansInsert+": no live chat id", ErrMessageRejected)
+		return BanResult{}, newSafeError(quota.EndpointBansInsert+": no live chat id", ErrMessageRejected)
 	case channelID == "":
-		return BanResult{}, newSafeError(EndpointBansInsert+": no channel id", ErrMessageRejected)
+		return BanResult{}, newSafeError(quota.EndpointBansInsert+": no channel id", ErrMessageRejected)
 	case !c.hasToken():
 		return BanResult{}, newSafeError("banning requires signing in with Google (scope youtube.force-ssl)", ErrNotPermitted)
 	}
@@ -76,7 +78,7 @@ func (c *Client) Ban(ctx context.Context, request BanRequest) (BanResult, error)
 		ID string `json:"id"`
 	}
 	query := map[string]string{"part": "snippet"}
-	if err := c.doJSON(ctx, "POST", EndpointBansInsert, bansPath, query, body, &response); err != nil {
+	if err := c.doJSON(ctx, "POST", quota.EndpointBansInsert, bansPath, query, body, &response); err != nil {
 		return BanResult{}, err
 	}
 	return BanResult{BanID: response.ID, Permanent: permanent, At: c.now()}, nil
@@ -86,11 +88,11 @@ func (c *Client) Ban(ctx context.Context, request BanRequest) (BanResult, error)
 func (c *Client) Unban(ctx context.Context, banID string) error {
 	identifier := strings.TrimSpace(banID)
 	if identifier == "" {
-		return newSafeError(EndpointBansDelete+": no ban id", ErrMessageRejected)
+		return newSafeError(quota.EndpointBansDelete+": no ban id", ErrMessageRejected)
 	}
 	if !c.hasToken() {
 		return newSafeError("lifting a ban requires signing in with Google (scope youtube.force-ssl)", ErrNotPermitted)
 	}
 	query := map[string]string{"id": identifier}
-	return c.doJSON(ctx, "DELETE", EndpointBansDelete, bansPath, query, nil, nil)
+	return c.doJSON(ctx, "DELETE", quota.EndpointBansDelete, bansPath, query, nil, nil)
 }

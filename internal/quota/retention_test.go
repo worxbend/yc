@@ -1,4 +1,4 @@
-package youtube
+package quota
 
 import (
 	"os"
@@ -34,16 +34,16 @@ func pacificDayOffset(n int) string {
 // still adding to. The window has to keep both true.
 func TestPruneAtTheRetentionWindowKeepsTodayAndDropsTheStale(t *testing.T) {
 	root := t.TempDir()
-	store := NewFileLedgerStore(root)
+	store := NewFileStore(root)
 
 	kept := []string{
 		writeLedgerRecord(t, root, "aaaaaaaaaaaaaaaa", pacificDayOffset(0)),
 		writeLedgerRecord(t, root, "aaaaaaaaaaaaaaaa", pacificDayOffset(-1)),
-		writeLedgerRecord(t, root, "bbbbbbbbbbbbbbbb", pacificDayOffset(-(LedgerRetentionDays - 1))),
+		writeLedgerRecord(t, root, "bbbbbbbbbbbbbbbb", pacificDayOffset(-(RetentionDays - 1))),
 		writeLedgerRecord(t, root, anonymousFingerprint, pacificDayOffset(0)),
 	}
 	stale := []string{
-		writeLedgerRecord(t, root, "aaaaaaaaaaaaaaaa", pacificDayOffset(-(LedgerRetentionDays + 1))),
+		writeLedgerRecord(t, root, "aaaaaaaaaaaaaaaa", pacificDayOffset(-(RetentionDays + 1))),
 		writeLedgerRecord(t, root, "bbbbbbbbbbbbbbbb", "2020-01-01"),
 		writeLedgerRecord(t, root, anonymousFingerprint, "2019-12-31"),
 	}
@@ -57,7 +57,7 @@ func TestPruneAtTheRetentionWindowKeepsTodayAndDropsTheStale(t *testing.T) {
 		t.Fatalf("write foreign file: %v", err)
 	}
 
-	if err := store.Prune(t.Context(), LedgerRetentionDays); err != nil {
+	if err := store.Prune(t.Context(), RetentionDays); err != nil {
 		t.Fatalf("Prune error = %v", err)
 	}
 
@@ -79,8 +79,8 @@ func TestPruneAtTheRetentionWindowKeepsTodayAndDropsTheStale(t *testing.T) {
 // TestPruneOnAnAbsentDirectoryIsNotAnError covers the first run, where the
 // sweep happens before anything has ever been written.
 func TestPruneOnAnAbsentDirectoryIsNotAnError(t *testing.T) {
-	store := NewFileLedgerStore(filepath.Join(t.TempDir(), "never-created"))
-	if err := store.Prune(t.Context(), LedgerRetentionDays); err != nil {
+	store := NewFileStore(filepath.Join(t.TempDir(), "never-created"))
+	if err := store.Prune(t.Context(), RetentionDays); err != nil {
 		t.Fatalf("Prune error = %v, want nil for a directory that does not exist", err)
 	}
 }

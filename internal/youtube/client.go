@@ -14,6 +14,7 @@ import (
 
 	"github.com/worxbend/yc/internal/auth"
 	"github.com/worxbend/yc/internal/debuglog"
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // DefaultEndpoint is the YouTube Data API v3 base URL.
@@ -78,7 +79,7 @@ type ClientConfig struct {
 	Endpoint    string
 	HTTPClient  *http.Client
 	Timeout     time.Duration
-	Ledger      *QuotaLedger
+	Ledger      *quota.Ledger
 	Logger      debuglog.Logger
 	// OnAuthFailure renews the access token after the API rejects one with a
 	// 401, and is the only retry this transport performs.
@@ -375,7 +376,7 @@ func (c *Client) cost(endpoint string) int {
 	if c != nil && c.cfg.Ledger != nil {
 		return c.cfg.Ledger.Cost(endpoint)
 	}
-	return DefaultCostTable().Cost(endpoint)
+	return quota.DefaultCostTable().Cost(endpoint)
 }
 
 // CostOf quotes the estimated unit cost of an endpoint without charging it.
@@ -391,9 +392,9 @@ func (c *Client) CostOf(endpoint string) int {
 // live chat method, so the cost table is community-observed and
 // config-overridable. Callers must render the estimate marker alongside any
 // number taken from here.
-func (c *Client) Quota() QuotaSnapshot {
+func (c *Client) Quota() quota.Snapshot {
 	if c == nil || c.cfg.Ledger == nil {
-		return QuotaSnapshot{Estimated: true, At: c.now()}
+		return quota.Snapshot{Estimated: true, At: c.now()}
 	}
 	return c.cfg.Ledger.Snapshot()
 }

@@ -7,13 +7,15 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // stubPollerClient is a PollerClient whose list calls always fail. It exists to
 // drive the poll loop's error path without a transport, which is what having a
 // narrow PollerClient interface rather than a concrete *Client buys.
 type stubPollerClient struct {
-	snapshot QuotaSnapshot
+	snapshot quota.Snapshot
 	listCost int
 
 	mu    sync.Mutex
@@ -37,7 +39,7 @@ func (s *stubPollerClient) SendMessage(context.Context, SendRequest) (SendResult
 	return SendResult{}, errors.New("not used by this test")
 }
 
-func (s *stubPollerClient) Quota() QuotaSnapshot { return s.snapshot }
+func (s *stubPollerClient) Quota() quota.Snapshot { return s.snapshot }
 
 func (s *stubPollerClient) CostOf(string) int { return s.listCost }
 
@@ -57,11 +59,11 @@ func TestBackoffKeepsTheBudgetFloor(t *testing.T) {
 	// one-second server floor would produce.
 	client := &stubPollerClient{
 		listCost: 5,
-		snapshot: QuotaSnapshot{
+		snapshot: quota.Snapshot{
 			UsedUnits:      9900,
 			LimitUnits:     10000,
 			RemainingUnits: 100,
-			ResetAt:        ResetAt(now),
+			ResetAt:        quota.ResetAt(now),
 		},
 	}
 
@@ -94,7 +96,7 @@ func TestBackoffKeepsTheBudgetFloor(t *testing.T) {
 
 	// The budget floor the remaining units imply, far above any cadence the
 	// server floor alone would produce.
-	wantFloor := BudgetFloor(client.snapshot.RemainingUnits, client.listCost, ResetAt(now).Sub(now))
+	wantFloor := quota.BudgetFloor(client.snapshot.RemainingUnits, client.listCost, quota.ResetAt(now).Sub(now))
 	if wantFloor <= backoffRateLimitCap {
 		t.Fatalf("test setup is not budget-constrained: floor = %v", wantFloor)
 	}

@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/worxbend/yc/internal/config"
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/storage"
-	"github.com/worxbend/yc/internal/youtube"
 )
 
 // Every unit figure yc prints is an estimate: Google publishes no per-method
@@ -18,13 +18,13 @@ import (
 // that actually knows.
 func TestQuotaSnapshotMarksEveryUnitFigureAsAnEstimate(t *testing.T) {
 	cfg := config.Default()
-	snapshot := youtube.QuotaSnapshot{
+	snapshot := quota.Snapshot{
 		UsedUnits:         3240,
 		LimitUnits:        10000,
 		RemainingUnits:    6760,
 		SearchUsed:        2,
 		SearchLimit:       100,
-		Mode:              youtube.QuotaModeStretched,
+		Mode:              quota.ModeStretched,
 		ResetAt:           time.Date(2026, 8, 9, 7, 0, 0, 0, time.UTC),
 		EffectiveInterval: 5 * time.Second,
 		ServerFloor:       2 * time.Second,
@@ -51,7 +51,7 @@ func TestQuotaSnapshotMarksEveryUnitFigureAsAnEstimate(t *testing.T) {
 		"by endpoint (est. units):",
 		"liveChatMessages.list",
 		"videos.list",
-		string(youtube.QuotaResetLocation),
+		string(quota.ResetLocation),
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("quota output is missing %q:\n%s", want, got)
@@ -65,7 +65,7 @@ func TestQuotaSnapshotMarksEveryUnitFigureAsAnEstimate(t *testing.T) {
 
 func TestQuotaSnapshotWithNothingChargedSaysSo(t *testing.T) {
 	var out bytes.Buffer
-	printQuotaSnapshot(&out, config.Default(), youtube.QuotaSnapshot{LimitUnits: 10000})
+	printQuotaSnapshot(&out, config.Default(), quota.Snapshot{LimitUnits: 10000})
 	got := out.String()
 	if !strings.Contains(got, "(nothing charged today)") {
 		t.Errorf("an empty ledger did not say so:\n%s", got)
@@ -85,7 +85,7 @@ func TestQuotaSnapshotFallsBackToTheConfiguredLimit(t *testing.T) {
 	cfg.Quota.DailyQuotaUnits = 50000
 
 	var out bytes.Buffer
-	printQuotaSnapshot(&out, cfg, youtube.QuotaSnapshot{UsedUnits: 10})
+	printQuotaSnapshot(&out, cfg, quota.Snapshot{UsedUnits: 10})
 	if !strings.Contains(out.String(), "used = 10/50000 units est.") {
 		t.Errorf("limit fallback did not apply:\n%s", out.String())
 	}
@@ -94,12 +94,12 @@ func TestQuotaSnapshotFallsBackToTheConfiguredLimit(t *testing.T) {
 // "stretched" on its own reads like a fault rather than a decision, so every
 // mode carries the reason it is in force.
 func TestQuotaModeLabelAlwaysCarriesItsReason(t *testing.T) {
-	cases := map[youtube.QuotaMode]string{
-		youtube.QuotaModeLive:      "server-advised",
-		youtube.QuotaModeStretched: "daily budget lasts",
-		youtube.QuotaModeBackoff:   "asked yc to slow down",
-		youtube.QuotaModePaused:    "reserve threshold",
-		"":                         "idle",
+	cases := map[quota.Mode]string{
+		quota.ModeLive:      "server-advised",
+		quota.ModeStretched: "daily budget lasts",
+		quota.ModeBackoff:   "asked yc to slow down",
+		quota.ModePaused:    "reserve threshold",
+		"":                  "idle",
 	}
 	for mode, want := range cases {
 		got := quotaModeLabel(mode)
@@ -109,7 +109,7 @@ func TestQuotaModeLabelAlwaysCarriesItsReason(t *testing.T) {
 	}
 	// An unrecognized mode from a future transport degrades to itself rather
 	// than to an empty cell.
-	if got := quotaModeLabel(youtube.QuotaMode("hibernating")); got != "hibernating" {
+	if got := quotaModeLabel(quota.Mode("hibernating")); got != "hibernating" {
 		t.Errorf("unknown mode = %q, want it echoed", got)
 	}
 }
@@ -229,8 +229,8 @@ func TestLedgerQuotaReporter(t *testing.T) {
 		t.Errorf("nil ledger = %+v, want the zero snapshot", got)
 	}
 
-	ledger := youtube.NewQuotaLedger(youtube.LedgerConfig{DailyUnits: 500})
-	ledger.Charge(youtube.EndpointMessagesList)
+	ledger := quota.NewLedger(quota.Config{DailyUnits: 500})
+	ledger.Charge(quota.EndpointMessagesList)
 	snapshot := ledgerQuotaReporter{ledger: ledger}.Quota()
 	if snapshot.UsedUnits == 0 {
 		t.Error("the reporter did not see a charged call")
@@ -250,7 +250,7 @@ func TestNewQuotaLedgerPersistsUnderTheCacheDirectory(t *testing.T) {
 	cfg.Google.ClientID = "client-abc"
 	cfg.YouTube.ChannelID = "UC123"
 	ledger := newQuotaLedger(cfg)
-	ledger.Charge(youtube.EndpointMessagesList)
+	ledger.Charge(quota.EndpointMessagesList)
 
 	// A second ledger built the same way must find the first one's tally:
 	// restarting yc must not zero the meter and hand back a false budget.

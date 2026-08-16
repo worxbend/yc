@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // listPath is the liveChatMessages collection.
@@ -35,6 +37,15 @@ type ListRequest struct {
 	// recorded URL honest for diagnostics.
 	ProfileImageSize int
 }
+
+// MaxResultsPerPoll is what yc always requests.
+//
+// The documented range for liveChatMessages.list is 200-2000 with a default of
+// 500, so the commonly cited 200 is the minimum, not the maximum. Quota is
+// charged per method call and not per item, so asking for 2000 costs exactly
+// the same as asking for 200 and buys an order of magnitude more headroom
+// between polls. It is the cheapest robustness win available.
+const MaxResultsPerPoll = 2000
 
 // ListResult is one normalized liveChatMessages.list response.
 type ListResult struct {
@@ -69,7 +80,7 @@ type ListResult struct {
 func (c *Client) ListMessages(ctx context.Context, request ListRequest) (ListResult, error) {
 	liveChatID := strings.TrimSpace(request.LiveChatID)
 	if liveChatID == "" {
-		return ListResult{}, newSafeError(EndpointMessagesList+": no live chat id", ErrChatNotFound)
+		return ListResult{}, newSafeError(quota.EndpointMessagesList+": no live chat id", ErrChatNotFound)
 	}
 
 	query := map[string]string{
@@ -90,8 +101,8 @@ func (c *Client) ListMessages(ctx context.Context, request ListRequest) (ListRes
 	}
 
 	var response liveChatMessageListResponse
-	err := c.doJSON(ctx, "GET", EndpointMessagesList, listPath, query, nil, &response)
-	result := ListResult{QuotaUnits: c.cost(EndpointMessagesList)}
+	err := c.doJSON(ctx, "GET", quota.EndpointMessagesList, listPath, query, nil, &response)
+	result := ListResult{QuotaUnits: c.cost(quota.EndpointMessagesList)}
 	if err != nil {
 		return result, err
 	}

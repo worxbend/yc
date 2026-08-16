@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/worxbend/yc/internal/auth"
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // A Google access token lasts about an hour and a stream lasts longer, so the
@@ -442,7 +443,7 @@ func TestClientDoesNotExchangeAgainForAnAlreadyReplacedToken(t *testing.T) {
 // drift from what the Cloud Console shows.
 func TestClientChargesBothTheRejectedRequestAndTheRetry(t *testing.T) {
 	source := &refreshingCredentials{token: auth.NewSecret(expiredTestToken)}
-	ledger := NewQuotaLedger(LedgerConfig{DailyUnits: 10000})
+	ledger := quota.NewLedger(quota.Config{DailyUnits: 10000})
 	client := newAuthTestClient(t, ClientConfig{Credentials: source, Ledger: ledger}, func(w http.ResponseWriter, r *http.Request) {
 		if bearerOf(r) == expiredTestToken {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -455,7 +456,7 @@ func TestClientChargesBothTheRejectedRequestAndTheRetry(t *testing.T) {
 	if _, err := client.Broadcast(context.Background(), "vid00000001"); err != nil {
 		t.Fatalf("Broadcast error = %v", err)
 	}
-	want := 2 * client.cost(EndpointVideosList)
+	want := 2 * client.cost(quota.EndpointVideosList)
 	if got := ledger.Snapshot().UsedUnits; got != want {
 		t.Errorf("charged %d units, want %d for two dispatched requests", got, want)
 	}

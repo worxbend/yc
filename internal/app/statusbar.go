@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/worxbend/yc/internal/animation"
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/theme"
 	"github.com/worxbend/yc/internal/youtube"
 )
@@ -109,7 +110,7 @@ type statusBarState struct {
 	// Quota is the estimated ledger. QuotaKnown is false for transports with
 	// no ledger at all, in which case the meter is omitted rather than shown
 	// as zeroes.
-	Quota      youtube.QuotaSnapshot
+	Quota      quota.Snapshot
 	QuotaKnown bool
 	// CostPerPoll is the estimated cost of one liveChatMessages.list call,
 	// used for the projected-exhaustion figure.
@@ -315,13 +316,13 @@ func statusText(value, foreground string, bold bool) []statusSegment {
 // costs for any live-chat method, so a figure presented as fact would be a lie
 // the user could act on.
 func quotaSegments(width int, st statusBarState) []statusSegment {
-	quota := st.Quota
+	snapshot := st.Quota
 	palette := st.Palette
-	percent := quota.RemainingPercent()
+	percent := snapshot.RemainingPercent()
 	percentText := fmt.Sprintf("%.0f%%", percent)
 	percentColor := quotaColor(palette, percent)
-	mode, modeColor := quotaModeLabel(palette, quota.Mode)
-	interval := "⟳ " + formatPollInterval(quota.EffectiveInterval)
+	mode, modeColor := quotaModeLabel(palette, snapshot.Mode)
+	interval := "⟳ " + formatPollInterval(snapshot.EffectiveInterval)
 
 	dot := statusSegment{text: " · ", foreground: palette.Muted}
 	switch {
@@ -329,13 +330,13 @@ func quotaSegments(width int, st statusBarState) []statusSegment {
 		segments := []statusSegment{
 			{text: interval, foreground: palette.Foreground},
 			dot,
-			{text: fmt.Sprintf("%s/%s", formatUnits(quota.UsedUnits), formatUnits(quota.LimitUnits)), foreground: percentColor, bold: true},
+			{text: fmt.Sprintf("%s/%s", formatUnits(snapshot.UsedUnits), formatUnits(snapshot.LimitUnits)), foreground: percentColor, bold: true},
 		}
-		if quota.Estimated {
+		if snapshot.Estimated {
 			segments = append(segments, statusSegment{text: " est", foreground: palette.Muted})
 		}
 		segments = append(segments, dot, statusSegment{text: percentText + " left", foreground: percentColor, bold: true})
-		if remaining, ok := quota.ProjectedExhaustion(st.CostPerPoll); ok {
+		if remaining, ok := snapshot.ProjectedExhaustion(st.CostPerPoll); ok {
 			segments = append(segments, dot, statusSegment{
 				text:       "~" + formatCompactDuration(remaining),
 				foreground: percentColor,
@@ -351,7 +352,7 @@ func quotaSegments(width int, st statusBarState) []statusSegment {
 			dot,
 			{text: percentText, foreground: percentColor, bold: true},
 		}
-		if quota.Estimated {
+		if snapshot.Estimated {
 			segments = append(segments, statusSegment{text: " est", foreground: palette.Muted})
 		}
 		if mode != "" {
@@ -394,13 +395,13 @@ func quotaColor(palette theme.Palette, remainingPercent float64) string {
 // word twice for two unrelated facts would be actively misleading - and the
 // cells it would take are worth more to the connection detail further right.
 // A label appears precisely when something is not normal.
-func quotaModeLabel(palette theme.Palette, mode youtube.QuotaMode) (string, string) {
+func quotaModeLabel(palette theme.Palette, mode quota.Mode) (string, string) {
 	switch mode {
-	case youtube.QuotaModeStretched:
+	case quota.ModeStretched:
 		return "STRETCHED", palette.Warning
-	case youtube.QuotaModeBackoff:
+	case quota.ModeBackoff:
 		return "BACKOFF", palette.Warning
-	case youtube.QuotaModePaused:
+	case quota.ModePaused:
 		return "PAUSED", palette.Error
 	default:
 		return "", palette.Muted
@@ -411,15 +412,15 @@ func quotaModeLabel(palette theme.Palette, mode youtube.QuotaMode) (string, stri
 // the room the status bar does not. Each one names the reason as well as the
 // state: "stretched" on its own reads like a fault rather than a decision yc
 // took on the user's behalf.
-func quotaModeDescription(mode youtube.QuotaMode) string {
+func quotaModeDescription(mode quota.Mode) string {
 	switch mode {
-	case youtube.QuotaModeStretched:
+	case quota.ModeStretched:
 		return "stretched — polling slower than allowed so the daily budget lasts"
-	case youtube.QuotaModeBackoff:
+	case quota.ModeBackoff:
 		return "backoff — the API asked yc to slow down"
-	case youtube.QuotaModePaused:
+	case quota.ModePaused:
 		return "paused — the allowance or the reserve threshold was reached"
-	case youtube.QuotaModeLive:
+	case quota.ModeLive:
 		return "realtime — polling at the server-advised cadence"
 	default:
 		return "idle — no chat has polled yet today"

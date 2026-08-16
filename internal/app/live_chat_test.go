@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/youtube"
 )
 
@@ -25,7 +26,7 @@ type fakeTransport struct {
 	// adopts so a reconnect does not re-resolve the same chat.
 	target  youtube.ChatTarget
 	sends   []youtube.SendRequest
-	quota   youtube.QuotaSnapshot
+	quota   quota.Snapshot
 	closed  bool
 	started bool
 }
@@ -58,7 +59,7 @@ func (f *fakeTransport) ConnectionStates() <-chan youtube.ConnectionState { retu
 func (f *fakeTransport) Moderations() <-chan youtube.ModerationEvent      { return f.mods }
 func (f *fakeTransport) RoomEvents() <-chan youtube.RoomEvent             { return f.rooms }
 func (f *fakeTransport) Polls() <-chan youtube.PollState                  { return f.polls }
-func (f *fakeTransport) Quota() youtube.QuotaSnapshot                     { return f.quota }
+func (f *fakeTransport) Quota() quota.Snapshot                            { return f.quota }
 
 func (f *fakeTransport) Send(_ context.Context, request youtube.SendRequest) (youtube.SendResult, error) {
 	f.mu.Lock()

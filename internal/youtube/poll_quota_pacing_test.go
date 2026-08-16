@@ -6,7 +6,26 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/worxbend/yc/internal/quota"
 )
+
+// pacificTime builds an instant in the quota reset timezone. The poll budget is
+// measured against the next Pacific midnight, so a test that anchors "now" in
+// any other zone is testing a different horizon than the code uses.
+func pacificTime(t *testing.T, year int, month time.Month, day, hour, minute int) time.Time {
+	t.Helper()
+	loc, err := time.LoadLocation(quota.ResetLocation)
+	if err != nil {
+		t.Fatalf("load %s: %v", quota.ResetLocation, err)
+	}
+	return time.Date(year, month, day, hour, minute, 0, 0, loc)
+}
+
+// fixedClock returns a clock the ledger can be driven by without a wall clock.
+func fixedClock(at *time.Time) func() time.Time {
+	return func() time.Time { return *at }
+}
 
 // The cost model is not an accounting exercise. It is the mechanism that
 // decides whether a viewer's chat survives the stream: at an estimated 5 units
@@ -43,26 +62,26 @@ func newPacingPoller(t *testing.T, cfg PollerConfig) *Poller {
 // imply, including every reason there is no constraint at all.
 func TestTheBudgetFloorIsTheDaysArithmetic(t *testing.T) {
 	now := pacificTime(t, 2026, time.August, 8, 0, 0)
-	reset := ResetAt(now)
+	reset := quota.ResetAt(now)
 
 	tests := []struct {
 		name     string
 		cfg      PollerConfig
-		snapshot QuotaSnapshot
+		snapshot quota.Snapshot
 		lastCost int
 		want     time.Duration
 		because  string
 	}{
 		{
 			name:     "a full day at the estimated list cost",
-			snapshot: QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 10000, ResetAt: reset},
+			snapshot: quota.Snapshot{LimitUnits: 10000, RemainingUnits: 10000, ResetAt: reset},
 			lastCost: 5,
 			want:     43200 * time.Millisecond,
 			because:  "10,000 units at 5 per poll is 2000 polls across 24 hours",
 		},
 		{
 			name:     "half the day spent",
-			snapshot: QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 5000, ResetAt: reset},
+			snapshot: quota.Snapshot{LimitUnits: 10000, RemainingUnits: 5000, ResetAt: reset},
 			lastCost: 5,
 			want:     86400 * time.Millisecond,
 			because:  "half the units over the same horizon is twice the interval",
@@ -73,14 +92,14 @@ func TestTheBudgetFloorIsTheDaysArithmetic(t *testing.T) {
 			// Opting out is opting out: the budget floor disappears entirely
 			// rather than being merely relaxed, because the whole point is
 			// that the server's pollingIntervalMillis is now the only floor.
-			snapshot: QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 10, ResetAt: reset},
+			snapshot: quota.Snapshot{LimitUnits: 10000, RemainingUnits: 10, ResetAt: reset},
 			lastCost: 5,
 			want:     0,
 			because:  "FollowServerCadence removes the budget constraint",
 		},
 		{
 			name:     "no ledger is wired",
-			snapshot: QuotaSnapshot{RemainingUnits: 10000, ResetAt: reset},
+			snapshot: quota.Snapshot{RemainingUnits: 10000, ResetAt: reset},
 			lastCost: 5,
 			want:     0,
 			because:  "there is no budget to protect without a limit",
@@ -88,7 +107,7 @@ func TestTheBudgetFloorIsTheDaysArithmetic(t *testing.T) {
 		{
 			name:     "a session horizon shorter than the day",
 			cfg:      PollerConfig{SessionHorizon: 2 * time.Hour},
-			snapshot: QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 10000, ResetAt: reset},
+			snapshot: quota.Snapshot{LimitUnits: 10000, RemainingUnits: 10000, ResetAt: reset},
 			lastCost: 5,
 			want:     3600 * time.Millisecond,
 			because:  "a two-hour stream may spend the whole day's budget in two hours",
@@ -96,28 +115,28 @@ func TestTheBudgetFloorIsTheDaysArithmetic(t *testing.T) {
 		{
 			name:     "a session horizon longer than the day is ignored",
 			cfg:      PollerConfig{SessionHorizon: 72 * time.Hour},
-			snapshot: QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 10000, ResetAt: reset},
+			snapshot: quota.Snapshot{LimitUnits: 10000, RemainingUnits: 10000, ResetAt: reset},
 			lastCost: 5,
 			want:     43200 * time.Millisecond,
 			because:  "the allowance resets at midnight whatever the user planned",
 		},
 		{
 			name:     "nothing left to spend",
-			snapshot: QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 2, ResetAt: reset},
+			snapshot: quota.Snapshot{LimitUnits: 10000, RemainingUnits: 2, ResetAt: reset},
 			lastCost: 5,
 			want:     24 * time.Hour,
 			because:  "fewer units than one poll costs makes the floor the whole horizon",
 		},
 		{
 			name:     "an unknown last cost falls back to the table",
-			snapshot: QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 10000, ResetAt: reset},
+			snapshot: quota.Snapshot{LimitUnits: 10000, RemainingUnits: 10000, ResetAt: reset},
 			lastCost: 0,
 			want:     43200 * time.Millisecond,
 			because:  "the first poll of a session has no measured cost yet",
 		},
 		{
 			name:     "an absent ResetAt is derived rather than treated as zero",
-			snapshot: QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 10000},
+			snapshot: quota.Snapshot{LimitUnits: 10000, RemainingUnits: 10000},
 			lastCost: 5,
 			want:     43200 * time.Millisecond,
 			because:  "a snapshot with no reset must not collapse the horizon to nothing",
@@ -143,7 +162,7 @@ func TestTheBudgetFloorIsTheDaysArithmetic(t *testing.T) {
 
 // TestTheBudgetFloorUsesTheInjectedClock is the regression on its own, because
 // it is the failure that looks like a passing test: a wall-clock horizon
-// against an anchored snapshot is negative, BudgetFloor returns 0 for a
+// against an anchored snapshot is negative, quota.BudgetFloor returns 0 for a
 // non-positive horizon, and every pacing assertion above would quietly become
 // "no constraint".
 func TestTheBudgetFloorUsesTheInjectedClock(t *testing.T) {
@@ -152,7 +171,7 @@ func TestTheBudgetFloorUsesTheInjectedClock(t *testing.T) {
 	anchored := pacificTime(t, 2024, time.January, 15, 6, 0)
 	poller := newPacingPoller(t, PollerConfig{Now: func() time.Time { return anchored }})
 
-	snapshot := QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 10000, ResetAt: ResetAt(anchored)}
+	snapshot := quota.Snapshot{LimitUnits: 10000, RemainingUnits: 10000, ResetAt: quota.ResetAt(anchored)}
 	got := poller.budget(snapshot, 5)
 	if got <= 0 {
 		t.Fatalf("budget = %v with an anchored clock, want the same floor a live clock would give", got)
@@ -171,53 +190,53 @@ func TestTheReserveProtectsTheAbilityToModerate(t *testing.T) {
 	tests := []struct {
 		name     string
 		reserve  int
-		snapshot QuotaSnapshot
+		snapshot quota.Snapshot
 		wantStop bool
 		wantSaid string
 	}{
 		{
 			name:     "plenty left",
 			reserve:  10,
-			snapshot: QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 5000, ResetAt: reset},
+			snapshot: quota.Snapshot{LimitUnits: 10000, RemainingUnits: 5000, ResetAt: reset},
 			wantStop: false,
 		},
 		{
 			name:     "one unit above the reserve",
 			reserve:  10,
-			snapshot: QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 1001, ResetAt: reset},
+			snapshot: quota.Snapshot{LimitUnits: 10000, RemainingUnits: 1001, ResetAt: reset},
 			wantStop: false,
 		},
 		{
 			name:     "exactly at the reserve",
 			reserve:  10,
-			snapshot: QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 1000, ResetAt: reset},
+			snapshot: quota.Snapshot{LimitUnits: 10000, RemainingUnits: 1000, ResetAt: reset},
 			wantStop: true,
 			wantSaid: "sends still available",
 		},
 		{
 			name:     "nothing left at all",
 			reserve:  10,
-			snapshot: QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 0, ResetAt: reset},
+			snapshot: quota.Snapshot{LimitUnits: 10000, RemainingUnits: 0, ResetAt: reset},
 			wantStop: true,
 			wantSaid: "exhausted",
 		},
 		{
 			name:     "the reserve is switched off",
 			reserve:  0,
-			snapshot: QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 1, ResetAt: reset},
+			snapshot: quota.Snapshot{LimitUnits: 10000, RemainingUnits: 1, ResetAt: reset},
 			wantStop: false,
 		},
 		{
 			name:     "an exhausted budget stops even with the reserve switched off",
 			reserve:  0,
-			snapshot: QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 0, ResetAt: reset},
+			snapshot: quota.Snapshot{LimitUnits: 10000, RemainingUnits: 0, ResetAt: reset},
 			wantStop: true,
 			wantSaid: "exhausted",
 		},
 		{
 			name:     "no ledger, no reserve to protect",
 			reserve:  10,
-			snapshot: QuotaSnapshot{RemainingUnits: 0, ResetAt: reset},
+			snapshot: quota.Snapshot{RemainingUnits: 0, ResetAt: reset},
 			wantStop: false,
 		},
 	}

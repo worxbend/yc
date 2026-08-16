@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/youtube"
 )
 
@@ -38,7 +39,7 @@ type FakeChatClient struct {
 	reconnects       int
 	reconnectResults []error
 	dropped          uint64
-	quota            youtube.QuotaSnapshot
+	quota            quota.Snapshot
 }
 
 type fakeSendResult struct {
@@ -154,7 +155,7 @@ func (c *FakeChatClient) QueueReconnectError(err error) {
 }
 
 // SetQuota sets the snapshot Quota reports.
-func (c *FakeChatClient) SetQuota(snapshot youtube.QuotaSnapshot) {
+func (c *FakeChatClient) SetQuota(snapshot quota.Snapshot) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.quota = snapshot
@@ -231,7 +232,7 @@ func (c *FakeChatClient) Reconnect(ctx context.Context) error {
 
 // Quota returns the snapshot set by SetQuota. Like every quota figure in yc it
 // is an estimate; here it is simply a fixture.
-func (c *FakeChatClient) Quota() youtube.QuotaSnapshot {
+func (c *FakeChatClient) Quota() quota.Snapshot {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.quota

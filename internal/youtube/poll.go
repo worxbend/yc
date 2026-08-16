@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/worxbend/yc/internal/debuglog"
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // DedupeRingSize is how many recently seen message IDs the poller remembers.
@@ -56,7 +57,7 @@ type PollerClient interface {
 	// SendMessage posts a chat message.
 	SendMessage(ctx context.Context, request SendRequest) (SendResult, error)
 	// Quota returns the current estimated ledger snapshot.
-	Quota() QuotaSnapshot
+	Quota() quota.Snapshot
 	// CostOf quotes the estimated unit cost of an endpoint without charging
 	// it; the budget arithmetic needs the price of the next poll.
 	CostOf(endpoint string) int
@@ -175,7 +176,7 @@ type Poller struct {
 	serverFloor time.Duration
 	budgetFloor time.Duration
 	effective   time.Duration
-	mode        QuotaMode
+	mode        quota.Mode
 
 	closeStreams sync.Once
 }
@@ -225,7 +226,7 @@ func NewPoller(cfg PollerConfig) (*Poller, error) {
 		seen:        newDedupeRing(DedupeRingSize),
 		state:       PollerIdle,
 		target:      cfg.Target,
-		mode:        QuotaModeLive,
+		mode:        quota.ModeLive,
 	}, nil
 }
 
@@ -353,7 +354,7 @@ func (p *Poller) Reconnect(ctx context.Context) error {
 
 // Quota returns the current estimated ledger snapshot with the cadence fields
 // filled in from the live floors.
-func (p *Poller) Quota() QuotaSnapshot {
+func (p *Poller) Quota() quota.Snapshot {
 	snapshot := p.cfg.Client.Quota()
 
 	p.mu.Lock()
@@ -534,7 +535,7 @@ func (p *Poller) run(ctx context.Context, pageToken string) {
 			}
 			backoff = nextBackoff
 			p.setState(PollerBackoff)
-			p.setMode(QuotaModeBackoff)
+			p.setMode(quota.ModeBackoff)
 			// The budget floor applies to failures too: Google charges a
 			// dispatched request whatever comes back, so an error storm that
 			// retried on the server cadence alone would burn the day's units
@@ -639,7 +640,7 @@ func (p *Poller) run(ctx context.Context, pageToken string) {
 		snapshot := p.cfg.Client.Quota()
 		if detail, paused := p.reserveTripped(snapshot); paused {
 			p.setState(PollerQuotaPaused)
-			p.setMode(QuotaModePaused)
+			p.setMode(quota.ModePaused)
 			p.emitState(ctx, ConnectionState{
 				Status: ConnectionPaused,
 				ChatID: target.LiveChatID,
@@ -659,10 +660,10 @@ func (p *Poller) run(ctx context.Context, pageToken string) {
 		p.effective = interval
 		if budget > serverInterval && budget > p.cfg.MinInterval {
 			p.state = PollerStretched
-			p.mode = QuotaModeStretched
+			p.mode = quota.ModeStretched
 		} else {
 			p.state = PollerStreaming
-			p.mode = QuotaModeLive
+			p.mode = quota.ModeLive
 		}
 		p.mu.Unlock()
 
@@ -737,11 +738,11 @@ func (p *Poller) handleListError(
 		// Never retry an exhausted quota: every attempt is charged, and the
 		// allowance does not come back until the Pacific reset.
 		p.setState(PollerQuotaPaused)
-		p.setMode(QuotaModePaused)
+		p.setMode(quota.ModePaused)
 		p.emitState(ctx, ConnectionState{
 			Status: ConnectionPaused,
 			ChatID: target.LiveChatID,
-			Detail: "daily quota exhausted; polling paused until " + ResetAt(now).Local().Format("15:04 MST") + " (est.)",
+			Detail: "daily quota exhausted; polling paused until " + quota.ResetAt(now).Local().Format("15:04 MST") + " (est.)",
 			Err:    err,
 			At:     now,
 		})
@@ -852,7 +853,7 @@ func climb(backoff float64, base, ceiling time.Duration) float64 {
 }
 
 // budget computes the cadence the remaining estimated units imply.
-func (p *Poller) budget(snapshot QuotaSnapshot, lastCost int) time.Duration {
+func (p *Poller) budget(snapshot quota.Snapshot, lastCost int) time.Duration {
 	if p.cfg.FollowServerCadence {
 		return 0
 	}
@@ -862,7 +863,7 @@ func (p *Poller) budget(snapshot QuotaSnapshot, lastCost int) time.Duration {
 	}
 	cost := lastCost
 	if cost <= 0 {
-		cost = p.cfg.Client.CostOf(EndpointMessagesList)
+		cost = p.cfg.Client.CostOf(quota.EndpointMessagesList)
 	}
 
 	// The injected clock, not the wall clock: PollerConfig promises the whole
@@ -871,12 +872,12 @@ func (p *Poller) budget(snapshot QuotaSnapshot, lastCost int) time.Duration {
 	// the present.
 	horizon := snapshot.ResetAt.Sub(p.cfg.Now())
 	if snapshot.ResetAt.IsZero() {
-		horizon = ResetAt(p.cfg.Now()).Sub(p.cfg.Now())
+		horizon = quota.ResetAt(p.cfg.Now()).Sub(p.cfg.Now())
 	}
 	if p.cfg.SessionHorizon > 0 && p.cfg.SessionHorizon < horizon {
 		horizon = p.cfg.SessionHorizon
 	}
-	return BudgetFloor(snapshot.RemainingUnits, cost, horizon)
+	return quota.BudgetFloor(snapshot.RemainingUnits, cost, horizon)
 }
 
 // reserveTripped reports whether polling must stop to protect the reserve.
@@ -884,7 +885,7 @@ func (p *Poller) budget(snapshot QuotaSnapshot, lastCost int) time.Duration {
 // The reserve exists so that running out of read budget does not also take away
 // the ability to send or moderate, which is the half of the client a stream
 // owner cannot do without.
-func (p *Poller) reserveTripped(snapshot QuotaSnapshot) (string, bool) {
+func (p *Poller) reserveTripped(snapshot quota.Snapshot) (string, bool) {
 	if snapshot.LimitUnits <= 0 {
 		return "", false
 	}
@@ -1027,7 +1028,7 @@ func (p *Poller) setState(state PollerState) {
 	p.mu.Unlock()
 }
 
-func (p *Poller) setMode(mode QuotaMode) {
+func (p *Poller) setMode(mode quota.Mode) {
 	p.mu.Lock()
 	p.mode = mode
 	p.mu.Unlock()

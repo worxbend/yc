@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/worxbend/yc/internal/config"
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/youtube"
 )
 
@@ -136,7 +137,7 @@ func TestDoctorPrintsTheCostTableItIsActuallyUsing(t *testing.T) {
 	cfg.Quota.Costs.List = 7
 
 	check := checkNamed(t, DoctorWithOptions(t.Context(), cfg, offlineDoctorOptions(t)), "cost table")
-	if !strings.Contains(check.Detail, youtube.EndpointMessagesList+"=7") {
+	if !strings.Contains(check.Detail, quota.EndpointMessagesList+"=7") {
 		t.Fatalf("detail = %q, want the overridden list cost", check.Detail)
 	}
 	// A wrong constant is only visible if the table is printed, and a printed
@@ -146,13 +147,13 @@ func TestDoctorPrintsTheCostTableItIsActuallyUsing(t *testing.T) {
 	// figures, and it hid that liveChatMessages.list - the one number the whole
 	// poll budget rests on - is the guess.
 	for _, endpoint := range []string{
-		youtube.EndpointMessagesList,
-		youtube.EndpointMessagesInsert,
-		youtube.EndpointMessagesDelete,
-		youtube.EndpointBansInsert,
-		youtube.EndpointBansDelete,
+		quota.EndpointMessagesList,
+		quota.EndpointMessagesInsert,
+		quota.EndpointMessagesDelete,
+		quota.EndpointBansInsert,
+		quota.EndpointBansDelete,
 	} {
-		if youtube.IsPublishedCost(endpoint) {
+		if quota.IsPublishedCost(endpoint) {
 			t.Fatalf("%s is classified as published; Google documents no live chat cost", endpoint)
 		}
 		if !strings.Contains(check.Detail, endpoint+"=") {
@@ -160,14 +161,14 @@ func TestDoctorPrintsTheCostTableItIsActuallyUsing(t *testing.T) {
 		}
 	}
 	for _, endpoint := range []string{
-		youtube.EndpointVideosList,
-		youtube.EndpointChannelsList,
-		youtube.EndpointSubscriptions,
-		youtube.EndpointCategoriesList,
-		youtube.EndpointVideosUpdate,
-		youtube.EndpointSearchList,
+		quota.EndpointVideosList,
+		quota.EndpointChannelsList,
+		quota.EndpointSubscriptions,
+		quota.EndpointCategoriesList,
+		quota.EndpointVideosUpdate,
+		quota.EndpointSearchList,
 	} {
-		if !youtube.IsPublishedCost(endpoint) {
+		if !quota.IsPublishedCost(endpoint) {
 			t.Fatalf("%s is classified as an estimate; Google publishes its cost", endpoint)
 		}
 	}
@@ -181,7 +182,7 @@ func TestDoctorPrintsTheCostTableItIsActuallyUsing(t *testing.T) {
 
 func TestDoctorProjectsWhenTheBudgetRunsOut(t *testing.T) {
 	opts := offlineDoctorOptions(t)
-	opts.QuotaReporter = fixedQuotaReporter{snapshot: youtube.QuotaSnapshot{
+	opts.QuotaReporter = fixedQuotaReporter{snapshot: quota.Snapshot{
 		UsedUnits:         9000,
 		LimitUnits:        10000,
 		RemainingUnits:    1000,
@@ -267,9 +268,9 @@ func TestDoctorWarnsWhenTheLedgerCannotBePersisted(t *testing.T) {
 }
 
 // fixedQuotaReporter answers with a canned snapshot.
-type fixedQuotaReporter struct{ snapshot youtube.QuotaSnapshot }
+type fixedQuotaReporter struct{ snapshot quota.Snapshot }
 
-func (r fixedQuotaReporter) Quota() youtube.QuotaSnapshot { return r.snapshot }
+func (r fixedQuotaReporter) Quota() quota.Snapshot { return r.snapshot }
 
 // failingIdentityLookup stands in for a credential that no longer works.
 type failingIdentityLookup struct{}

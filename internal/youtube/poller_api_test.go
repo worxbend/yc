@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // The poller is the app's transport, so the optional capabilities the shell
@@ -245,14 +247,14 @@ func awaitModeration(t *testing.T, poller *Poller) ModerationEvent {
 // The endpoint breakdown is what makes an unexpected spend attributable, so it
 // is sorted and complete rather than map-ordered.
 func TestSortedEndpointsIsDeterministic(t *testing.T) {
-	ledger := NewQuotaLedger(LedgerConfig{DailyUnits: 10000})
+	ledger := quota.NewLedger(quota.Config{DailyUnits: 10000})
 	for _, endpoint := range []string{
-		EndpointVideosList, EndpointMessagesList, EndpointBansInsert, EndpointChannelsList,
+		quota.EndpointVideosList, quota.EndpointMessagesList, quota.EndpointBansInsert, quota.EndpointChannelsList,
 	} {
 		ledger.Charge(endpoint)
 	}
 
-	first := SortedEndpoints(ledger.Snapshot().ByEndpoint)
+	first := quota.SortedEndpoints(ledger.Snapshot().ByEndpoint)
 	if len(first) != 4 {
 		t.Fatalf("endpoints = %v, want all four charged endpoints", first)
 	}
@@ -264,13 +266,13 @@ func TestSortedEndpointsIsDeterministic(t *testing.T) {
 	}
 	// Map iteration order is randomized per range, so repeating must agree.
 	for i := 0; i < 20; i++ {
-		again := SortedEndpoints(ledger.Snapshot().ByEndpoint)
+		again := quota.SortedEndpoints(ledger.Snapshot().ByEndpoint)
 		if strings.Join(again, ",") != strings.Join(first, ",") {
-			t.Fatalf("SortedEndpoints varied between calls: %v then %v", first, again)
+			t.Fatalf("quota.SortedEndpoints varied between calls: %v then %v", first, again)
 		}
 	}
-	if got := SortedEndpoints(nil); len(got) != 0 {
-		t.Errorf("SortedEndpoints(nil) = %v, want empty", got)
+	if got := quota.SortedEndpoints(nil); len(got) != 0 {
+		t.Errorf("quota.SortedEndpoints(nil) = %v, want empty", got)
 	}
 }
 
@@ -279,14 +281,14 @@ func TestSortedEndpointsIsDeterministic(t *testing.T) {
 func TestRemainingPercentIsSafeAtEveryBoundary(t *testing.T) {
 	cases := []struct {
 		name     string
-		snapshot QuotaSnapshot
+		snapshot quota.Snapshot
 		want     float64
 	}{
-		{"full", QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 10000}, 100},
-		{"half", QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 5000}, 50},
-		{"empty", QuotaSnapshot{LimitUnits: 10000, RemainingUnits: 0}, 0},
-		{"no limit configured", QuotaSnapshot{}, 0},
-		{"negative limit is not a limit", QuotaSnapshot{LimitUnits: -1, RemainingUnits: 10}, 0},
+		{"full", quota.Snapshot{LimitUnits: 10000, RemainingUnits: 10000}, 100},
+		{"half", quota.Snapshot{LimitUnits: 10000, RemainingUnits: 5000}, 50},
+		{"empty", quota.Snapshot{LimitUnits: 10000, RemainingUnits: 0}, 0},
+		{"no limit configured", quota.Snapshot{}, 0},
+		{"negative limit is not a limit", quota.Snapshot{LimitUnits: -1, RemainingUnits: 10}, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -303,11 +305,11 @@ func TestRemainingPercentIsSafeAtEveryBoundary(t *testing.T) {
 // the ledger charges failures too, and a 50-unit send can cross the line.
 func TestOverspentLedgerStillReportsAPercentageInRange(t *testing.T) {
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
-	ledger := NewQuotaLedger(LedgerConfig{DailyUnits: 100, Now: fixedClock(&now)})
+	ledger := quota.NewLedger(quota.Config{DailyUnits: 100, Now: fixedClock(&now)})
 
 	// Spend well past the allowance, as a long session with failures does.
 	for i := 0; i < 40; i++ {
-		ledger.Charge(EndpointMessagesInsert)
+		ledger.Charge(quota.EndpointMessagesInsert)
 	}
 
 	snapshot := ledger.Snapshot()

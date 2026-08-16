@@ -1,4 +1,4 @@
-package youtube
+package quota
 
 import (
 	"path/filepath"
@@ -13,7 +13,7 @@ func fixedClock(at *time.Time) func() time.Time {
 
 func TestChargeTalliesUnitsPerEndpoint(t *testing.T) {
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
-	ledger := NewQuotaLedger(LedgerConfig{Now: fixedClock(&now)})
+	ledger := NewLedger(Config{Now: fixedClock(&now)})
 
 	ledger.Charge(EndpointMessagesList)
 	ledger.Charge(EndpointMessagesList)
@@ -36,7 +36,7 @@ func TestChargeTalliesUnitsPerEndpoint(t *testing.T) {
 
 func TestSearchSpendsItsOwnBucketAndNotTheMainPool(t *testing.T) {
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
-	ledger := NewQuotaLedger(LedgerConfig{Now: fixedClock(&now)})
+	ledger := NewLedger(Config{Now: fixedClock(&now)})
 
 	ledger.Charge(EndpointSearchList)
 	ledger.Charge(EndpointSearchList)
@@ -107,7 +107,7 @@ func TestConfiguredCostsOverrideTheEstimates(t *testing.T) {
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
 	costs := DefaultCostTable()
 	costs[EndpointMessagesList] = 3
-	ledger := NewQuotaLedger(LedgerConfig{Now: fixedClock(&now), Costs: costs})
+	ledger := NewLedger(Config{Now: fixedClock(&now), Costs: costs})
 
 	if charged := ledger.Charge(EndpointMessagesList); charged != 3 {
 		t.Fatalf("charged = %d, want the configured 3", charged)
@@ -119,7 +119,7 @@ func TestConfiguredCostsOverrideTheEstimates(t *testing.T) {
 
 func TestUnknownEndpointStillMovesTheLedger(t *testing.T) {
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
-	ledger := NewQuotaLedger(LedgerConfig{Now: fixedClock(&now)})
+	ledger := NewLedger(Config{Now: fixedClock(&now)})
 
 	// A method with no published cost still costs something, so an unmetered
 	// call must never read as free.
@@ -132,7 +132,7 @@ func TestLedgerRollsOverAtPacificMidnight(t *testing.T) {
 	// 06:59 UTC on 2026-08-09 is 23:59 Pacific on the 8th; one minute later
 	// is a new Pacific day and a fresh allowance.
 	now := time.Date(2026, 8, 9, 6, 59, 0, 0, time.UTC)
-	ledger := NewQuotaLedger(LedgerConfig{Now: fixedClock(&now)})
+	ledger := NewLedger(Config{Now: fixedClock(&now)})
 	ledger.Charge(EndpointMessagesList)
 
 	if used := ledger.Snapshot().UsedUnits; used != 5 {
@@ -212,10 +212,10 @@ func TestLedgerSurvivesARestart(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
 	fingerprint := CredentialFingerprint("client-id", "UC-account")
-	newLedger := func() *QuotaLedger {
-		return NewQuotaLedger(LedgerConfig{
+	newLedger := func() *Ledger {
+		return NewLedger(Config{
 			Now:         fixedClock(&now),
-			Store:       NewFileLedgerStore(filepath.Join(root, "quota")),
+			Store:       NewFileStore(filepath.Join(root, "quota")),
 			Fingerprint: fingerprint,
 		})
 	}
@@ -242,12 +242,12 @@ func TestLedgerSurvivesARestart(t *testing.T) {
 func TestLedgerDoesNotShareAMeterBetweenAccounts(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "quota")
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
-	store := NewFileLedgerStore(root)
+	store := NewFileStore(root)
 
-	mine := NewQuotaLedger(LedgerConfig{Now: fixedClock(&now), Store: store, Fingerprint: CredentialFingerprint("client", "UC-me")})
+	mine := NewLedger(Config{Now: fixedClock(&now), Store: store, Fingerprint: CredentialFingerprint("client", "UC-me")})
 	mine.Charge(EndpointMessagesList)
 
-	theirs := NewQuotaLedger(LedgerConfig{Now: fixedClock(&now), Store: store, Fingerprint: CredentialFingerprint("client", "UC-them")})
+	theirs := NewLedger(Config{Now: fixedClock(&now), Store: store, Fingerprint: CredentialFingerprint("client", "UC-them")})
 	if used := theirs.Snapshot().UsedUnits; used != 0 {
 		t.Fatalf("second account inherited %d units from the first", used)
 	}
@@ -256,13 +256,13 @@ func TestLedgerDoesNotShareAMeterBetweenAccounts(t *testing.T) {
 func TestLedgerDoesNotInheritYesterdaysSpend(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "quota")
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
-	store := NewFileLedgerStore(root)
+	store := NewFileStore(root)
 
-	yesterday := NewQuotaLedger(LedgerConfig{Now: fixedClock(&now), Store: store, Fingerprint: "abcdef0123456789"})
+	yesterday := NewLedger(Config{Now: fixedClock(&now), Store: store, Fingerprint: "abcdef0123456789"})
 	yesterday.Charge(EndpointMessagesInsert)
 
 	tomorrow := now.AddDate(0, 0, 1)
-	today := NewQuotaLedger(LedgerConfig{Now: fixedClock(&tomorrow), Store: store, Fingerprint: "abcdef0123456789"})
+	today := NewLedger(Config{Now: fixedClock(&tomorrow), Store: store, Fingerprint: "abcdef0123456789"})
 	if used := today.Snapshot().UsedUnits; used != 0 {
 		t.Fatalf("UsedUnits = %d, want 0; the allowance is daily", used)
 	}
@@ -292,7 +292,7 @@ func TestCredentialFingerprintIsAHashAndNotTheInput(t *testing.T) {
 }
 
 func TestLedgerStoreRefusesAnUnsafeKey(t *testing.T) {
-	store := NewFileLedgerStore(t.TempDir())
+	store := NewFileStore(t.TempDir())
 	if err := store.SaveLedger("../../etc", "2026-08-08", map[string]int{}); err == nil {
 		t.Fatal("SaveLedger accepted a traversal-shaped fingerprint")
 	}
@@ -303,7 +303,7 @@ func TestLedgerStoreRefusesAnUnsafeKey(t *testing.T) {
 
 func TestLedgerStorePrunesOldRecords(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "quota")
-	store := NewFileLedgerStore(root)
+	store := NewFileStore(root)
 	const fingerprint = "abcdef0123456789"
 
 	old := time.Now().AddDate(0, 0, -30).In(pacificLocation()).Format("2006-01-02")
@@ -327,7 +327,7 @@ func TestLedgerStorePrunesOldRecords(t *testing.T) {
 }
 
 func TestMissingLedgerRecordIsAnEmptyTallyAndNotAnError(t *testing.T) {
-	store := NewFileLedgerStore(filepath.Join(t.TempDir(), "quota"))
+	store := NewFileStore(filepath.Join(t.TempDir(), "quota"))
 	tally, err := store.LoadLedger("abcdef0123456789", "2026-08-08")
 	if err != nil {
 		t.Fatalf("LoadLedger error = %v, want nil for a missing record", err)
@@ -338,7 +338,7 @@ func TestMissingLedgerRecordIsAnEmptyTallyAndNotAnError(t *testing.T) {
 }
 
 func TestProjectedExhaustionAnswersTheOnlyQuestionThatMatters(t *testing.T) {
-	snapshot := QuotaSnapshot{RemainingUnits: 6000, EffectiveInterval: 5 * time.Second}
+	snapshot := Snapshot{RemainingUnits: 6000, EffectiveInterval: 5 * time.Second}
 	remaining, ok := snapshot.ProjectedExhaustion(5)
 	if !ok {
 		t.Fatal("ProjectedExhaustion reported no projection")

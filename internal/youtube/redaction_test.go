@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/worxbend/yc/internal/auth"
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // TestExportedTypesNeverFormatACredential formats every exported type in this
@@ -38,7 +39,7 @@ func TestExportedTypesNeverFormatACredential(t *testing.T) {
 		{name: "StaticCredentials", value: credentials},
 		{name: "ClientConfig", value: ClientConfig{Credentials: credentials, HL: "en"}},
 		{name: "Client", value: client},
-		{name: "APIError", value: &APIError{StatusCode: 403, Reason: "forbidden", Method: EndpointMessagesList, Message: "denied"}},
+		{name: "APIError", value: &APIError{StatusCode: 403, Reason: "forbidden", Method: quota.EndpointMessagesList, Message: "denied"}},
 		{name: "SendResult", value: SendResult{MessageID: "sent-1", Detail: "ok"}},
 		{name: "ChatTarget", value: ChatTarget{Raw: "@handle", Kind: TargetHandle, Handle: "@handle"}},
 		{name: "Identity", value: Identity{ChannelID: "UCme00000000000000000001", Scopes: []string{string(auth.ScopeYouTubeReadonly)}}},

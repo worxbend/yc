@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // videoListResponse is the videos.list envelope.
@@ -98,7 +100,7 @@ type videoCategoryListResponse struct {
 func (c *Client) Broadcast(ctx context.Context, videoID string) (BroadcastInfo, error) {
 	identifier := strings.TrimSpace(videoID)
 	if identifier == "" {
-		return BroadcastInfo{}, newSafeError(EndpointVideosList+": no video id", ErrChatNotFound)
+		return BroadcastInfo{}, newSafeError(quota.EndpointVideosList+": no video id", ErrChatNotFound)
 	}
 
 	query := map[string]string{
@@ -106,7 +108,7 @@ func (c *Client) Broadcast(ctx context.Context, videoID string) (BroadcastInfo, 
 		"id":   identifier,
 	}
 	var response videoListResponse
-	if err := c.doJSON(ctx, "GET", EndpointVideosList, "videos", query, nil, &response); err != nil {
+	if err := c.doJSON(ctx, "GET", quota.EndpointVideosList, "videos", query, nil, &response); err != nil {
 		return BroadcastInfo{VideoID: identifier}, err
 	}
 	if len(response.Items) == 0 {
@@ -146,7 +148,7 @@ func (c *Client) Identity(ctx context.Context) (Identity, error) {
 
 	query := map[string]string{"part": "snippet,statistics", "mine": "true"}
 	var response channelListResponse
-	if err := c.doJSON(ctx, "GET", EndpointChannelsList, "channels", query, nil, &response); err != nil {
+	if err := c.doJSON(ctx, "GET", quota.EndpointChannelsList, "channels", query, nil, &response); err != nil {
 		return Identity{}, err
 	}
 	if len(response.Items) == 0 {
@@ -187,7 +189,7 @@ func (c *Client) Subscriptions(ctx context.Context) ([]Subscription, error) {
 		"order":      "alphabetical",
 	}
 	var response subscriptionListResponse
-	if err := c.doJSON(ctx, "GET", EndpointSubscriptions, "subscriptions", query, nil, &response); err != nil {
+	if err := c.doJSON(ctx, "GET", quota.EndpointSubscriptions, "subscriptions", query, nil, &response); err != nil {
 		return nil, err
 	}
 
@@ -209,12 +211,12 @@ func (c *Client) Subscriptions(ctx context.Context) ([]Subscription, error) {
 func (c *Client) StreamInfo(ctx context.Context, videoID string) (StreamInfo, error) {
 	identifier := strings.TrimSpace(videoID)
 	if identifier == "" {
-		return StreamInfo{}, newSafeError(EndpointVideosList+": no video id", ErrChatNotFound)
+		return StreamInfo{}, newSafeError(quota.EndpointVideosList+": no video id", ErrChatNotFound)
 	}
 
 	query := map[string]string{"part": "snippet,status", "id": identifier}
 	var response videoListResponse
-	if err := c.doJSON(ctx, "GET", EndpointVideosList, "videos", query, nil, &response); err != nil {
+	if err := c.doJSON(ctx, "GET", quota.EndpointVideosList, "videos", query, nil, &response); err != nil {
 		return StreamInfo{VideoID: identifier}, err
 	}
 	if len(response.Items) == 0 {
@@ -252,7 +254,7 @@ type videoUpdateRequest struct {
 func (c *Client) UpdateStreamInfo(ctx context.Context, info StreamInfo) (StreamInfo, error) {
 	identifier := strings.TrimSpace(info.VideoID)
 	if identifier == "" {
-		return info, newSafeError(EndpointVideosUpdate+": no video id", ErrMessageRejected)
+		return info, newSafeError(quota.EndpointVideosUpdate+": no video id", ErrMessageRejected)
 	}
 	if !c.hasToken() {
 		return info, newSafeError("editing broadcast details requires signing in with Google", ErrNotPermitted)
@@ -285,7 +287,7 @@ func (c *Client) UpdateStreamInfo(ctx context.Context, info StreamInfo) (StreamI
 		} `json:"status"`
 	}
 	query := map[string]string{"part": parts}
-	if err := c.doJSON(ctx, "PUT", EndpointVideosUpdate, "videos", query, body, &response); err != nil {
+	if err := c.doJSON(ctx, "PUT", quota.EndpointVideosUpdate, "videos", query, body, &response); err != nil {
 		return info, err
 	}
 
@@ -309,7 +311,7 @@ func (c *Client) Categories(ctx context.Context) ([]Category, error) {
 	}
 
 	var response videoCategoryListResponse
-	if err := c.doJSON(ctx, "GET", EndpointCategoriesList, "videoCategories", query, nil, &response); err != nil {
+	if err := c.doJSON(ctx, "GET", quota.EndpointCategoriesList, "videoCategories", query, nil, &response); err != nil {
 		return nil, err
 	}
 

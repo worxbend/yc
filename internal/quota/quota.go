@@ -1,4 +1,4 @@
-package youtube
+package quota
 
 import (
 	"sort"
@@ -25,8 +25,8 @@ const (
 	EndpointVideosUpdate   = "videos.update"
 )
 
-// QuotaResetLocation is the timezone the daily allowance resets in.
-const QuotaResetLocation = "America/Los_Angeles"
+// ResetLocation is the timezone the daily allowance resets in.
+const ResetLocation = "America/Los_Angeles"
 
 // Fallback offset for the daily reset when the tz database cannot be loaded at
 // all. It is standard Pacific time, so a build without tzdata drifts by an hour
@@ -45,15 +45,6 @@ const (
 	DefaultDailyUnits  = 10000
 	DefaultSearchCalls = 100
 )
-
-// MaxResultsPerPoll is what yc always requests.
-//
-// The documented range for liveChatMessages.list is 200-2000 with a default of
-// 500, so the commonly cited 200 is the minimum, not the maximum. Quota is
-// charged per method call and not per item, so asking for 2000 costs exactly
-// the same as asking for 200 and buys an order of magnitude more headroom
-// between polls. It is the cheapest robustness win available.
-const MaxResultsPerPoll = 2000
 
 // ledgerSearchCallsKey is the reserved persistence key for the search.list call
 // count. It is stripped out of every snapshot, so it can never be mistaken for
@@ -140,8 +131,8 @@ func (t CostTable) Cost(endpoint string) int {
 	return 1
 }
 
-// LedgerConfig configures a QuotaLedger.
-type LedgerConfig struct {
+// Config configures a Ledger.
+type Config struct {
 	DailyUnits  int
 	SearchCalls int
 	Costs       CostTable
@@ -151,26 +142,26 @@ type LedgerConfig struct {
 	// Store persists the ledger across restarts. Nil keeps it in memory,
 	// which means a restart hands the user a false sense of budget - so the
 	// live path always supplies one.
-	Store LedgerStore
+	Store Store
 	// Fingerprint keys the persisted ledger to a credential, so two accounts
 	// on one machine do not share a meter.
 	Fingerprint string
 }
 
-// LedgerStore persists the estimated ledger through internal/storage, keyed by
+// Store persists the estimated ledger through internal/storage, keyed by
 // credential fingerprint and Pacific date.
-type LedgerStore interface {
+type Store interface {
 	LoadLedger(fingerprint string, day string) (map[string]int, error)
 	SaveLedger(fingerprint string, day string, byEndpoint map[string]int) error
 }
 
-// QuotaLedger accumulates estimated unit spend for the current Pacific day.
+// Ledger accumulates estimated unit spend for the current Pacific day.
 //
 // Every dispatched request is charged, including failures, because Google
 // charges at least one unit for an invalid request. It is safe for concurrent
 // use by the poll loop and the send path.
-type QuotaLedger struct {
-	cfg LedgerConfig
+type Ledger struct {
+	cfg Config
 
 	mu          sync.Mutex
 	day         string
@@ -179,9 +170,9 @@ type QuotaLedger struct {
 	searchCalls int
 }
 
-// NewQuotaLedger returns a ledger with defaults applied and any persisted spend
+// NewLedger returns a ledger with defaults applied and any persisted spend
 // for today already loaded.
-func NewQuotaLedger(cfg LedgerConfig) *QuotaLedger {
+func NewLedger(cfg Config) *Ledger {
 	if cfg.DailyUnits <= 0 {
 		cfg.DailyUnits = DefaultDailyUnits
 	}
@@ -194,14 +185,14 @@ func NewQuotaLedger(cfg LedgerConfig) *QuotaLedger {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	ledger := &QuotaLedger{cfg: cfg, byEndpoint: map[string]int{}}
+	ledger := &Ledger{cfg: cfg, byEndpoint: map[string]int{}}
 	ledger.rollover(PacificDay(cfg.Now()))
 	return ledger
 }
 
 // Cost returns the estimated unit cost of an endpoint under this ledger's
 // table, without charging it.
-func (l *QuotaLedger) Cost(endpoint string) int {
+func (l *Ledger) Cost(endpoint string) int {
 	if l == nil {
 		return DefaultCostTable().Cost(endpoint)
 	}
@@ -210,7 +201,7 @@ func (l *QuotaLedger) Cost(endpoint string) int {
 
 // Charge records one dispatched call against endpoint and returns the units
 // charged.
-func (l *QuotaLedger) Charge(endpoint string) int {
+func (l *Ledger) Charge(endpoint string) int {
 	if l == nil {
 		return 0
 	}
@@ -242,9 +233,9 @@ func (l *QuotaLedger) Charge(endpoint string) int {
 
 // Snapshot returns the current ledger state. Cadence fields are filled in by
 // the poller, which owns the floors.
-func (l *QuotaLedger) Snapshot() QuotaSnapshot {
+func (l *Ledger) Snapshot() Snapshot {
 	if l == nil {
-		return QuotaSnapshot{Estimated: true}
+		return Snapshot{Estimated: true}
 	}
 	now := l.cfg.Now()
 
@@ -252,7 +243,7 @@ func (l *QuotaLedger) Snapshot() QuotaSnapshot {
 	if day := PacificDay(now); day != l.day {
 		l.rolloverLocked(day)
 	}
-	snapshot := QuotaSnapshot{
+	snapshot := Snapshot{
 		UsedUnits:      l.used,
 		LimitUnits:     l.cfg.DailyUnits,
 		RemainingUnits: l.cfg.DailyUnits - l.used,
@@ -272,12 +263,12 @@ func (l *QuotaLedger) Snapshot() QuotaSnapshot {
 }
 
 // Remaining returns the estimated units left in the main bucket.
-func (l *QuotaLedger) Remaining() int {
+func (l *Ledger) Remaining() int {
 	return l.Snapshot().RemainingUnits
 }
 
 // rollover replaces the tally with whatever was persisted for day.
-func (l *QuotaLedger) rollover(day string) {
+func (l *Ledger) rollover(day string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.rolloverLocked(day)
@@ -286,7 +277,7 @@ func (l *QuotaLedger) rollover(day string) {
 // rolloverLocked resets the tally to day's persisted spend. Yesterday's spend
 // is deliberately not carried over: the allowance is daily, and a stale total
 // would understate today's budget as badly as a zeroed one overstates it.
-func (l *QuotaLedger) rolloverLocked(day string) {
+func (l *Ledger) rolloverLocked(day string) {
 	l.day = day
 	l.byEndpoint = map[string]int{}
 	l.used = 0
@@ -317,7 +308,7 @@ func (l *QuotaLedger) rolloverLocked(day string) {
 }
 
 // persist writes the tally through the store, best effort.
-func (l *QuotaLedger) persist(day string, tally map[string]int) {
+func (l *Ledger) persist(day string, tally map[string]int) {
 	if l.cfg.Store == nil {
 		return
 	}
@@ -354,7 +345,7 @@ func SortedEndpoints(tally map[string]int) []string {
 // because getting this wrong silently moves the reset boundary, and a ledger
 // that resets at the wrong hour is worse than no ledger at all.
 func pacificLocation() *time.Location {
-	if loc, err := time.LoadLocation(QuotaResetLocation); err == nil && loc != nil {
+	if loc, err := time.LoadLocation(ResetLocation); err == nil && loc != nil {
 		return loc
 	}
 	return time.FixedZone("PST", pacificFallbackOffsetSeconds)

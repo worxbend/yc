@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // SearchWarning is the exact wording shown before spending a search.
@@ -119,7 +121,7 @@ func (c *Client) ResolveHandle(ctx context.Context, handleOrChannelID string) (C
 	}
 
 	var response channelListResponse
-	if err := c.doJSON(ctx, "GET", EndpointChannelsList, "channels", query, nil, &response); err != nil {
+	if err := c.doJSON(ctx, "GET", quota.EndpointChannelsList, "channels", query, nil, &response); err != nil {
 		return ChatTarget{Raw: identifier, Kind: kind}, err
 	}
 	if len(response.Items) == 0 {
@@ -159,7 +161,7 @@ func (c *Client) SearchLiveVideo(ctx context.Context, channelID string) (ChatTar
 		"maxResults": "1",
 	}
 	var response searchListResponse
-	if err := c.doJSON(ctx, "GET", EndpointSearchList, "search", query, nil, &response); err != nil {
+	if err := c.doJSON(ctx, "GET", quota.EndpointSearchList, "search", query, nil, &response); err != nil {
 		return ChatTarget{Raw: identifier, Kind: TargetChannelID, ChannelID: identifier}, err
 	}
 	for _, item := range response.Items {

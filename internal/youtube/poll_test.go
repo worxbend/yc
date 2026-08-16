@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // pollHarness drives a poller against an in-process server with no wall-clock
@@ -374,10 +376,10 @@ func TestBackoffJitterStaysInsideTheWidenedWindow(t *testing.T) {
 
 func TestReserveThresholdPausesPollingButNotSending(t *testing.T) {
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
-	ledger := NewQuotaLedger(LedgerConfig{DailyUnits: 100, Now: fixedClock(&now)})
+	ledger := quota.NewLedger(quota.Config{DailyUnits: 100, Now: fixedClock(&now)})
 	// Spend down to the reserve before the first poll.
 	for ledger.Remaining() > 10 {
-		ledger.Charge(EndpointMessagesList)
+		ledger.Charge(quota.EndpointMessagesList)
 	}
 
 	server := newLedgerPoller(t, ledger)
@@ -388,7 +390,7 @@ func TestReserveThresholdPausesPollingButNotSending(t *testing.T) {
 }
 
 // newLedgerPoller starts a poller sharing a pre-spent ledger.
-func newLedgerPoller(t *testing.T, ledger *QuotaLedger) *pollHarness {
+func newLedgerPoller(t *testing.T, ledger *quota.Ledger) *pollHarness {
 	t.Helper()
 	harness := &pollHarness{}
 	client, _ := newTestClientWithLedger(t, ledger, func(w http.ResponseWriter, r *http.Request) {

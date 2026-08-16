@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/worxbend/yc/internal/auth"
+	"github.com/worxbend/yc/internal/quota"
 )
 
 // Obvious fake markers. Nothing in this package's tests may use a value that
@@ -164,8 +165,8 @@ func TestClientClassifiesEveryDocumentedReason(t *testing.T) {
 			if apiErr.StatusCode != test.statusCode {
 				t.Fatalf("StatusCode = %d, want %d", apiErr.StatusCode, test.statusCode)
 			}
-			if apiErr.Method != EndpointMessagesList {
-				t.Fatalf("Method = %q, want %q", apiErr.Method, EndpointMessagesList)
+			if apiErr.Method != quota.EndpointMessagesList {
+				t.Fatalf("Method = %q, want %q", apiErr.Method, quota.EndpointMessagesList)
 			}
 			if apiErr.Reason != test.reason || apiErr.ErrorInfoReason != test.errorInfo {
 				t.Fatalf("channels = %q/%q/%q, want all three preserved", apiErr.Reason, apiErr.Status, apiErr.ErrorInfoReason)
@@ -293,7 +294,7 @@ func assertNoCredentialLeak(t *testing.T, value string, serverURL string) {
 
 // newTestClientWithLedger is newTestClient with quota accounting wired, for the
 // paths where the ledger's state changes what the client does.
-func newTestClientWithLedger(t *testing.T, ledger *QuotaLedger, handler http.HandlerFunc) (*Client, *httptest.Server) {
+func newTestClientWithLedger(t *testing.T, ledger *quota.Ledger, handler http.HandlerFunc) (*Client, *httptest.Server) {
 	t.Helper()
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)

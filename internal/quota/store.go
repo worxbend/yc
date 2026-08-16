@@ -1,4 +1,4 @@
-package youtube
+package quota
 
 import (
 	"context"
@@ -27,7 +27,7 @@ const (
 	ledgerDirMode  fs.FileMode = 0o700
 )
 
-// LedgerRetentionDays is how many Pacific days of ledger records yc keeps.
+// RetentionDays is how many Pacific days of ledger records yc keeps.
 //
 // The meter itself only ever reads today's record. The window exists so a
 // session running across the Pacific reset still finds yesterday where it left
@@ -40,7 +40,7 @@ const (
 // one is ever wanted it belongs on config.QuotaConfig as
 // `ledger_retention_days`, documented there and in docs/quota.md alongside the
 // rest of the estimated-meter behavior, and passed to Prune in place of this.
-const LedgerRetentionDays = 7
+const RetentionDays = 7
 
 // anonymousFingerprint keys the ledger for a run with no credential identity,
 // such as an API-key-only session before the channel is known.
@@ -54,8 +54,8 @@ var ledgerDayPattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 // ledgerFingerprintPattern is the hex shape CredentialFingerprint produces.
 var ledgerFingerprintPattern = regexp.MustCompile(`^[a-f0-9]{16}$`)
 
-// ErrLedgerUnsafeKey means a fingerprint or day would not make a safe filename.
-var ErrLedgerUnsafeKey = errors.New("quota ledger: unsafe record key")
+// ErrUnsafeKey means a fingerprint or day would not make a safe filename.
+var ErrUnsafeKey = errors.New("quota ledger: unsafe record key")
 
 // ledgerRecord is the on-disk form.
 type ledgerRecord struct {
@@ -66,27 +66,27 @@ type ledgerRecord struct {
 	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
-// FileLedgerStore persists the estimated quota ledger through internal/storage.
+// FileStore persists the estimated quota ledger through internal/storage.
 //
 // Persistence matters because the meter is the only thing standing between a
 // user and an exhausted day: a restart that zeroes it hands them a false sense
 // of budget, and they find out by having chat stop mid-stream. Records are keyed
 // by credential fingerprint and Pacific date so two accounts on one machine do
 // not share a meter and yesterday's spend never counts against today.
-type FileLedgerStore struct {
+type FileStore struct {
 	root string
 }
 
-var _ LedgerStore = (*FileLedgerStore)(nil)
+var _ Store = (*FileStore)(nil)
 
-// NewFileLedgerStore returns a store rooted at dir.
-func NewFileLedgerStore(dir string) *FileLedgerStore {
-	return &FileLedgerStore{root: strings.TrimSpace(dir)}
+// NewFileStore returns a store rooted at dir.
+func NewFileStore(dir string) *FileStore {
+	return &FileStore{root: strings.TrimSpace(dir)}
 }
 
 // LoadLedger returns the persisted per-endpoint spend for a fingerprint and
 // Pacific day. A missing record is an empty tally, not an error.
-func (s *FileLedgerStore) LoadLedger(fingerprint, day string) (map[string]int, error) {
+func (s *FileStore) LoadLedger(fingerprint, day string) (map[string]int, error) {
 	path, err := s.recordPath(fingerprint, day)
 	if err != nil {
 		return nil, err
@@ -115,7 +115,7 @@ func (s *FileLedgerStore) LoadLedger(fingerprint, day string) (map[string]int, e
 }
 
 // SaveLedger writes the per-endpoint spend atomically.
-func (s *FileLedgerStore) SaveLedger(fingerprint, day string, byEndpoint map[string]int) error {
+func (s *FileStore) SaveLedger(fingerprint, day string, byEndpoint map[string]int) error {
 	path, err := s.recordPath(fingerprint, day)
 	if err != nil {
 		return err
@@ -163,7 +163,7 @@ func (s *FileLedgerStore) SaveLedger(fingerprint, day string, byEndpoint map[str
 //
 // keepDays of zero or less keeps only today, which is all the meter needs; a
 // larger window exists so a user can look back at what a long stream cost.
-func (s *FileLedgerStore) Prune(ctx context.Context, keepDays int) error {
+func (s *FileStore) Prune(ctx context.Context, keepDays int) error {
 	if strings.TrimSpace(s.root) == "" {
 		return nil
 	}
@@ -196,16 +196,16 @@ func (s *FileLedgerStore) Prune(ctx context.Context, keepDays int) error {
 }
 
 // recordPath builds the validated path for one record.
-func (s *FileLedgerStore) recordPath(fingerprint, day string) (string, error) {
+func (s *FileStore) recordPath(fingerprint, day string) (string, error) {
 	if strings.TrimSpace(s.root) == "" {
-		return "", fmt.Errorf("quota ledger: no root directory: %w", ErrLedgerUnsafeKey)
+		return "", fmt.Errorf("quota ledger: no root directory: %w", ErrUnsafeKey)
 	}
 	if !ledgerDayPattern.MatchString(day) {
-		return "", fmt.Errorf("quota ledger: bad day key: %w", ErrLedgerUnsafeKey)
+		return "", fmt.Errorf("quota ledger: bad day key: %w", ErrUnsafeKey)
 	}
 	key := normalizeFingerprint(fingerprint)
 	if key != anonymousFingerprint && !ledgerFingerprintPattern.MatchString(key) {
-		return "", fmt.Errorf("quota ledger: bad fingerprint key: %w", ErrLedgerUnsafeKey)
+		return "", fmt.Errorf("quota ledger: bad fingerprint key: %w", ErrUnsafeKey)
 	}
 	return filepath.Join(s.root, key+"-"+day+".json"), nil
 }

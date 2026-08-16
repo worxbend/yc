@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/worxbend/yc/internal/animation"
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/theme"
 	"github.com/worxbend/yc/internal/youtube"
 )
@@ -27,13 +28,13 @@ func testStatusBarState() statusBarState {
 		ViewersKnown:  true,
 		QuotaKnown:    true,
 		CostPerPoll:   5,
-		Quota: youtube.QuotaSnapshot{
+		Quota: quota.Snapshot{
 			UsedUnits:         3240,
 			LimitUnits:        10000,
 			RemainingUnits:    6760,
 			EffectiveInterval: 5 * time.Second,
 			ServerFloor:       5 * time.Second,
-			Mode:              youtube.QuotaModeLive,
+			Mode:              quota.ModeLive,
 			Estimated:         true,
 		},
 	}
@@ -117,7 +118,7 @@ func TestQuotaColorShiftsAsBudgetDepletes(t *testing.T) {
 
 func TestStatusBarNamesTheStretchedCadence(t *testing.T) {
 	st := testStatusBarState()
-	st.Quota.Mode = youtube.QuotaModeStretched
+	st.Quota.Mode = quota.ModeStretched
 	st.Quota.EffectiveInterval = 43 * time.Second
 	st.Quota.BudgetFloor = 43 * time.Second
 

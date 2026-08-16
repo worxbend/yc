@@ -10,6 +10,7 @@ import (
 
 	"github.com/worxbend/yc/internal/auth"
 	"github.com/worxbend/yc/internal/config"
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/youtube"
 )
 
@@ -42,7 +43,7 @@ func runQuota(args []string, stdout, stderr io.Writer) int {
 // Cloud Console's, which is the one authority that actually knows. The costs
 // that are themselves guesses - every live chat method - are named by
 // `yc doctor`, which is where a per-method breakdown belongs.
-func printQuotaSnapshot(stdout io.Writer, cfg config.Config, snapshot youtube.QuotaSnapshot) {
+func printQuotaSnapshot(stdout io.Writer, cfg config.Config, snapshot quota.Snapshot) {
 	limit := snapshot.LimitUnits
 	if limit <= 0 {
 		limit = cfg.Quota.DailyQuotaUnits
@@ -52,12 +53,12 @@ func printQuotaSnapshot(stdout io.Writer, cfg config.Config, snapshot youtube.Qu
 	fmt.Fprintf(stdout, "remaining = %d units est. (%.0f%%)\n", snapshot.RemainingUnits, snapshot.RemainingPercent())
 	fmt.Fprintf(stdout, "search = %d/%d calls\n", snapshot.SearchUsed, snapshot.SearchLimit)
 	fmt.Fprintf(stdout, "mode = %s\n", quotaModeLabel(snapshot.Mode))
-	fmt.Fprintf(stdout, "resets = %s (%s)\n", formatQuotaTime(snapshot.ResetAt), youtube.QuotaResetLocation)
+	fmt.Fprintf(stdout, "resets = %s (%s)\n", formatQuotaTime(snapshot.ResetAt), quota.ResetLocation)
 	fmt.Fprintf(stdout, "effective_interval = %s\n", formatQuotaDuration(snapshot.EffectiveInterval))
 	fmt.Fprintf(stdout, "server_floor = %s\n", formatQuotaDuration(snapshot.ServerFloor))
 	fmt.Fprintf(stdout, "budget_floor = %s\n", formatQuotaDuration(snapshot.BudgetFloor))
 
-	costPerPoll := costTable(cfg.Quota.Costs).Cost(youtube.EndpointMessagesList)
+	costPerPoll := costTable(cfg.Quota.Costs).Cost(quota.EndpointMessagesList)
 	if remaining, ok := snapshot.ProjectedExhaustion(costPerPoll); ok {
 		fmt.Fprintf(stdout, "projected_exhaustion = %s at the current cadence, est.\n", formatQuotaDuration(remaining))
 	} else {
@@ -82,15 +83,15 @@ func printQuotaSnapshot(stdout io.Writer, cfg config.Config, snapshot youtube.Qu
 
 // quotaModeLabel renders a cadence mode with the reason it is in force, because
 // "stretched" on its own reads like a fault rather than a decision.
-func quotaModeLabel(mode youtube.QuotaMode) string {
+func quotaModeLabel(mode quota.Mode) string {
 	switch mode {
-	case youtube.QuotaModeLive:
+	case quota.ModeLive:
 		return "live (polling at the server-advised cadence)"
-	case youtube.QuotaModeStretched:
+	case quota.ModeStretched:
 		return "stretched (polling slower than allowed so the daily budget lasts)"
-	case youtube.QuotaModeBackoff:
+	case quota.ModeBackoff:
 		return "backoff (the API asked yc to slow down)"
-	case youtube.QuotaModePaused:
+	case quota.ModePaused:
 		return "paused (the daily allowance or the reserve threshold was reached)"
 	case "":
 		return "idle (no chat has polled yet today)"
@@ -130,7 +131,7 @@ func staticCredentials(cfg config.Config) youtube.CredentialSource {
 // quotaEnvironmentSummary is used by setup and doctor output to state the
 // arithmetic in one line.
 func quotaEnvironmentSummary(cfg config.Config) string {
-	cost := costTable(cfg.Quota.Costs).Cost(youtube.EndpointMessagesList)
+	cost := costTable(cfg.Quota.Costs).Cost(quota.EndpointMessagesList)
 	units := cfg.Quota.DailyQuotaUnits
 	if units <= 0 {
 		units = config.DefaultDailyQuotaUnits

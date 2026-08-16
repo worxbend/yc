@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/worxbend/yc/internal/quota"
 	"github.com/worxbend/yc/internal/youtube"
 )
 
@@ -19,14 +20,14 @@ func newViewModel(t *testing.T, width, height int) shellModel {
 	model.lastFrameAt = time.Date(2026, 8, 8, 20, 0, 0, 0, time.UTC)
 	model.sourceDetail = "mock chat source"
 	model.quotaKnown = true
-	model.quota = youtube.QuotaSnapshot{
+	model.quota = quota.Snapshot{
 		UsedUnits:         3240,
 		LimitUnits:        10000,
 		RemainingUnits:    6760,
 		SearchLimit:       100,
 		EffectiveInterval: 5 * time.Second,
 		ServerFloor:       5 * time.Second,
-		Mode:              youtube.QuotaModeLive,
+		Mode:              quota.ModeLive,
 		Estimated:         true,
 		ByEndpoint:        map[string]int{"liveChatMessages.list": 3200, "videos.list": 40},
 	}
