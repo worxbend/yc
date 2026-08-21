@@ -273,6 +273,60 @@ Skipped this session, with reasons:
   **none of it has been exercised against Google.** The security fix in this
   release is reviewed and unit-tested, not witnessed live.
 
+## 2026-08-21 v0.2.2 Release Gate
+
+Environment: host Linux 7.1.6 (CachyOS) x86-64, Go 1.26.6, Docker 29.7.2. No
+credentials present or used. As with the v0.2.1 session, the toolchain gate ran
+in the ordinary working checkout, **not** under a throwaway `HOME`/XDG; only the
+dry run's smokes were isolated, by the script's own `mktemp -d` harness.
+
+Toolchain gate, all clean: `gofmt -l .` (empty), `go build ./...`,
+`go vet ./...`, `go tool staticcheck ./...`, `go test ./...`,
+`go test -race ./...`, `go tool govulncheck ./...` ("No vulnerabilities
+found"), and `golangci-lint run` at **v2.12.2**, the version CI pins, reporting
+`0 issues.`
+
+Release artifacts: `scripts/release-dry-run.sh --version v0.2.2` passed end to
+end including the Docker build and container smokes; the image reported
+`yc 0.2.2`.
+
+CI and publication: CI run `32485822177` on `1f2d238` concluded **success**
+before the tag was created. Tag `v0.2.2` triggered release run `32486206269`,
+also **success**. Conclusions read with `gh run view <id> --json conclusion`.
+
+Published release verified as a consumer: all seven assets present;
+`checksums.txt` verifies against the downloaded `yc_linux_amd64`,
+`yc_linux_arm64` and `install.sh` via `sha256sum -c`; the downloaded amd64
+binary reports `yc 0.2.2`. No CDN 504s this time, unlike the v0.2.1 session.
+
+**The release's headline fix was verified against the published binary**, not
+only the local build. For each of `chat`, `doctor`, `quota`, `config show`,
+`config path`, `profile list`, `profile show`, `profile set`,
+`export superchats`, `login`, `logout` and `setup`, both `--help` and `-h` exit
+**0** with the page on **stdout** and **nothing on stderr**. `yc doctor --help |
+less` now shows the page. `yc doctor extra` exits 2 with
+`unexpected doctor argument "extra"`, confirming the stray-positional change
+shipped too.
+
+A note on method, because it produced a false alarm twice. A shell loop of the
+form `for c in "config show"; do "$YC" $c --help; done` reports exit 2 for the
+multi-word subcommands and looks exactly like the bug this release fixes. It is
+not: **zsh does not word-split unquoted parameter expansions**, so `$c` reaches
+the binary as one literal argument `"config show"`, which is correctly rejected
+as an unknown command. Passing the words as separate arguments (`"$@"` from a
+shell function) shows the true result. Recorded because it briefly looked like
+a shipped regression in the very thing being released.
+
+Skipped this session, with reasons:
+
+- **Interactive terminal checks.** No tmux/pty walkthrough. The 2026-08-08
+  session's geometry and keyboard evidence stands; this release does not change
+  rendering or key handling, but this session did not re-witness it.
+- **The curl-pipe installer end to end.** `install.sh` was downloaded and its
+  checksum verified; it was not executed.
+- **Everything in *Credentialed YouTube Validation: NONE*.** Untouched, and
+  still true: no part of `yc` has been run against Google.
+
 ## How To Add A Session
 
 Copy the shape above. Record:
