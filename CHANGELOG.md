@@ -12,6 +12,91 @@ Released binaries are stamped with their tag.
 
 Nothing yet.
 
+## [0.2.1] - 2026-08-21
+
+A correctness and durability pass over the parts of `yc` that write to disk or
+talk to Google, plus a large internal restructuring with no user-visible
+effect. No new features, no configuration changes, and nothing to migrate.
+
+### Security
+
+- OAuth callbacks that this flow never issued are now rejected. Completing a
+  callback with an unknown `state` was the missing half of the CSRF check;
+  without it an attacker could have driven a victim's `yc login` into logging
+  in as the attacker (login CSRF). The explicit `AllowExternalCallbacks` opt-in
+  is the only way to relax it.
+- `yc logout` now removes leftover credential temp files. A crash between
+  writing `.credentials.json.tmp-NNNN` and renaming it into place left a
+  complete, working refresh token on disk that nothing ever cleaned up — so
+  logging out to revoke access on a shared machine did not necessarily revoke
+  it. Saving and deleting both sweep matching siblings now, and only ever
+  unlink regular files.
+- The cache no longer follows symlinks when reading an entry. It checked the
+  file type and then reopened by path, leaving a window in which a symlink
+  could be swapped in — the same hardening the credential reader already had.
+- The cache directory's permissions are set explicitly after creation rather
+  than trusting the mode `MkdirAll` produced, which the umask can widen.
+
+### Fixed
+
+- Two `yc` processes no longer silently overwrite each other's credentials.
+  Saving read nothing and wrote everything, so the last writer won: if one
+  process refreshed and stored a rotated refresh token while another still
+  held the old record, the second save put the spent token back and logged the
+  user out for no visible reason. A store now remembers what it last read and
+  refuses a conflicting save with `ErrCredentialsConflict`.
+- `config.toml` writes are now durable. The file and its directory are synced
+  before and after the rename, so a crash shortly after `yc config` can no
+  longer leave an empty or partial config that then fails to load.
+- Quoted config values are parsed instead of mangled. Trimming stripped every
+  leading and trailing quote and the list branch deleted quotes anywhere in
+  the value, so a chat target or URL containing a quote was silently
+  corrupted. At most one matched surrounding pair is removed now, and lists
+  split on commas while respecting quoted entries.
+- A long line in `config.toml` — a large `default_chats` list is the realistic
+  way to get one — no longer fails the whole load with "token too long". Both
+  the reader and the rewrite path use an explicit 1 MiB cap instead of the
+  default 64 KiB.
+- One torn line in a chat log no longer hides every line after it. A failed
+  write left a JSON fragment with no newline and the reader treated any syntax
+  error as a clean end of file, so a single mid-stream write failure silently
+  discarded the rest of the log.
+- Cycling a display toggle from the command palette now refreshes the reveal
+  animation the way the keyboard shortcut always did. The two lanes had
+  drifted, so a message still animating stayed drawn at the old layout until
+  it settled.
+- A credential file whose version is not the current one is no longer
+  rejected outright. Reading dispatches per version, and the two failure
+  directions are reported separately: too old says "log in again", too new
+  says "this came from a newer yc".
+- Cache entries that are not regular files, or are larger than the cache
+  allows, are removed rather than skipped and left as a permanent silent miss.
+  Orphaned cache temp files are pruned — the prune pattern never matched the
+  writer's own naming, so they accumulated forever.
+- `yc doctor`'s writable-directory probe removes a stale probe file from a
+  crashed earlier run instead of leaving it behind.
+- `--mock` delivers a deleted message before its tombstone, so the mock stream
+  cannot show a deletion for a message that has not appeared yet.
+
+### Changed
+
+Internal only — behavior is unchanged in every case below.
+
+- Quota accounting moved out of `internal/youtube` into its own `internal/quota`
+  package. It has its own storage, reset schedule, and consumer surface behind
+  `yc quota`, and keeping it alongside the HTTP layer meant a change to how the
+  budget is spent churned the same files as a fix to the wire format.
+- The 240-line poll loop is now a `pollSession` object whose every phase is a named
+  method, and the list-error classifier returns a named decision instead of
+  three unnamed values.
+- The shell's key handling is split into "who owns this keystroke" and "what
+  the keys do"; the four docked UI surfaces share one `dockedPane` geometry
+  value instead of twelve parallel fields; and the message dispatcher delegates
+  uniformly.
+- The text wrap engine has one home and is shared with the animation package,
+  the CLI subcommands share one skeleton instead of six hand-copied ones, and
+  the credential test double moved to `internal/storage/storagetest`.
+
 ## [0.2.0] - 2026-08-15
 
 A five-track improvement pass: security hardening, measured performance work,
@@ -271,6 +356,7 @@ The first release. Everything below is the initial implementation.
   Windows binaries, no snap, no package-manager manifests, no signing,
   notarization, SBOM, or provenance.
 
-[Unreleased]: https://github.com/worxbend/yc/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/worxbend/yc/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/worxbend/yc/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/worxbend/yc/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/worxbend/yc/releases/tag/v0.1.0
