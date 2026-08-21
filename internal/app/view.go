@@ -285,21 +285,30 @@ func (m shellModel) layout() shellLayout {
 		layout.composerFramed = width >= composerFramedMinWidth
 	}
 
-	remaining := height - layout.tabBarHeight - layout.statusHeight - layout.helpHeight - layout.composerHeight
+	// The rows left for chat, recomputed after each reduction below rather
+	// than adjusted. The two shortened copies of this subtraction used to omit
+	// helpHeight - correct only because help had just been set to zero, which
+	// is a fact a reader had to reconstruct from the surrounding branch and
+	// which anyone inserting a step between them would silently break.
+	remainingRows := func() int {
+		return height - layout.tabBarHeight - layout.statusHeight - layout.helpHeight - layout.composerHeight
+	}
+
+	remaining := remainingRows()
 	if remaining < composerShortBlockHeight && layout.composerHeight > composerShortBlockHeight {
 		layout.composerHeight = composerShortBlockHeight
-		remaining = height - layout.tabBarHeight - layout.statusHeight - layout.helpHeight - layout.composerHeight
+		remaining = remainingRows()
 	}
 	if remaining < 1 && layout.helpHeight > 0 {
 		layout.helpHeight = 0
-		remaining = height - layout.tabBarHeight - layout.statusHeight - layout.composerHeight
+		remaining = remainingRows()
 	}
 	if remaining < 1 && layout.composerHeight > 0 {
 		// Everything else has already been reduced; the composer absorbs
 		// whatever is left rather than the frame overflowing.
 		layout.composerHeight = clampMin(height-layout.tabBarHeight-layout.statusHeight, 0)
 		layout.composerFramed = layout.composerHeight >= 3 && width >= composerFramedMinWidth
-		remaining = height - layout.tabBarHeight - layout.statusHeight - layout.composerHeight
+		remaining = remainingRows()
 	}
 
 	// Exactly one docked surface gets height. The list overlays outrank

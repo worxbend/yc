@@ -396,7 +396,7 @@ func (m *shellModel) handleModerationKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return m.handleModerationDurationKey(msg)
 	case moderationStageConfirm:
 		if msg.Type == tea.KeyEsc {
-			m.cancelModeration("moderation canceled")
+			m.cancelModeration("moderation canceled", moderationLevelInfo)
 			return nil, true
 		}
 		if msg.Type == tea.KeyEnter || m.isModerationConfirmKey(msg) {
@@ -407,7 +407,7 @@ func (m *shellModel) handleModerationKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		// through to the ordinary handling below, which is what lets t while
 		// a ban is armed disarm the ban and open the timeout prompt rather
 		// than being swallowed as a cancellation.
-		m.cancelModeration("")
+		m.cancelModeration("", moderationLevelInfo)
 	case moderationStageInFlight:
 		return nil, false
 	}
@@ -446,7 +446,7 @@ func (m shellModel) isModerationConfirmKey(msg tea.KeyMsg) bool {
 func (m *shellModel) handleModerationDurationKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	switch msg.Type {
 	case tea.KeyEsc:
-		m.cancelModeration("timeout canceled")
+		m.cancelModeration("timeout canceled", moderationLevelInfo)
 		return nil, true
 	case tea.KeyBackspace, tea.KeyCtrlH:
 		// Graphemes, not bytes: the field is normally ASCII, but a pasted
@@ -602,11 +602,19 @@ func moderationConfirmPrompt(st moderationState) string {
 }
 
 // cancelModeration clears a pending action, optionally leaving a note.
-func (m *shellModel) cancelModeration(note string) {
+// level is a parameter rather than a fixed moderationLevelInfo because the
+// callers do not agree on it: pressing esc is informational, but a refusal -
+// moderation unavailable, or the chat closed underneath the prompt - is an
+// error. Both used to arrive here, be stamped informational, and then have the
+// level corrected on the following line. The color that stamp produces is what
+// a moderator reads off the status bar, so "nothing happened because you
+// pressed esc" and "nothing happened because you are not allowed to" must not
+// look the same.
+func (m *shellModel) cancelModeration(note string, level moderationLevel) {
 	m.moderation = moderationState{}
-	m.moderationNote = moderationNote{text: note}
+	m.moderationNote = moderationNote{}
 	if note != "" {
-		m.moderationNote.level = moderationLevelInfo
+		m.moderationNote = moderationNote{text: note, level: level}
 	}
 }
 
@@ -625,7 +633,7 @@ func (m *shellModel) commitModeration() tea.Cmd {
 		// without an action behind it, which is a bug rather than a user
 		// error, and issuing a request built from a zero value would be the
 		// worst possible way to find out.
-		m.cancelModeration("")
+		m.cancelModeration("", moderationLevelInfo)
 		return nil
 	}
 	moderator := m.moderator()
@@ -635,15 +643,13 @@ func (m *shellModel) commitModeration() tea.Cmd {
 		if strings.TrimSpace(reason) == "" {
 			reason = ErrModerationUnavailable.Error()
 		}
-		m.cancelModeration("moderation unavailable: " + reason)
-		m.moderationNote.level = moderationLevelError
+		m.cancelModeration("moderation unavailable: "+reason, moderationLevelError)
 		return nil
 	}
 
 	state := m.chats.stateForKey(pending.chatKey)
 	if state == nil {
-		m.cancelModeration("that chat is no longer open")
-		m.moderationNote.level = moderationLevelError
+		m.cancelModeration("that chat is no longer open", moderationLevelError)
 		return nil
 	}
 

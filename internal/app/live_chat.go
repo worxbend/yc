@@ -901,56 +901,52 @@ func (s *liveChatSession) wait(attempts *int, delay *time.Duration) bool {
 // is finished.
 func (s *liveChatSession) forward(transport LiveChatTransport) {
 	var wg sync.WaitGroup
+	key := s.routingKey
 
-	if messages := transport.Messages(); messages != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for message := range messages {
-				message.LiveChatID = s.routingKey
-				s.client.emitMessage(message)
-			}
-		}()
-	}
-	if states := transport.ConnectionStates(); states != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for state := range states {
-				state.ChatID = s.routingKey
-				s.client.emitState(s.ctx, state)
-			}
-		}()
-	}
-	if moderations := transport.Moderations(); moderations != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for event := range moderations {
-				event.LiveChatID = s.routingKey
-				s.client.emitModeration(s.ctx, event)
-			}
-		}()
-	}
-	if rooms := transport.RoomEvents(); rooms != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for event := range rooms {
-				event.LiveChatID = s.routingKey
-				s.client.emitRoomEvent(s.ctx, event)
-			}
-		}()
-	}
-	if polls := transport.Polls(); polls != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for poll := range polls {
-				poll.LiveChatID = s.routingKey
-				s.client.emitPoll(s.ctx, poll)
-			}
-		}()
-	}
+	forwardStream(&wg, transport.Messages(),
+		func(m *youtube.Message) { m.LiveChatID = key },
+		s.client.emitMessage)
+	// ConnectionState spells the routing field ChatID rather than LiveChatID.
+	// The stamp function is per-stream precisely so that difference is visible
+	// here instead of hiding in the middle of a copied goroutine.
+	forwardStream(&wg, transport.ConnectionStates(),
+		func(c *youtube.ConnectionState) { c.ChatID = key },
+		func(c youtube.ConnectionState) { s.client.emitState(s.ctx, c) })
+	forwardStream(&wg, transport.Moderations(),
+		func(e *youtube.ModerationEvent) { e.LiveChatID = key },
+		func(e youtube.ModerationEvent) { s.client.emitModeration(s.ctx, e) })
+	forwardStream(&wg, transport.RoomEvents(),
+		func(e *youtube.RoomEvent) { e.LiveChatID = key },
+		func(e youtube.RoomEvent) { s.client.emitRoomEvent(s.ctx, e) })
+	forwardStream(&wg, transport.Polls(),
+		func(p *youtube.PollState) { p.LiveChatID = key },
+		func(p youtube.PollState) { s.client.emitPoll(s.ctx, p) })
+
 	wg.Wait()
+}
+
+// forwardStream pumps one transport stream into the client, stamping this
+// session's routing key onto every event before it is emitted.
+//
+// The stamp is the invariant the whole multi-chat router rests on. The shell
+// files an event by the key on it, and a transport resolves a liveChatId of
+// its own that the shell may never have seen - so an unstamped event matches
+// no open chat and is dropped. Written out per stream, that one line was
+// repeated five times inside five otherwise identical goroutines, where a
+// sixth stream added by copy-paste could quietly omit it.
+//
+// A nil stream is skipped rather than waited on: not every transport offers
+// every stream.
+func forwardStream[T any](wg *sync.WaitGroup, stream <-chan T, stamp func(*T), emit func(T)) {
+	if stream == nil {
+		return
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for event := range stream {
+			stamp(&event)
+			emit(event)
+		}
+	}()
 }
