@@ -139,7 +139,7 @@ func hostileShellModel(t *testing.T, width, height int) shellModel {
 			}
 		}
 		state.messages = append(state.messages, message)
-		state.observeAuthor(message)
+		state.roster.observe(message)
 	}
 	state.recordModeration(youtube.ModerationEvent{
 		LiveChatID:        keys[0],
@@ -225,7 +225,7 @@ func TestMentionCompletionInsertsWholeClusters(t *testing.T) {
 		message.Author.DisplayName = name
 		message.Author.ChannelID = "UC-hostile"
 		state.messages = append(state.messages, message)
-		state.observeAuthor(message)
+		state.roster.observe(message)
 
 		// Open the composer and type the trigger plus the name's first
 		// cluster, which is what a user reaching for the completion does.

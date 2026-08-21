@@ -21,7 +21,7 @@ func mentionModel(t *testing.T, draft string) shellModel {
 	model.focus = focusComposer
 	state := model.activeChatState()
 	for _, name := range []string{"nova_dev", "pixelwitch", "novacaine", "quinn"} {
-		state.observeAuthor(youtube.Message{
+		state.roster.observe(youtube.Message{
 			ID:     name,
 			Author: youtube.Author{ChannelID: "UC-" + name, DisplayName: name},
 		})

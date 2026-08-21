@@ -157,7 +157,7 @@ func screenshotModel(t *testing.T, themeName, layout string, width, height int) 
 
 	for _, message := range screenshotMessages(at) {
 		state.messages = append(state.messages, message)
-		state.observeAuthor(message)
+		state.roster.observe(message)
 	}
 	state.recordModeration(youtube.ModerationEvent{
 		Type:              youtube.ModerationUserTimedOut,

@@ -1,7 +1,6 @@
 package app
 
 import (
-	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -33,7 +32,7 @@ func (m shellModel) mentionSuggestions() []string {
 
 	lowered := strings.ToLower(prefix)
 	var starts, contains []string
-	for _, name := range state.rosterNames() {
+	for _, name := range state.roster.names() {
 		switch candidate := strings.ToLower(name); {
 		case lowered == "":
 			starts = append(starts, name)
@@ -166,24 +165,4 @@ func wrapIndex(index, count int) int {
 		return 0
 	}
 	return ((index % count) + count) % count
-}
-
-// rosterNames returns the display names seen speaking, sorted, for the mention
-// completion strip.
-func (s *chatState) rosterNames() []string {
-	if s == nil || len(s.roster) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(s.roster))
-	seen := make(map[string]bool, len(s.roster))
-	for _, author := range s.roster {
-		name := strings.TrimSpace(author.DisplayName)
-		if name == "" || seen[strings.ToLower(name)] {
-			continue
-		}
-		seen[strings.ToLower(name)] = true
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
 }

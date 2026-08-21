@@ -339,7 +339,7 @@ func (m shellModel) moderationRole(state *chatState) moderationRole {
 	if owner := strings.TrimSpace(state.target.ChannelID); owner != "" && strings.EqualFold(owner, self) {
 		return moderationRoleOwner
 	}
-	author, seen := state.roster[self]
+	author, seen := state.roster.lookup(self)
 	if !seen {
 		return moderationRoleUnknown
 	}

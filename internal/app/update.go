@@ -1526,7 +1526,7 @@ func (m shellModel) revealRenderOptions(message youtube.Message) render.Options 
 		Role:            authorRole(message.Author),
 		MemberMonths:    message.Author.MemberMonths,
 		MemberLevelName: message.Author.MemberLevelName,
-		FirstSeen:       m.activeChatState().firstSeenAt(message.Author.Identity()),
+		FirstSeen:       m.activeChatState().roster.firstSeenAt(message.Author.Identity()),
 		// Truncated to the minute so a per-frame clock cannot invalidate a
 		// cached row every tick.
 		Now: m.metricsNow().Truncate(time.Minute),

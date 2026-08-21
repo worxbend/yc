@@ -76,7 +76,7 @@ func fingerprint(state *chatState) chatFingerprint {
 		unread:       state.unread,
 		moderations:  len(state.moderations),
 		status:       state.status.Status,
-		rosterSize:   len(state.roster),
+		rosterSize:   state.roster.size(),
 		seenSize:     len(state.seenIDs),
 	}
 }
@@ -125,7 +125,7 @@ func TestEveryPerChatFieldSurvivesASwitchAndIsInvisibleFromElsewhere(t *testing.
 			TargetDisplayName: "spammer-" + key,
 		})
 		for _, message := range state.messages {
-			state.observeAuthor(message)
+			state.roster.observe(message)
 			state.markSeen(message.ID)
 		}
 	}

@@ -370,7 +370,7 @@ func (m *shellModel) appendLocalEcho(sent queuedComposerSend, result youtube.Sen
 	}
 	state.localEchoes[id] = struct{}{}
 	state.appendMessage(message)
-	state.observeAuthor(message)
+	state.roster.observe(message)
 }
 
 // --- reconnect -------------------------------------------------------------

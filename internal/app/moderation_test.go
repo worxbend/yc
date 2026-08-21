@@ -483,9 +483,7 @@ func TestModerationDisabledStatesAreExplainedNotSilent(t *testing.T) {
 			arrange: func(m *shellModel, _ *fakeModeratingClient) {
 				m.identity.ChannelID = "UC-bystander"
 				state := m.activeChatState()
-				state.roster = map[string]youtube.Author{
-					"UC-bystander": {ChannelID: "UC-bystander", DisplayName: "you"},
-				}
+				state.roster.remember(youtube.Author{ChannelID: "UC-bystander", DisplayName: "you"}, time.Time{})
 			},
 			want: "not a moderator",
 		},
@@ -567,9 +565,7 @@ func TestModerationRoleIsFourValued(t *testing.T) {
 			name: "moderator badge from a message they sent",
 			arrange: func(m *shellModel) {
 				m.identity.ChannelID = "UC-mod"
-				m.activeChatState().roster = map[string]youtube.Author{
-					"UC-mod": {ChannelID: "UC-mod", IsModerator: true},
-				}
+				m.activeChatState().roster.remember(youtube.Author{ChannelID: "UC-mod", IsModerator: true}, time.Time{})
 			},
 			want: moderationRoleModerator,
 		},
@@ -577,9 +573,7 @@ func TestModerationRoleIsFourValued(t *testing.T) {
 			name: "plain viewer",
 			arrange: func(m *shellModel) {
 				m.identity.ChannelID = "UC-nobody"
-				m.activeChatState().roster = map[string]youtube.Author{
-					"UC-nobody": {ChannelID: "UC-nobody"},
-				}
+				m.activeChatState().roster.remember(youtube.Author{ChannelID: "UC-nobody"}, time.Time{})
 			},
 			want: moderationRoleViewer,
 		},

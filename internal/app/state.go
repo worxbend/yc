@@ -196,14 +196,8 @@ type chatState struct {
 	sendState    composerSendState
 	sendFeedback string
 
-	// roster is best-effort: YouTube reports no presence, so it is only the
-	// authors seen speaking, used for @mention completion and author meta.
-	// It is bounded by rosterRing, an insertion-ordered ring that evicts the
-	// least recently new speaker; mention completion only ever needs recent
-	// speakers, and firstSeen degrades to "unknown".
-	roster     map[string]youtube.Author
-	rosterRing boundedRing
-	firstSeen  map[string]time.Time
+	// roster is who has been seen speaking here. See chatRoster in roster.go.
+	roster     chatRoster
 	activePoll *youtube.PollState
 
 	live         bool
@@ -426,8 +420,6 @@ func (s *chatStateSet) newState(target youtube.ChatTarget) *chatState {
 		revealQueue:    animation.NewQueue(s.animationConfig, s.clock),
 		activeMessages: make(map[string]youtube.Message),
 		localEchoes:    make(map[string]struct{}),
-		roster:         make(map[string]youtube.Author),
-		firstSeen:      make(map[string]time.Time),
 	}
 }
 
@@ -487,7 +479,7 @@ func (s *chatStateSet) applyMessage(message youtube.Message) (*chatState, bool) 
 	if !state.markSeen(message.ID) {
 		return nil, false
 	}
-	state.observeAuthor(message)
+	state.roster.observe(message)
 	if state.key != s.active {
 		state.appendMessage(message)
 		state.unread++
@@ -707,39 +699,6 @@ func (s *chatState) trimScrollback(limit int) {
 	s.messages = s.messages[:limit]
 }
 
-// observeAuthor records a speaker for @mention completion and author meta.
-// YouTube reports no presence at all, so this is the only roster there is.
-func (s *chatState) observeAuthor(message youtube.Message) {
-	if s == nil {
-		return
-	}
-	identity := message.Author.Identity()
-	if identity == "" {
-		return
-	}
-	if s.roster == nil {
-		s.roster = make(map[string]youtube.Author, rosterRingSize)
-	}
-	if s.firstSeen == nil {
-		s.firstSeen = make(map[string]time.Time, rosterRingSize)
-	}
-	if _, known := s.roster[identity]; !known {
-		// New speaker: take the oldest slot. Every other per-chat structure
-		// is bounded - scrollback, moderations, the seen-ID ring, the row
-		// cache - and without this one a long broadcast with a large
-		// distinct-chatter count grows an Author and a timestamp per person
-		// for the life of the session.
-		if evicted := s.rosterRing.record(identity, rosterRingSize); evicted != "" {
-			delete(s.roster, evicted)
-			delete(s.firstSeen, evicted)
-		}
-	}
-	s.roster[identity] = message.Author
-	if _, ok := s.firstSeen[identity]; !ok && !message.Timestamp.IsZero() {
-		s.firstSeen[identity] = message.Timestamp
-	}
-}
-
 // markSeen records a message ID and reports whether it is new to this chat.
 //
 // A message with no ID is always new: locally generated system rows carry none
@@ -790,16 +749,6 @@ func (s *chatState) flushActiveReveals(cfg animation.Config, clock animation.Clo
 	s.activeOrder = nil
 	s.activeMessages = make(map[string]youtube.Message)
 	s.revealQueue = animation.NewQueue(cfg, clock)
-}
-
-// firstSeenAt reports when an author was first seen in this chat, for the
-// grouped layout's author meta. An unknown author yields the zero time, which
-// the renderer omits rather than guessing.
-func (s *chatState) firstSeenAt(identity string) time.Time {
-	if s == nil || identity == "" {
-		return time.Time{}
-	}
-	return s.firstSeen[identity]
 }
 
 // applyTerminalStatus records the end of a chat. A closed live chat keeps its

@@ -736,7 +736,7 @@ func (m shellModel) authorMeta(message youtube.Message) render.AuthorMeta {
 		Now: m.metricsNow().Truncate(time.Minute),
 	}
 	if state != nil {
-		meta.FirstSeen = state.firstSeenAt(identity)
+		meta.FirstSeen = state.roster.firstSeenAt(identity)
 	}
 	return meta
 }
