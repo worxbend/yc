@@ -462,9 +462,36 @@ func (p *Poller) resolve(ctx context.Context) (ChatTarget, error) {
 	return resolved, nil
 }
 
-// handleListError classifies a failed list call, reporting whether the session
-// should stop, what the next backoff multiplier is, and whether the caller
-// should drop its continuation token and re-prime.
+// listErrorAction is what the poll loop should do about a failed list call.
+//
+// The three outcomes are mutually exclusive, which is the point of naming
+// them: the classifier used to answer with two independent booleans, and
+// "stop and also drop the token" was a state the type allowed but nothing
+// meant.
+type listErrorAction int
+
+const (
+	// listErrorStop ends the session. The failure is terminal - the chat is
+	// gone, the credential is wrong, or the quota is spent - and retrying it
+	// would spend units to be told the same thing.
+	listErrorStop listErrorAction = iota
+	// listErrorRetry waits out the backoff and repeats the same request.
+	listErrorRetry
+	// listErrorDropToken discards the continuation token and re-primes from
+	// the head of the chat, because the cursor was rejected rather than the
+	// request.
+	listErrorDropToken
+)
+
+// listErrorDecision is the classifier's answer: what to do, and where the
+// backoff ladder now stands.
+type listErrorDecision struct {
+	action  listErrorAction
+	backoff float64
+}
+
+// handleListError classifies a failed list call into the action the session
+// should take next and the backoff multiplier that goes with it.
 //
 // serverInterval is the cadence YouTube last advised; it is the base the
 // backoff ceiling has to be computed against, because NextInterval multiplies
@@ -481,7 +508,7 @@ func (p *Poller) handleListError(
 	backoff float64,
 	serverInterval time.Duration,
 	canDropToken bool,
-) (stop bool, next float64, dropToken bool) {
+) listErrorDecision {
 	now := p.cfg.Now()
 	// The ceiling has to be measured against the interval actually in force.
 	// Using MinInterval here let a 5s server cadence stretch a 60s cap to
@@ -503,7 +530,7 @@ func (p *Poller) handleListError(
 			Err:    err,
 			At:     now,
 		})
-		return true, backoff, false
+		return listErrorDecision{action: listErrorStop, backoff: backoff}
 
 	case canDropToken && (errors.Is(err, ErrMessageRejected) || errors.Is(err, ErrChatNotFound)):
 		// A 400 or a 404 on the list path, with a continuation token in
@@ -517,7 +544,7 @@ func (p *Poller) handleListError(
 		// The recovery is available once per session (canDropToken), so a
 		// chat that really has ended still ends: the token-less retry hits
 		// the terminal cases below and stops there, one call later.
-		next = climb(backoff, base, backoffTransientCap)
+		next := climb(backoff, base, backoffTransientCap)
 		p.emitState(ctx, ConnectionState{
 			Status: ConnectionReconnecting,
 			ChatID: target.LiveChatID,
@@ -525,7 +552,7 @@ func (p *Poller) handleListError(
 			Err:    err,
 			At:     now,
 		})
-		return false, next, true
+		return listErrorDecision{action: listErrorDropToken, backoff: next}
 
 	case errors.Is(err, ErrChatEnded), errors.Is(err, ErrChatDisabled), errors.Is(err, ErrChatNotFound):
 		p.setState(PollerEnded)
@@ -542,7 +569,7 @@ func (p *Poller) handleListError(
 			Err:    err,
 			At:     now,
 		})
-		return true, backoff, false
+		return listErrorDecision{action: listErrorStop, backoff: backoff}
 
 	case errors.Is(err, ErrAuthFailed), errors.Is(err, ErrNotPermitted), errors.Is(err, ErrNoCredentials):
 		// One refresh is the credential holder's job, above this layer. A
@@ -556,10 +583,10 @@ func (p *Poller) handleListError(
 			Err:    err,
 			At:     now,
 		})
-		return true, backoff, false
+		return listErrorDecision{action: listErrorStop, backoff: backoff}
 
 	case errors.Is(err, ErrRateLimited):
-		next = climb(backoff, base, backoffRateLimitCap)
+		next := climb(backoff, base, backoffRateLimitCap)
 		p.emitState(ctx, ConnectionState{
 			Status: ConnectionReconnecting,
 			ChatID: target.LiveChatID,
@@ -567,10 +594,10 @@ func (p *Poller) handleListError(
 			Err:    err,
 			At:     now,
 		})
-		return false, next, false
+		return listErrorDecision{action: listErrorRetry, backoff: next}
 
 	case Retryable(err):
-		next = climb(backoff, base, backoffTransientCap)
+		next := climb(backoff, base, backoffTransientCap)
 		p.emitState(ctx, ConnectionState{
 			Status: ConnectionReconnecting,
 			ChatID: target.LiveChatID,
@@ -578,7 +605,7 @@ func (p *Poller) handleListError(
 			Err:    err,
 			At:     now,
 		})
-		return false, next, false
+		return listErrorDecision{action: listErrorRetry, backoff: next}
 
 	default:
 		p.setState(PollerEnded)
@@ -589,7 +616,7 @@ func (p *Poller) handleListError(
 			Err:    err,
 			At:     now,
 		})
-		return true, backoff, false
+		return listErrorDecision{action: listErrorStop, backoff: backoff}
 	}
 }
 

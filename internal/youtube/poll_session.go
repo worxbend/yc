@@ -100,12 +100,12 @@ func (s *pollSession) resolveTarget(ctx context.Context) bool {
 		// ladder instead of stranding the chat in a state it cannot leave.
 		// Resolution holds no continuation token, so the token-drop recovery
 		// is not available here.
-		stop, next, _ := s.p.handleListError(ctx, resolved, err, s.backoff, 0, false)
-		if stop {
+		decision := s.p.handleListError(ctx, resolved, err, s.backoff, 0, false)
+		if decision.action == listErrorStop {
 			s.p.parkQuietly(ctx)
 			return false
 		}
-		s.backoff = next
+		s.backoff = decision.backoff
 		s.p.cfg.Sleep(ctx, NextInterval(0, 0, s.p.cfg.MinInterval, s.p.cfg.MaxInterval, s.backoff))
 	}
 }
@@ -173,14 +173,14 @@ func (s *pollSession) list(ctx context.Context) (ListResult, error) {
 // it earned, and reports whether the session continues.
 func (s *pollSession) recoverFromListError(ctx context.Context, err error) bool {
 	p := s.p
-	stop, nextBackoff, dropToken := p.handleListError(
+	decision := p.handleListError(
 		ctx, s.target, err, s.backoff, s.serverInterval, s.pageToken != "" && !s.tokenRetried,
 	)
-	if stop {
+	if decision.action == listErrorStop {
 		p.park(ctx, err)
 		return false
 	}
-	if dropToken {
+	if decision.action == listErrorDropToken {
 		// The continuation token was rejected, not the request. Drop it and
 		// re-prime from the head of the chat rather than ending a live
 		// session over a stale cursor - the dedupe ring keeps the re-primed
@@ -194,7 +194,7 @@ func (s *pollSession) recoverFromListError(ctx context.Context, err error) bool 
 		s.priming = true
 		p.resetPageToken()
 	}
-	s.backoff = nextBackoff
+	s.backoff = decision.backoff
 	p.setState(PollerBackoff)
 	p.setMode(quota.ModeBackoff)
 	// The budget floor applies to failures too: Google charges a dispatched
