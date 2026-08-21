@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -97,6 +98,42 @@ var snippetTypes = map[string]EventKind{
 	"chatEndedEvent":              EventKindChatEnded,
 	"tombstone":                   EventKindTombstone,
 	"invalidType":                 EventKindInvalidType,
+}
+
+// AllEventKinds returns every event kind yc can produce: one for each
+// documented snippet.type, plus EventKindUnknown, which is what an
+// undocumented one degrades into. The order is stable.
+//
+// It is derived from snippetTypes rather than written out so that tests can
+// range over it. A hand-copied list in a test is not an exhaustiveness guard:
+// it passes just as happily when it is out of date as when it is complete, so
+// the one thing it exists to catch - a kind added here and forgotten
+// elsewhere - is the thing it cannot see.
+func AllEventKinds() []EventKind {
+	kinds := make([]EventKind, 0, len(snippetTypes)+1)
+	seen := make(map[EventKind]bool, len(snippetTypes)+1)
+	for _, kind := range snippetTypes {
+		if seen[kind] {
+			continue
+		}
+		seen[kind] = true
+		kinds = append(kinds, kind)
+	}
+	kinds = append(kinds, EventKindUnknown)
+	sort.Slice(kinds, func(i, j int) bool { return kinds[i] < kinds[j] })
+	return kinds
+}
+
+// DocumentedSnippetTypes returns every snippet.type yc decodes, in stable
+// order. Same reason as AllEventKinds: it is the one place the wire vocabulary
+// is written down, so nothing else has to copy it.
+func DocumentedSnippetTypes() []string {
+	types := make([]string, 0, len(snippetTypes))
+	for snippetType := range snippetTypes {
+		types = append(types, snippetType)
+	}
+	sort.Strings(types)
+	return types
 }
 
 // EventKindFromSnippetType normalizes a raw snippet.type. Unknown values map

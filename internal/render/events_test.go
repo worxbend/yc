@@ -199,43 +199,22 @@ func TestEveryEventKindHasAGoldenFixture(t *testing.T) {
 
 	// Every kind reachable from a documented snippet.type, plus the unknown
 	// fallback that a future YouTube event degrades into.
-	kinds := []youtube.EventKind{
-		youtube.EventKindText,
-		youtube.EventKindSuperChat,
-		youtube.EventKindSuperSticker,
-		youtube.EventKindNewSponsor,
-		youtube.EventKindMemberMilestone,
-		youtube.EventKindMembershipGifting,
-		youtube.EventKindGiftMembershipReceived,
-		youtube.EventKindGift,
-		youtube.EventKindPoll,
-		youtube.EventKindFanFunding,
-		youtube.EventKindMessageDeleted,
-		youtube.EventKindMessageRetracted,
-		youtube.EventKindUserBanned,
-		youtube.EventKindSponsorOnlyModeStarted,
-		youtube.EventKindSponsorOnlyModeEnded,
-		youtube.EventKindChatEnded,
-		youtube.EventKindTombstone,
-		youtube.EventKindInvalidType,
-		youtube.EventKindUnknown,
-	}
-	for _, kind := range kinds {
+	//
+	// The list comes from internal/youtube rather than being written out here.
+	// A hand-copied list looks like an exhaustiveness guard and is not one: it
+	// passes when it is stale, which is exactly when the guard is needed. Now
+	// adding an event kind in model.go fails this test until a fixture exists.
+	for _, kind := range youtube.AllEventKinds() {
 		if !covered[kind] {
 			t.Errorf("event kind %q has no golden fixture", kind)
 		}
 	}
 
 	// And every documented snippet.type must normalize into one of them, so a
-	// new wire type cannot slip past both this list and the golden.
-	for _, snippetType := range []string{
-		"textMessageEvent", "superChatEvent", "superStickerEvent", "newSponsorEvent",
-		"memberMilestoneChatEvent", "membershipGiftingEvent", "giftMembershipReceivedEvent",
-		"giftEvent", "pollEvent", "fanFundingEvent", "messageDeletedEvent",
-		"messageRetractedEvent", "userBannedEvent", "sponsorOnlyModeStartedEvent",
-		"sponsorOnlyModeEndedEvent", "chatEndedEvent", "tombstone", "invalidType",
-		"hologramEventFromTheFuture",
-	} {
+	// new wire type cannot slip past both this list and the golden. The
+	// undocumented spelling is appended to prove the unknown fallback is
+	// itself covered.
+	for _, snippetType := range append(youtube.DocumentedSnippetTypes(), "hologramEventFromTheFuture") {
 		if kind := youtube.EventKindFromSnippetType(snippetType); !covered[kind] {
 			t.Errorf("snippet.type %q normalizes to %q, which has no golden fixture", snippetType, kind)
 		}

@@ -70,7 +70,7 @@ is deliberate: a newly added `EventKind` does not require touching every layout.
 `unknown`. `system` is never produced by the transport — it is the class for rows
 `yc` composes locally.
 
-### Two events are on two streams at once
+### Some events are on two streams at once
 
 `sponsorOnlyModeStartedEvent`, `sponsorOnlyModeEndedEvent`, and `pollEvent`
 produce **both** a `RoomEvent`/`PollState` *and* a readable chat row. The room
