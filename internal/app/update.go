@@ -86,10 +86,7 @@ func (m shellModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.ok {
 			return m, nil
 		}
-		if state := m.chats.stateForChatID(msg.poll.LiveChatID); state != nil {
-			poll := msg.poll
-			state.activePoll = &poll
-		}
+		m.applyPoll(msg.poll)
 		return m, m.nextClientPollCommand()
 
 	case composerSendCompletedMsg:
@@ -104,15 +101,7 @@ func (m shellModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case identityResolvedMsg:
-		if msg.err == nil {
-			m.identity = msg.identity
-			m.identityKnown = true
-			if handle := strings.TrimSpace(msg.identity.Handle); handle != "" {
-				m.mentionHandle = handle
-			} else if name := strings.TrimSpace(msg.identity.DisplayName); name != "" {
-				m.mentionHandle = name
-			}
-		}
+		m.applyIdentity(msg)
 		return m, nil
 
 	case targetResolvedMsg:
@@ -1382,6 +1371,42 @@ func (m shellModel) handleConnectionState(msg chatClientConnectionStateMsg) (tea
 // A moderation event is an instruction to remove text the viewer can see, so it
 // is never rendered as another chat line: doing that would put the removed
 // words back in front of the audience.
+// applyPoll files a poll update against the chat it belongs to.
+//
+// The poll is copied into a local before its address is taken: ranging or
+// assigning straight from the message would leave the chat pointing at
+// storage the next update overwrites.
+func (m *shellModel) applyPoll(poll youtube.PollState) {
+	state := m.chats.stateForChatID(poll.LiveChatID)
+	if state == nil {
+		return
+	}
+	state.activePoll = &poll
+}
+
+// applyIdentity records who yc is signed in as.
+//
+// A failed lookup is not an error worth surfacing: the interface works
+// signed-out, so an unresolved identity just leaves the fields unset.
+//
+// mentionHandle is what "@" completes to when the user mentions themselves.
+// The @handle is preferred because that is what YouTube matches on; the
+// display name is the fallback for an account that has not claimed one.
+func (m *shellModel) applyIdentity(msg identityResolvedMsg) {
+	if msg.err != nil {
+		return
+	}
+	m.identity = msg.identity
+	m.identityKnown = true
+	if handle := strings.TrimSpace(msg.identity.Handle); handle != "" {
+		m.mentionHandle = handle
+		return
+	}
+	if name := strings.TrimSpace(msg.identity.DisplayName); name != "" {
+		m.mentionHandle = name
+	}
+}
+
 func (m *shellModel) applyModeration(event youtube.ModerationEvent) {
 	state := m.chats.stateForChatID(event.LiveChatID)
 	if state == nil {
