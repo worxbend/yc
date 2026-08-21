@@ -215,6 +215,64 @@ Still not verified here: everything in *Credentialed YouTube Validation: NONE*
 above, which this session does not touch, and the GitHub Actions workflows, which
 cannot be executed off a runner.
 
+## 2026-08-21 v0.2.1 Release Gate
+
+Environment: host Linux 7.1.6 (CachyOS) x86-64, Go 1.26.6, Docker 29.7.2.
+No credentials of any kind were present or used. The toolchain gate below ran
+in the ordinary working checkout, **not** under a throwaway `HOME`/XDG — only
+the dry run's smokes were isolated, by the script's own `mktemp -d` harness.
+That is a weaker isolation claim than the 2026-08-08 session above and is
+recorded as such rather than implied to match it.
+
+Toolchain gate, all clean: `gofmt -l .` (empty), `go build ./...`,
+`go vet ./...`, `go tool staticcheck ./...`, `go test ./...`,
+`go test -race ./...`, and `go tool govulncheck ./...` ("No vulnerabilities
+found"). All 14 packages pass under the race detector.
+
+Lint: `golangci-lint run` at **v2.12.2** — the version `.github/workflows/ci.yml`
+pins — reports `0 issues.` This is run separately because it is not part of the
+local `go build`/`go test` gate, and a previous release learned that the hard
+way.
+
+Release artifacts: `scripts/release-dry-run.sh --version v0.2.1` passes end to
+end, including the Docker build and the container smokes (`--help`,
+`--version`, `doctor`, `config show`, `chat --mock`). The image reports
+`yc 0.2.1`, so the version stamp is proven before the tag exists.
+
+CI and publication: CI run `32473810665` on `a8e543d` (the pushed `main`)
+concluded **success** before the tag was created. Tag `v0.2.1` triggered
+release run `32474012629`, which also concluded **success**. Conclusions were
+read with `gh run view <id> --json conclusion`, not from a piped `gh run watch`,
+whose exit code is the pipe's and not the run's.
+
+Published release verified as a consumer, not on the workflow's word: all seven
+expected assets are present; `checksums.txt` verifies against the downloaded
+`yc_linux_amd64`, `yc_linux_arm64`, and `install.sh` via `sha256sum -c`; and
+the downloaded amd64 binary reports `yc 0.2.1`.
+
+Worth recording because it looked like a failure and was not: for roughly two
+minutes after publication, anonymous `curl` of `yc_linux_amd64` returned
+**HTTP 504** while `yc_linux_arm64` and the v0.2.0 assets served normally. The
+same asset fetched cleanly through the authenticated API path, and its digest
+matched the published checksum, so the object was intact the whole time. It
+began serving 200 over plain `curl` shortly after. This was GitHub's asset CDN
+warming a new blob, not a bad upload — but a release verified only in that
+window would have looked broken.
+
+Skipped this session, with reasons:
+
+- **Interactive terminal checks.** No tmux/pty walkthrough was run. The
+  2026-08-08 session's geometry and keyboard evidence stands; nothing in
+  v0.2.1 changes rendering or key handling in a way that session would not
+  still cover, but this session did not re-witness it.
+- **The curl-pipe installer end to end.** `install.sh` was downloaded and its
+  checksum verified; it was not executed, so `install.sh | bash` remains
+  witnessed only by the 2026-08-08 session and `scripts/install_test.sh`.
+- **Everything in *Credentialed YouTube Validation: NONE*.** Untouched. This
+  release changes OAuth callback validation and credential-file handling, and
+  **none of it has been exercised against Google.** The security fix in this
+  release is reviewed and unit-tested, not witnessed live.
+
 ## How To Add A Session
 
 Copy the shape above. Record:
