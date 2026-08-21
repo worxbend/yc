@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/worxbend/yc/internal/app"
 	"github.com/worxbend/yc/internal/config"
@@ -314,7 +313,7 @@ func runLiveChatSession(cfg config.Config, liveChatID string, stdout, stderr io.
 		return ExitUsage
 	}
 
-	redactor := startupRedactor(cfg)
+	redactor := configRedactor(cfg)
 	record := credentialRecordFromConfig(cfg, status.Record)
 	holder := newCredentialHolder(record, status.Store, newTokenRefresher(cfg))
 
@@ -875,10 +874,6 @@ Prints the effective configuration with every secret redacted.
 
 `
 )
-
-// loginTimeoutDefault bounds how long `yc login` waits for the browser round
-// trip before giving the terminal back.
-const loginTimeoutDefault = 5 * time.Minute
 
 // chatFlags collects repeated --chat values and comma-separated --chats values
 // into one accumulating list, so both spellings can be bound to the same

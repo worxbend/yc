@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 	"time"
 
@@ -71,12 +70,10 @@ func printQuotaSnapshot(stdout io.Writer, cfg config.Config, snapshot quota.Snap
 		fmt.Fprintln(stdout, "  (nothing charged today)")
 		return
 	}
-	endpoints := make([]string, 0, len(snapshot.ByEndpoint))
-	for endpoint := range snapshot.ByEndpoint {
-		endpoints = append(endpoints, endpoint)
-	}
-	sort.Strings(endpoints)
-	for _, endpoint := range endpoints {
+	// quota.SortedEndpoints rather than a local sort: the quota package owns
+	// the reserved bookkeeping key that must never be shown, and listing a
+	// tally is its job. `yc doctor` already goes through it.
+	for _, endpoint := range quota.SortedEndpoints(snapshot.ByEndpoint) {
 		fmt.Fprintf(stdout, "  %-26s %d\n", endpoint, snapshot.ByEndpoint[endpoint])
 	}
 }

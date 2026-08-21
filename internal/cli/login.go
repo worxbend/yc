@@ -65,11 +65,10 @@ touched: yc did not write them and will not remove them.
 Flags:
 `
 
-// Login defaults. The timeout bounds how long the terminal is held hostage by a
-// browser tab the user may have already closed.
-const (
-	defaultLoginTimeout = loginTimeoutDefault
-)
+// defaultLoginTimeout bounds how long `yc login` waits for the browser round
+// trip before giving the terminal back - how long the terminal is held hostage
+// by a tab the user may have already closed.
+const defaultLoginTimeout = 5 * time.Minute
 
 // loginCallbackWaiter is the loopback listener the browser redirects to.
 type loginCallbackWaiter interface {
@@ -248,7 +247,7 @@ func failLogin(
 // the port is known, and an authorization URL naming a port yc failed to bind
 // would send the user to a page whose callback goes nowhere.
 func performLogin(cfg config.Config, redirectURI string, scopes []auth.Scope, timeout time.Duration, logger debuglog.Logger, stdout, stderr io.Writer) int {
-	baseRedactor := startupRedactor(cfg)
+	baseRedactor := configRedactor(cfg)
 
 	flow, err := newLoginFlow(cfg)
 	if err != nil {

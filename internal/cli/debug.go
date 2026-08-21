@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/worxbend/yc/internal/auth"
@@ -25,41 +24,9 @@ const (
 	debugLogFileMode fs.FileMode = 0o600
 )
 
-// debugLogFlag is a tri-state boolean flag.
-//
-// It distinguishes "flag absent" from "--debug-log=false", which matters
-// because only the explicit false may override debug_logging = true in the
-// config file.
-type debugLogFlag struct {
-	set   bool
-	value bool
-}
-
-// String renders the flag's current value.
-func (f *debugLogFlag) String() string {
-	if f == nil || !f.set {
-		return ""
-	}
-	return strconv.FormatBool(f.value)
-}
-
-// Set parses a boolean value.
-func (f *debugLogFlag) Set(value string) error {
-	parsed, err := strconv.ParseBool(strings.TrimSpace(value))
-	if err != nil {
-		return err
-	}
-	f.value = parsed
-	f.set = true
-	return nil
-}
-
-// IsBoolFlag lets the flag package accept a bare --debug-log.
-func (f *debugLogFlag) IsBoolFlag() bool { return true }
-
 // debugFlagOptions carries the two debug flags every subcommand accepts.
 type debugFlagOptions struct {
-	enabled debugLogFlag
+	enabled optionalBoolFlag
 	path    string
 }
 
@@ -138,6 +105,11 @@ func openDebugLogger(cfg config.Config, stderr io.Writer) (debuglog.Logger, io.C
 }
 
 // configRedactor returns a redactor loaded with every secret the config knows.
+//
+// This is the one place that answers "what counts as a secret in a Config".
+// It feeds both the debug log and the startup error paths, so a credential
+// added to Config and forgotten here would be written verbatim into a log file
+// or printed to the terminal - both outputs users paste into bug reports.
 func configRedactor(cfg config.Config) auth.Redactor {
 	return auth.NewRedactor(
 		auth.NewSecret(cfg.Google.ClientSecret),

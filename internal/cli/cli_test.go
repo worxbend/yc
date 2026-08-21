@@ -67,12 +67,12 @@ func TestChatFlagsAccumulateAcrossSpellings(t *testing.T) {
 }
 
 func TestDebugLogFlagIsTriState(t *testing.T) {
-	var absent debugLogFlag
+	var absent optionalBoolFlag
 	if absent.set {
 		t.Error("an unset flag must not report as set")
 	}
 
-	var explicit debugLogFlag
+	var explicit optionalBoolFlag
 	if err := explicit.Set("false"); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
@@ -333,7 +333,7 @@ func TestChatTargetsPutAnExplicitLiveChatIDFirst(t *testing.T) {
 func TestSafeStartupErrorRedactsEverything(t *testing.T) {
 	cfg := config.Default()
 	cfg.Google.AccessToken = fakeToken
-	redactor := startupRedactor(cfg)
+	redactor := configRedactor(cfg)
 	got := safeStartupError(redactor, errNamed("request failed with "+fakeToken))
 	if strings.Contains(got, fakeToken) {
 		t.Fatalf("startup error leaked a token: %q", got)

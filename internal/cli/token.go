@@ -63,7 +63,7 @@ func validateAccessToken(ctx context.Context, cfg config.Config, validator token
 		return tokenValidation{Detail: "token validation is unavailable; continuing to the API"}
 	}
 
-	redactor := startupRedactor(cfg)
+	redactor := configRedactor(cfg)
 	info, err := validator.TokenInfo(ctx, auth.NewSecret(token))
 	if err != nil {
 		detail := safeStartupError(redactor, err)

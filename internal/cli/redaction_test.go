@@ -216,7 +216,7 @@ func TestNoExportedStartupTypeFormatsACredential(t *testing.T) {
 		"cli.setupFlagOptions":       setupFlagOptions{cfgPath: "/tmp/config.toml"},
 		"cli.debugFlagOptions":       debugFlagOptions{path: "/tmp/debug.log"},
 		"config.Config.Redacted":     cfg.RedactedString(),
-		"auth.Redactor":              startupRedactor(cfg),
+		"auth.Redactor":              configRedactor(cfg),
 		"cli.ledgerQuotaReporter":    ledgerQuotaReporter{},
 		"storage.CredentialRecord.R": record.Redactor(),
 	}
@@ -300,7 +300,7 @@ func TestSafeStartupErrorRemovesEveryConfiguredCredential(t *testing.T) {
 	cfg.Google.AccessToken = leakAccessToken
 	cfg.Google.RefreshToken = leakRefreshToken
 	cfg.YouTube.APIKey = leakAPIKey
-	redactor := startupRedactor(cfg)
+	redactor := configRedactor(cfg)
 
 	message := fmt.Sprintf("request failed: token=%s refresh=%s secret=%s key=%s",
 		leakAccessToken, leakRefreshToken, leakClientSecret, leakAPIKey)

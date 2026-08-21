@@ -344,17 +344,6 @@ func quotaWarning(cfg config.Config) string {
 		"unset it to let yc stretch its cadence and last the day.", cost, polls)
 }
 
-// startupRedactor returns a redactor loaded with every credential in play, for
-// the error paths that report a failure the transport produced.
-func startupRedactor(cfg config.Config) auth.Redactor {
-	return auth.NewRedactor(
-		auth.NewSecret(cfg.Google.ClientSecret),
-		auth.NewSecret(cfg.Google.AccessToken),
-		auth.NewSecret(cfg.Google.RefreshToken),
-		auth.NewSecret(cfg.YouTube.APIKey),
-	)
-}
-
 // safeStartupError renders an error for the terminal with both the config-level
 // display redaction and every known secret removed.
 func safeStartupError(redactor auth.Redactor, err error) string {

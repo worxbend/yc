@@ -236,7 +236,7 @@ func TestDebugFlagOverridesAreTriState(t *testing.T) {
 	}
 
 	var enabled config.Overrides
-	on := debugLogFlag{}
+	on := optionalBoolFlag{}
 	if err := on.Set("true"); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
@@ -254,15 +254,15 @@ func TestDebugFlagOverridesAreTriState(t *testing.T) {
 		t.Errorf("path = %q; a whitespace path must not override", blankPath.DebugLogPath)
 	}
 
-	var bad debugLogFlag
+	var bad optionalBoolFlag
 	if err := bad.Set("perhaps"); err == nil {
 		t.Error("an unparseable --debug-log value must be a usage error")
 	}
-	var nilFlag *debugLogFlag
+	var nilFlag *optionalBoolFlag
 	if got := nilFlag.String(); got != "" {
 		t.Errorf("nil String() = %q", got)
 	}
-	if !(&debugLogFlag{}).IsBoolFlag() {
+	if !(&optionalBoolFlag{}).IsBoolFlag() {
 		t.Error("the bare --debug-log spelling must be accepted")
 	}
 }
