@@ -575,15 +575,7 @@ func (p *Poller) handleListError(
 		// One refresh is the credential holder's job, above this layer. A
 		// poller that retried here would spend quota proving the same
 		// credential is still wrong.
-		p.setState(PollerEnded)
-		p.emitState(ctx, ConnectionState{
-			Status: ConnectionFailed,
-			ChatID: target.LiveChatID,
-			Detail: safeDetail(err),
-			Err:    err,
-			At:     now,
-		})
-		return listErrorDecision{action: listErrorStop, backoff: backoff}
+		return p.failTerminally(ctx, target, err, now, backoff)
 
 	case errors.Is(err, ErrRateLimited):
 		next := climb(backoff, base, backoffRateLimitCap)
@@ -608,16 +600,34 @@ func (p *Poller) handleListError(
 		return listErrorDecision{action: listErrorRetry, backoff: next}
 
 	default:
-		p.setState(PollerEnded)
-		p.emitState(ctx, ConnectionState{
-			Status: ConnectionFailed,
-			ChatID: target.LiveChatID,
-			Detail: safeDetail(err),
-			Err:    err,
-			At:     now,
-		})
-		return listErrorDecision{action: listErrorStop, backoff: backoff}
+		return p.failTerminally(ctx, target, err, now, backoff)
 	}
+}
+
+// failTerminally reports a fault the poller cannot retry its way out of and
+// ends the session.
+//
+// Two arms of the classifier reach it: a rejected credential, and an error it
+// does not recognize. They stay separate cases because their reasons differ
+// and the credential case documents its own - but what they do about it is
+// identical, and writing it out twice made the two arms look like they might
+// differ somewhere in those eight lines.
+func (p *Poller) failTerminally(
+	ctx context.Context,
+	target ChatTarget,
+	err error,
+	now time.Time,
+	backoff float64,
+) listErrorDecision {
+	p.setState(PollerEnded)
+	p.emitState(ctx, ConnectionState{
+		Status: ConnectionFailed,
+		ChatID: target.LiveChatID,
+		Detail: safeDetail(err),
+		Err:    err,
+		At:     now,
+	})
+	return listErrorDecision{action: listErrorStop, backoff: backoff}
 }
 
 // climb advances the backoff multiplier, capped so the resulting interval
