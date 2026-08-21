@@ -130,10 +130,9 @@ type chatState struct {
 	// a background chat appends statically so an off-screen flood cannot grow
 	// a reveal backlog.
 	revealQueue *animation.Queue
-	// activeOrder and activeMessages track the messages currently mid-reveal,
-	// which are not yet in messages.
-	activeOrder    []string
-	activeMessages map[string]youtube.Message
+	// active tracks the messages currently mid-reveal, which are not yet in
+	// messages. See activeReveals in active_reveals.go.
+	active activeReveals
 	// localEchoes marks IDs yc printed itself so the real message arriving
 	// from the poller replaces the echo instead of duplicating it.
 	localEchoes map[string]struct{}
@@ -410,9 +409,9 @@ func (s *chatStateSet) newState(target youtube.ChatTarget) *chatState {
 			Status: youtube.ConnectionDisconnected,
 			ChatID: target.LiveChatID,
 		},
-		revealQueue:    animation.NewQueue(s.animationConfig, s.clock),
-		activeMessages: make(map[string]youtube.Message),
-		localEchoes:    make(map[string]struct{}),
+		revealQueue: animation.NewQueue(s.animationConfig, s.clock),
+		active:      activeReveals{messages: make(map[string]youtube.Message)},
+		localEchoes: make(map[string]struct{}),
 	}
 }
 
@@ -704,19 +703,12 @@ func (s *chatState) trimScrollback(limit int) {
 // messages in activeMessages forever: invisible to the filters, to j/k, and to
 // the retained history the user scrolls back through.
 func (s *chatState) flushActiveReveals(cfg animation.Config, clock animation.Clock) {
-	if s == nil || len(s.activeOrder) == 0 {
+	if s == nil || s.active.len() == 0 {
 		return
 	}
-	for _, id := range s.activeOrder {
-		message, ok := s.activeMessages[id]
-		if !ok {
-			continue
-		}
-		delete(s.activeMessages, id)
+	for _, message := range s.active.drain() {
 		s.appendMessage(message)
 	}
-	s.activeOrder = nil
-	s.activeMessages = make(map[string]youtube.Message)
 	s.revealQueue = animation.NewQueue(cfg, clock)
 }
 
@@ -773,9 +765,9 @@ func (s *chatState) redact(match func(youtube.Message) bool, keepRollback bool) 
 		s.messages[i].Text = ""
 		s.messages[i].Fragments = nil
 	}
-	for id, message := range s.activeMessages {
+	s.active.each(func(id string, message youtube.Message) {
 		if message.Deleted || !match(message) {
-			continue
+			return
 		}
 		if keepRollback {
 			entries = append(entries, moderationRollbackEntry{
@@ -788,8 +780,8 @@ func (s *chatState) redact(match func(youtube.Message) bool, keepRollback bool) 
 		message.Deleted = true
 		message.Text = ""
 		message.Fragments = nil
-		s.activeMessages[id] = message
-	}
+		s.active.update(id, message)
+	})
 	return entries
 }
 
@@ -820,8 +812,7 @@ func (s *chatState) clearHistory(cfg animation.Config, clock animation.Clock) {
 	}
 	s.messages = nil
 	s.scrollOffset = 0
-	s.activeOrder = nil
-	s.activeMessages = make(map[string]youtube.Message)
+	s.active.clear()
 	s.localEchoes = make(map[string]struct{})
 	// The dedupe ring goes with the history. Keeping it would make a clear
 	// followed by a reconnect suppress the very backlog the reconnect fetched,
@@ -849,19 +840,6 @@ func (s *chatState) recordModeration(event youtube.ModerationEvent) {
 	s.moderations = append(s.moderations, event)
 	if len(s.moderations) > maxActivityEntries {
 		s.moderations = append(s.moderations[:0:0], s.moderations[len(s.moderations)-maxActivityEntries:]...)
-	}
-}
-
-// removeActiveReveal drops one in-flight reveal from the ordered list.
-func (s *chatState) removeActiveReveal(id string) {
-	if s == nil {
-		return
-	}
-	for i, existing := range s.activeOrder {
-		if existing == id {
-			s.activeOrder = append(s.activeOrder[:i], s.activeOrder[i+1:]...)
-			return
-		}
 	}
 }
 

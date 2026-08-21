@@ -1503,8 +1503,7 @@ func (m *shellModel) enqueueMessage(message youtube.Message) tea.Cmd {
 		state.appendMessage(message)
 		return nil
 	}
-	state.activeOrder = append(state.activeOrder, revealID)
-	state.activeMessages[revealID] = message
+	state.active.add(revealID, message)
 	return m.scheduleRevealTick()
 }
 
@@ -1626,12 +1625,10 @@ func (m *shellModel) completeReveals(completed []animation.CompletedReveal) {
 		return
 	}
 	for _, reveal := range completed {
-		message, ok := state.activeMessages[reveal.ID]
+		message, ok := state.active.take(reveal.ID)
 		if !ok {
 			continue
 		}
-		delete(state.activeMessages, reveal.ID)
-		state.removeActiveReveal(reveal.ID)
 		state.appendMessage(message)
 	}
 }
@@ -1644,13 +1641,9 @@ func (m *shellModel) refreshActiveRevealRows() {
 	if state == nil || state.revealQueue == nil || state.revealQueue.Len() == 0 {
 		return
 	}
-	for _, id := range state.activeOrder {
-		message, ok := state.activeMessages[id]
-		if !ok {
-			continue
-		}
+	state.active.each(func(id string, message youtube.Message) {
 		state.revealQueue.ReplaceRows(id, render.Rows(message, m.revealRenderOptions(message)))
-	}
+	})
 }
 
 // --- composer --------------------------------------------------------------

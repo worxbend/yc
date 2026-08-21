@@ -736,14 +736,14 @@ func rollbackModeration(state *chatState, entries []moderationRollbackEntry) int
 	restored := 0
 	for _, entry := range entries {
 		if entry.active {
-			message, ok := state.activeMessages[entry.id]
+			message, ok := state.active.messageFor(entry.id)
 			if !ok {
 				continue
 			}
 			message.Deleted = false
 			message.Text = entry.text
 			message.Fragments = entry.fragments
-			state.activeMessages[entry.id] = message
+			state.active.update(entry.id, message)
 			restored++
 			continue
 		}

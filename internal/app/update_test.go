@@ -589,7 +589,7 @@ func TestMessagesArriveWithoutAnimationWhenAnimationIsOff(t *testing.T) {
 	if len(state.messages) != 1 {
 		t.Fatalf("messages = %d, want the message appended statically", len(state.messages))
 	}
-	if len(state.activeOrder) != 0 {
+	if state.active.len() != 0 {
 		t.Fatal("no reveal should be queued while animation is off")
 	}
 }
@@ -605,7 +605,7 @@ func TestHistoricalMessagesAreNeverAnimated(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("the priming page must not schedule a reveal tick")
 	}
-	if len(model.activeChatState().activeOrder) != 0 {
+	if model.activeChatState().active.len() != 0 {
 		t.Fatal("a historical message was queued for reveal")
 	}
 }
@@ -757,7 +757,7 @@ func TestPaletteDisplayTogglesMatchTheirKeys(t *testing.T) {
 					ok: true,
 				})
 				model = next.(shellModel)
-				if state := model.activeChatState(); len(state.activeOrder) == 0 {
+				if state := model.activeChatState(); state.active.len() == 0 {
 					t.Skip("message revealed immediately; nothing to keep in sync")
 				}
 				return model

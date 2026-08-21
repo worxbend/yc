@@ -155,9 +155,9 @@ func TestMultiChatHighThroughputKeepsEveryTargetSeparate(t *testing.T) {
 			if got := state.revealQueue.Len(); got != 0 {
 				t.Fatalf("message %d: background chat %q holds %d reveals", i, key, got)
 			}
-			if len(state.activeMessages) != 0 || len(state.activeOrder) != 0 {
+			if state.active.len() != 0 {
 				t.Fatalf("message %d: background chat %q tracks %d mid-reveal messages",
-					i, key, len(state.activeMessages))
+					i, key, state.active.len())
 			}
 		}
 
@@ -239,7 +239,7 @@ func TestMultiChatHighThroughputKeepsEveryTargetSeparate(t *testing.T) {
 	for index, key := range keys {
 		state := model.chats.stateForKey(key)
 		chatID := chatIDs[index]
-		held := len(state.messages) + len(state.activeMessages)
+		held := len(state.messages) + state.active.len()
 		if held > stressScrollback+animation.DefaultMaxQueued {
 			t.Errorf("chat %q holds %d messages, above the scrollback limit of %d",
 				key, held, stressScrollback)
@@ -259,11 +259,11 @@ func TestMultiChatHighThroughputKeepsEveryTargetSeparate(t *testing.T) {
 		}
 		// Mid-reveal rows are filed under a synthesized reveal key rather
 		// than the message ID, so this matches on the message itself.
-		for _, message := range state.activeMessages {
+		state.active.each(func(_ string, message youtube.Message) {
 			if message.ID == newest[chatID] {
 				newestHeld = true
 			}
-		}
+		})
 		if !newestHeld {
 			t.Errorf("chat %q lost its newest message %q", key, newest[chatID])
 		}
@@ -354,11 +354,11 @@ func TestModerationDuringAMultiChatFloodStaysInItsOwnChat(t *testing.T) {
 				spamVisible = true
 			}
 		}
-		for _, message := range state.activeMessages {
+		state.active.each(func(_ string, message youtube.Message) {
 			if strings.Contains(message.Text, "buy followers") {
 				spamVisible = true
 			}
-		}
+		})
 		if key == armedKey {
 			if spamVisible {
 				t.Fatalf("the ban left the spam on screen in the chat it was armed in")

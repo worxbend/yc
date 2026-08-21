@@ -404,7 +404,7 @@ func (m shellModel) revealFrames() ([]string, map[string][]render.Row) {
 	if state == nil || state.revealQueue == nil {
 		return nil, nil
 	}
-	return state.activeOrder, state.revealQueue.Frames()
+	return state.active.ids(), state.revealQueue.Frames()
 }
 
 // revealMessage returns the message behind an in-progress reveal.
@@ -413,8 +413,7 @@ func (m shellModel) revealMessage(id string) (youtube.Message, bool) {
 	if state == nil {
 		return youtube.Message{}, false
 	}
-	message, ok := state.activeMessages[id]
-	return message, ok
+	return state.active.messageFor(id)
 }
 
 // selectedMessage returns the message under the browsing cursor, which is what
@@ -530,7 +529,7 @@ func (m shellModel) chatViewportHeight() int {
 // authoritative one - this only stops the offset growing without limit while
 // the user holds page-up on a short buffer.
 func (m shellModel) maxScrollOffset() int {
-	visible := len(m.visibleMessages()) + len(m.activeChatState().activeOrder)
+	visible := len(m.visibleMessages()) + m.activeChatState().active.len()
 	bound := visible*scrollRowsPerMessageBound - m.chatViewportHeight()
 	if bound < 0 {
 		return 0

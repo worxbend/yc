@@ -1092,7 +1092,7 @@ func messageGutterWidth(rowWidth int) int {
 // is happening" and "you are hiding it" cannot be confused.
 func (m shellModel) emptyFilterRow(width int) string {
 	state := m.activeChatState()
-	hidden := len(state.messages) + len(state.activeOrder)
+	hidden := len(state.messages) + state.active.len()
 	detail := "no messages yet"
 	if hidden > 0 {
 		detail = fmt.Sprintf("no matching messages (%d hidden)", hidden)

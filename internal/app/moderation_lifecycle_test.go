@@ -58,16 +58,16 @@ func commitArmed(t *testing.T, model shellModel, key rune) (shellModel, tea.Cmd)
 // real animating row while passing against a bare-ID fixture.
 func midRevealMessage(t *testing.T, state *chatState, message youtube.Message) {
 	t.Helper()
-	revealID := message.ID + "#" + strconv.Itoa(len(state.activeOrder)+1)
-	state.activeOrder = append(state.activeOrder, revealID)
-	state.activeMessages[revealID] = message
+	revealID := message.ID + "#" + strconv.Itoa(state.active.len()+1)
+	state.active.add(revealID, message)
 }
 
 // midRevealByID finds an animating row by the message ID it carries, since the
 // collection is keyed by reveal rather than by message.
 func midRevealByID(state *chatState, id string) (youtube.Message, bool) {
-	for _, message := range state.activeMessages {
-		if message.ID == id {
+	for _, revealID := range state.active.ids() {
+		message, ok := state.active.messageFor(revealID)
+		if ok && message.ID == id {
 			return message, true
 		}
 	}

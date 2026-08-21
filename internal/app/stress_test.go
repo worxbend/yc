@@ -208,9 +208,9 @@ func TestLiveShellHighThroughputChatStressHarness(t *testing.T) {
 		if depth > animation.DefaultMaxQueued {
 			t.Fatalf("message %d: reveal queue grew to %d, above the bound of %d", i, depth, animation.DefaultMaxQueued)
 		}
-		if depth != len(state.activeOrder) || depth != len(state.activeMessages) {
-			t.Fatalf("message %d: queue holds %d but the model tracks %d ordered / %d messages",
-				i, depth, len(state.activeOrder), len(state.activeMessages))
+		if depth != state.active.len() {
+			t.Fatalf("message %d: queue holds %d but the model tracks %d",
+				i, depth, state.active.len())
 		}
 		// Rendering during the burst is what catches an over-wide row: a frame
 		// is only correct if it is correct while the queue is full.
@@ -296,12 +296,11 @@ func TestLiveShellHighThroughputChatStressHarness(t *testing.T) {
 	if got := len(state.messages); got > stressScrollback {
 		t.Errorf("history holds %d messages, above the scrollback limit of %d", got, stressScrollback)
 	}
-	if len(state.activeMessages) != len(state.activeOrder) {
-		t.Errorf("reveal bookkeeping diverged: %d messages vs %d ordered IDs",
-			len(state.activeMessages), len(state.activeOrder))
-	}
-	if got := state.revealQueue.Len(); got != len(state.activeOrder) {
-		t.Errorf("queue holds %d reveals but the model tracks %d", got, len(state.activeOrder))
+	// The order/message pair can no longer diverge - activeReveals owns both
+	// and changes them together - so what is left to check is that the
+	// animation queue and the tracked set still agree.
+	if got := state.revealQueue.Len(); got != state.active.len() {
+		t.Errorf("queue holds %d reveals but the model tracks %d", got, state.active.len())
 	}
 
 	// --- composer -----------------------------------------------------------
