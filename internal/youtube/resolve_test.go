@@ -259,3 +259,28 @@ func TestSearchWarningNamesWhatIsActuallySpent(t *testing.T) {
 		t.Fatalf("SearchWarning = %q", SearchWarning)
 	}
 }
+
+// TestUnclassifiedKindDoesNotClobberAResolvedKind pins the reason TargetUnknown
+// is the empty string rather than "unknown".
+//
+// mergeTarget layers a resolved target over what the user typed, and it keeps
+// the resolved Kind only when that Kind says something. While TargetUnknown was
+// "unknown", TargetKind had two sentinels for "unclassified": the named one and
+// the zero value a struct literal produces. mergeTarget tested for the named
+// one, so a ChatTarget built without a Kind passed the guard and erased a Kind
+// that had already been established.
+func TestUnclassifiedKindDoesNotClobberAResolvedKind(t *testing.T) {
+	base := ChatTarget{Raw: "dQw4w9WgXcQ", Kind: TargetVideoID, VideoID: "dQw4w9WgXcQ"}
+	// A ChatTarget assembled field by field, carrying an ID but no Kind.
+	resolved := ChatTarget{LiveChatID: "lc-1"}
+
+	merged := mergeTarget(base, resolved)
+
+	if merged.Kind != TargetVideoID {
+		t.Errorf("Kind = %q, want %q: an unclassified target must not erase a resolved kind",
+			merged.Kind, TargetVideoID)
+	}
+	if merged.LiveChatID != "lc-1" {
+		t.Errorf("LiveChatID = %q, want %q", merged.LiveChatID, "lc-1")
+	}
+}

@@ -422,8 +422,10 @@ func quotaModeDescription(mode quota.Mode) string {
 		return "paused — the allowance or the reserve threshold was reached"
 	case quota.ModeLive:
 		return "realtime — polling at the server-advised cadence"
-	default:
+	case quota.ModeIdle:
 		return "idle — no chat has polled yet today"
+	default:
+		return string(mode)
 	}
 }
 

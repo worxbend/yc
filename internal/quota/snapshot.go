@@ -6,6 +6,14 @@ import "time"
 type Mode string
 
 const (
+	// ModeIdle means no chat has polled yet today, so no cadence is in force.
+	//
+	// It is the empty string, which makes it Mode's zero value: Ledger.Snapshot
+	// leaves the field unset and the poller fills it in once it is running.
+	// "Idle" is a real state users see - `yc quota` prints it and the Quota tab
+	// describes it - so it is named here rather than left as the thing every
+	// switch reaches in its default arm.
+	ModeIdle Mode = ""
 	// ModeLive means the poll cadence is the server-advised floor.
 	ModeLive Mode = "live"
 	// ModeStretched means the budget floor exceeded the server floor,

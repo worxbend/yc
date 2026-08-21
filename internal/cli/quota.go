@@ -90,7 +90,7 @@ func quotaModeLabel(mode quota.Mode) string {
 		return "backoff (the API asked yc to slow down)"
 	case quota.ModePaused:
 		return "paused (the daily allowance or the reserve threshold was reached)"
-	case "":
+	case quota.ModeIdle:
 		return "idle (no chat has polled yet today)"
 	default:
 		return string(mode)

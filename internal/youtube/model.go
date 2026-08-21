@@ -576,7 +576,14 @@ type TargetKind string
 
 const (
 	// TargetUnknown is an input no classifier recognized.
-	TargetUnknown TargetKind = "unknown"
+	//
+	// It is the empty string so that it is also TargetKind's zero value. When
+	// it was "unknown" there were two sentinels for one fact - a ChatTarget
+	// built as a struct literal was unclassified but not TargetUnknown - and
+	// callers had to test for both. mergeTarget in resolve.go tested only for
+	// TargetUnknown, so a zero-valued Kind passed its guard and could
+	// overwrite a Kind that had already been resolved.
+	TargetUnknown TargetKind = ""
 	// TargetVideoID is a raw 11-character video ID or a watch/live/shorts URL.
 	TargetVideoID TargetKind = "video_id"
 	// TargetLiveChatID is an explicit --live-chat-id, which skips resolution

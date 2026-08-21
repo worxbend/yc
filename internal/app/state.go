@@ -603,10 +603,8 @@ func (s *chatState) mergeTarget(target youtube.ChatTarget) {
 	if s == nil {
 		return
 	}
-	if s.target.Kind == "" || s.target.Kind == youtube.TargetUnknown {
-		if target.Kind != "" {
-			s.target.Kind = target.Kind
-		}
+	if s.target.Kind == youtube.TargetUnknown && target.Kind != youtube.TargetUnknown {
+		s.target.Kind = target.Kind
 	}
 	if strings.TrimSpace(s.target.Raw) == "" {
 		s.target.Raw = target.Raw

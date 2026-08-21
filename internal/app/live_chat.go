@@ -679,7 +679,7 @@ func (s *liveChatSession) adoptTarget(resolved youtube.ChatTarget) {
 	if title := strings.TrimSpace(resolved.Title); title != "" {
 		s.target.Title = title
 	}
-	if resolved.Kind != "" && resolved.Kind != youtube.TargetUnknown {
+	if resolved.Kind != youtube.TargetUnknown {
 		s.target.Kind = resolved.Kind
 	}
 }
