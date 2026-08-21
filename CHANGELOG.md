@@ -12,6 +12,57 @@ Released binaries are stamped with their tag.
 
 Nothing yet.
 
+## [0.2.2] - 2026-08-21
+
+A CLI contract fix and a round of internal cleanup. The one change you will
+notice is that `--help` works everywhere it did not.
+
+### Fixed
+
+- `--help` no longer fails. On `yc doctor`, `yc quota`, `yc config show`,
+  `yc profile list`, `yc profile show`, `yc profile set` and
+  `yc export superchats`, asking for help printed a bare flag dump to **stderr**
+  and exited **2** — the code `yc` documents as a usage failure. So
+  `yc doctor --help | less` showed an empty screen, and any wrapper script or
+  completion generator that treats a non-zero exit as a broken invocation broke
+  on exactly the commands a new user reaches for first. Help now exits zero
+  with the page on stdout for every subcommand, and the flag-only commands have
+  short usage pages of their own.
+- `yc config path --help` printed the config path instead of a help page.
+- A chat target assembled without a kind could erase one that had already been
+  resolved. `TargetUnknown` was the string `"unknown"`, so it was not the zero
+  value, and the guard in the resolver tested only for the named form — a
+  target carrying an ID but no kind slipped past it. Nothing on disk or on the
+  wire changes; the value was never serialized.
+
+### Changed
+
+- Stray positional arguments are now rejected consistently. `yc config show`,
+  `yc profile set` and `yc export superchats` used to ignore a stray word while
+  `yc chat` rejected it, and `yc doctor` and `yc quota` ignored one too. All of
+  them now exit 2 with an explanation. **This is a deliberate behavior change**:
+  a script passing an argument these commands silently discarded will now fail.
+  It brings them in line with the contract the other subcommands already kept.
+- `yc profile show <name>` still ignores the theme name and prints the active
+  theme. That is unchanged, but its help page now says so rather than implying
+  the name selects something.
+- Internal only, no user-visible effect: the speaker roster, the message dedupe
+  set and the in-flight reveals each became their own type instead of pairs of
+  fields kept in step by hand; the line-wrapping engine moved out of the message
+  renderer into its own file; the five stream-forwarding goroutines became one
+  generic; and four facts that were written down twice in the CLI package —
+  including the list of what counts as a secret for redaction — now have one
+  home each.
+- `quota.Mode` names its idle state instead of leaving it as the value every
+  switch reached through `default`.
+
+### Notes
+
+The event-kind exhaustiveness guards were checking against hand-copied lists,
+so they passed whether or not they were up to date. They now derive from the
+one place the vocabulary is defined, and `docs/events.md` is checked against it
+too.
+
 ## [0.2.1] - 2026-08-21
 
 A correctness and durability pass over the parts of `yc` that write to disk or
@@ -356,7 +407,8 @@ The first release. Everything below is the initial implementation.
   Windows binaries, no snap, no package-manager manifests, no signing,
   notarization, SBOM, or provenance.
 
-[Unreleased]: https://github.com/worxbend/yc/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/worxbend/yc/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/worxbend/yc/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/worxbend/yc/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/worxbend/yc/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/worxbend/yc/releases/tag/v0.1.0
