@@ -30,7 +30,8 @@ type inspectState struct {
 }
 
 // renderInspect draws the docked diagnostics panel.
-func renderInspect(width, height, contentHeight int, framed bool, st inspectState) string {
+func renderInspect(width int, pane dockedPane, st inspectState) string {
+	height, contentHeight, framed := pane.height, pane.contentHeight, pane.framed
 	contentWidth := width
 	if framed {
 		contentWidth = clampMin(width-4, 1)

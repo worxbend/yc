@@ -112,21 +112,19 @@ func (m shellModel) View() string {
 		}
 		regions = append(regions, chat)
 	}
-	if layout.streamInfoHeight > 0 {
+	if layout.streamInfo.shown() {
 		regions = append(regions, m.linesPane("🎛", "Stream Info", m.streamInfoLines(),
-			layout.width, layout.streamInfoHeight, layout.streamInfoContentHeight, layout.streamInfoFramed))
+			layout.width, layout.streamInfo))
 	}
-	if layout.miscHeight > 0 {
+	if layout.misc.shown() {
 		regions = append(regions, m.linesPane("⟳", "Quota · estimated", m.quotaLedgerLines(),
-			layout.width, layout.miscHeight, layout.miscContentHeight, layout.miscFramed))
+			layout.width, layout.misc))
 	}
-	if layout.overlayHeight > 0 {
-		regions = append(regions, renderListOverlay(layout.width, layout.overlayHeight,
-			layout.overlayContentHeight, layout.overlayFramed, m.listOverlayState()))
+	if layout.overlay.shown() {
+		regions = append(regions, renderListOverlay(layout.width, layout.overlay, m.listOverlayState()))
 	}
-	if layout.inspectHeight > 0 {
-		regions = append(regions, renderInspect(layout.width, layout.inspectHeight,
-			layout.inspectContentHeight, layout.inspectFramed, m.inspectState()))
+	if layout.inspect.shown() {
+		regions = append(regions, renderInspect(layout.width, layout.inspect, m.inspectState()))
 	}
 	if layout.composerHeight > 0 {
 		regions = append(regions, renderComposer(layout.width, layout.composerHeight, layout.composerFramed, m.composerState()))
@@ -188,24 +186,14 @@ type shellLayout struct {
 	activityWidth         int
 	activityContentHeight int
 
-	// overlay* is whichever docked list overlay is open: the command palette,
+	// overlay is whichever docked list overlay is open: the command palette,
 	// the target picker, or the emoji picker. They are mutually exclusive in
-	// the model, so one set of fields is enough.
-	overlayHeight        int
-	overlayContentHeight int
-	overlayFramed        bool
+	// the model, so one pane is enough.
+	overlay dockedPane
 
-	inspectHeight        int
-	inspectContentHeight int
-	inspectFramed        bool
-
-	streamInfoHeight        int
-	streamInfoContentHeight int
-	streamInfoFramed        bool
-
-	miscHeight        int
-	miscContentHeight int
-	miscFramed        bool
+	inspect    dockedPane
+	streamInfo dockedPane
+	misc       dockedPane
 
 	composerHeight int
 	composerFramed bool
@@ -323,11 +311,9 @@ func (m shellModel) layout() shellLayout {
 		if m.overlay.kind == overlayTargetPicker {
 			tall = targetPickerTallHeight
 		}
-		layout.overlayHeight, layout.overlayContentHeight, layout.overlayFramed, remaining =
-			dockOverlay(dockedOverlayHeight, tall, width, height, remaining)
+		layout.overlay, remaining = dockOverlay(dockedOverlayHeight, tall, width, height, remaining)
 	case m.activeChatState().inspectOpen:
-		layout.inspectHeight, layout.inspectContentHeight, layout.inspectFramed, remaining =
-			dockOverlay(dockedOverlayHeight, dockedOverlayTallHeight, width, height, remaining)
+		layout.inspect, remaining = dockOverlay(dockedOverlayHeight, dockedOverlayTallHeight, width, height, remaining)
 	}
 
 	layout.chatHeight = clampMin(remaining, 0)
@@ -342,7 +328,7 @@ func (m shellModel) layout() shellLayout {
 	// Any row left over from the reductions above goes back to chat rather
 	// than leaving a gap the canvas has to fill.
 	used := layout.tabBarHeight + layout.statusHeight + layout.chatHeight +
-		layout.overlayHeight + layout.inspectHeight + layout.composerHeight + layout.helpHeight
+		layout.overlay.height + layout.inspect.height + layout.composerHeight + layout.helpHeight
 	if used < height {
 		layout.chatHeight += height - used
 		layout.applyChatHeights()
@@ -352,12 +338,10 @@ func (m shellModel) layout() shellLayout {
 	// are pages, not a third column.
 	switch m.activeTab {
 	case tabStreamInfo:
-		layout.streamInfoHeight, layout.streamInfoContentHeight, layout.streamInfoFramed =
-			layout.chatHeight, layout.chatContentHeight, layout.chatFramed
+		layout.streamInfo = layout.chatRegionAsPane()
 		layout.clearChatRegion()
 	case tabMisc:
-		layout.miscHeight, layout.miscContentHeight, layout.miscFramed =
-			layout.chatHeight, layout.chatContentHeight, layout.chatFramed
+		layout.misc = layout.chatRegionAsPane()
 		layout.clearChatRegion()
 	}
 	return layout
@@ -375,6 +359,12 @@ func (l *shellLayout) applyChatHeights() {
 	l.activityContentHeight = l.sidebarContentHeight
 }
 
+// chatRegionAsPane is the chat block's geometry as a docked pane, which is how
+// a full-width page takes the whole block over.
+func (l *shellLayout) chatRegionAsPane() dockedPane {
+	return dockedPane{height: l.chatHeight, contentHeight: l.chatContentHeight, framed: l.chatFramed}
+}
+
 // clearChatRegion hands the chat block's geometry to a full-width page.
 func (l *shellLayout) clearChatRegion() {
 	l.sidebarWidth = 0
@@ -387,13 +377,29 @@ func (l *shellLayout) clearChatRegion() {
 	l.chatFramed = false
 }
 
+// dockedPane is the geometry of one full-width surface docked under chat: the
+// rows it occupies, the rows left inside it once any frame is drawn, and
+// whether that frame is drawn at all.
+//
+// Every docked surface is measured the same way, so they share one value
+// rather than each carrying its own height/contentHeight/framed triple. A
+// zero pane is one that is not shown.
+type dockedPane struct {
+	height        int
+	contentHeight int
+	framed        bool
+}
+
+// shown reports whether the pane has any rows to draw.
+func (d dockedPane) shown() bool { return d.height > 0 }
+
 // dockOverlay sizes one docked surface against the rows chat can spare,
-// returning its height, its content height, whether it is framed, and what is
-// left. It always leaves at least one row for chat: an overlay that hid the
-// thing it operates on would be worse than one that does not open.
-func dockOverlay(normal, tall, width, height, remaining int) (int, int, bool, int) {
+// returning the pane and what is left. It always leaves at least one row for
+// chat: an overlay that hid the thing it operates on would be worse than one
+// that does not open.
+func dockOverlay(normal, tall, width, height, remaining int) (dockedPane, int) {
 	if remaining < 4 {
-		return 0, 0, false, remaining
+		return dockedPane{}, remaining
 	}
 	overlay := normal
 	if height >= dockedOverlayTallAt {
@@ -401,14 +407,14 @@ func dockOverlay(normal, tall, width, height, remaining int) (int, int, bool, in
 	}
 	overlay = min(overlay, remaining-1)
 	if overlay < dockedOverlayMinHeight {
-		return 0, 0, false, remaining
+		return dockedPane{}, remaining
 	}
 	framed := width >= dockedOverlayMinWidth
 	content := overlay
 	if framed {
 		content = overlay - 2
 	}
-	return overlay, content, framed, remaining - overlay
+	return dockedPane{height: overlay, contentHeight: content, framed: framed}, remaining - overlay
 }
 
 // --- tab bar ---------------------------------------------------------------
@@ -1493,7 +1499,8 @@ func detailSuffix(detail string) string {
 
 // linesPane frames a block of plain lines, which is how the non-chat tabs are
 // drawn without this file knowing their content.
-func (m shellModel) linesPane(icon, title string, lines []string, width, height, contentHeight int, framed bool) string {
+func (m shellModel) linesPane(icon, title string, lines []string, width int, pane dockedPane) string {
+	height, contentHeight, framed := pane.height, pane.contentHeight, pane.framed
 	if !framed {
 		return backgroundStyledLine(fitBlock(strings.Join(lines, "\n"), width, height), m.theme.Surface)
 	}

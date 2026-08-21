@@ -45,7 +45,7 @@ func testInspectState() inspectState {
 func TestInspectHasExactDimensions(t *testing.T) {
 	st := testInspectState()
 	for _, width := range []int{20, 60, 100} {
-		lines := plainLines(renderInspect(width, 7, 5, true, st))
+		lines := plainLines(renderInspect(width, dockedPane{height: 7, contentHeight: 5, framed: true}, st))
 		if len(lines) != 7 {
 			t.Fatalf("width %d rendered %d rows", width, len(lines))
 		}
@@ -60,7 +60,7 @@ func TestInspectHasExactDimensions(t *testing.T) {
 func TestInspectWithNoSelectionExplainsHowToSelect(t *testing.T) {
 	st := testInspectState()
 	st.Selected = false
-	rendered := strings.Join(plainLines(renderInspect(80, 7, 5, true, st)), "\n")
+	rendered := strings.Join(plainLines(renderInspect(80, dockedPane{height: 7, contentHeight: 5, framed: true}, st)), "\n")
 	if !strings.Contains(rendered, "no selected message") {
 		t.Fatalf("empty inspect panel is unexplained:\n%s", rendered)
 	}
@@ -89,7 +89,7 @@ func TestInspectRedactsCredentialShapedValues(t *testing.T) {
 		st.Message.Author.DisplayName = leak
 		st.Message.Fragments = []youtube.MessageFragment{{Type: youtube.FragmentText, Text: leak}}
 
-		rendered := strings.Join(plainLines(renderInspect(200, 12, 10, true, st)), "\n")
+		rendered := strings.Join(plainLines(renderInspect(200, dockedPane{height: 12, contentHeight: 10, framed: true}, st)), "\n")
 		if strings.Contains(rendered, auth.FakeTokenMarker) {
 			t.Errorf("inspect leaked %q:\n%s", leak, rendered)
 		}
@@ -105,7 +105,7 @@ func TestInspectReportsTheOriginalSnippetType(t *testing.T) {
 	st := testInspectState()
 	st.Message.Kind = youtube.EventKindUnknown
 	st.Message.RawType = "somethingBrandNewEvent"
-	rendered := strings.Join(plainLines(renderInspect(200, 12, 10, true, st)), "\n")
+	rendered := strings.Join(plainLines(renderInspect(200, dockedPane{height: 12, contentHeight: 10, framed: true}, st)), "\n")
 	if !strings.Contains(rendered, "somethingBrandNewEvent") {
 		t.Fatalf("inspect omits the original snippet type:\n%s", rendered)
 	}
@@ -114,7 +114,7 @@ func TestInspectReportsTheOriginalSnippetType(t *testing.T) {
 // Money is reported as an integer micro-amount plus the API's own display
 // string. No float ever touches a currency value.
 func TestInspectReportsMoneyWithoutFloats(t *testing.T) {
-	rendered := strings.Join(plainLines(renderInspect(200, 12, 10, true, testInspectState())), "\n")
+	rendered := strings.Join(plainLines(renderInspect(200, dockedPane{height: 12, contentHeight: 10, framed: true}, testInspectState())), "\n")
 	for _, want := range []string{"$5.00", "USD", "micros=5000000", "tier=3"} {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("inspect omits %q:\n%s", want, rendered)
@@ -125,7 +125,7 @@ func TestInspectReportsMoneyWithoutFloats(t *testing.T) {
 // The avatar URL is recorded but never fetched: yc has no image path at all, so
 // reporting "recorded" is honest and printing the URL would be noise.
 func TestInspectDoesNotPrintTheAvatarURL(t *testing.T) {
-	rendered := strings.Join(plainLines(renderInspect(200, 12, 10, true, testInspectState())), "\n")
+	rendered := strings.Join(plainLines(renderInspect(200, dockedPane{height: 12, contentHeight: 10, framed: true}, testInspectState())), "\n")
 	if strings.Contains(rendered, "yt3.example") {
 		t.Fatalf("inspect printed an avatar URL:\n%s", rendered)
 	}

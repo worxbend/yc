@@ -25,7 +25,7 @@ func testListOverlay() listOverlayState {
 func TestListOverlayHasExactDimensions(t *testing.T) {
 	st := testListOverlay()
 	for _, width := range []int{20, 60, 120} {
-		lines := plainLines(renderListOverlay(width, 7, 5, true, st))
+		lines := plainLines(renderListOverlay(width, dockedPane{height: 7, contentHeight: 5, framed: true}, st))
 		if len(lines) != 7 {
 			t.Fatalf("width %d rendered %d rows", width, len(lines))
 		}
@@ -41,7 +41,7 @@ func TestListOverlayHasExactDimensions(t *testing.T) {
 // it, which means every row has to carry its key.
 func TestCommandPaletteShowsShortcuts(t *testing.T) {
 	st := testListOverlay()
-	rendered := strings.Join(plainLines(renderListOverlay(100, 12, 10, true, st)), "\n")
+	rendered := strings.Join(plainLines(renderListOverlay(100, dockedPane{height: 12, contentHeight: 10, framed: true}, st)), "\n")
 	if !strings.Contains(rendered, "Open chat") || !strings.Contains(rendered, "space c") {
 		t.Fatalf("palette row is missing its shortcut:\n%s", rendered)
 	}
@@ -50,7 +50,7 @@ func TestCommandPaletteShowsShortcuts(t *testing.T) {
 func TestListOverlayMarksTheSelection(t *testing.T) {
 	st := testListOverlay()
 	st.Selected = 2
-	lines := plainLines(renderListOverlay(100, 12, 10, true, st))
+	lines := plainLines(renderListOverlay(100, dockedPane{height: 12, contentHeight: 10, framed: true}, st))
 	marked := 0
 	for _, line := range lines {
 		if strings.Contains(line, "❯") {
@@ -66,7 +66,7 @@ func TestListOverlayWithNoMatchesSaysSo(t *testing.T) {
 	st := testListOverlay()
 	st.Items = nil
 	st.Header = commandPaletteHeader("zzzz")
-	rendered := strings.Join(plainLines(renderListOverlay(80, 7, 5, true, st)), "\n")
+	rendered := strings.Join(plainLines(renderListOverlay(80, dockedPane{height: 7, contentHeight: 5, framed: true}, st)), "\n")
 	if !strings.Contains(rendered, "no matches") {
 		t.Fatalf("an empty result is silent:\n%s", rendered)
 	}

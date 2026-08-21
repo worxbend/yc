@@ -83,8 +83,8 @@ func TestLayoutRegionsSumToTheTerminalHeight(t *testing.T) {
 		model := newViewModel(t, 100, height)
 		layout := model.layout()
 		total := layout.tabBarHeight + layout.statusHeight + layout.chatHeight +
-			layout.streamInfoHeight + layout.miscHeight + layout.overlayHeight +
-			layout.inspectHeight + layout.composerHeight + layout.helpHeight
+			layout.streamInfo.height + layout.misc.height + layout.overlay.height +
+			layout.inspect.height + layout.composerHeight + layout.helpHeight
 		if total != height {
 			t.Fatalf("height %d: regions sum to %d", height, total)
 		}
@@ -131,8 +131,8 @@ func TestDockedOverlayLeavesChatOnScreen(t *testing.T) {
 		model := newViewModel(t, 100, height)
 		model.overlay = overlayState{kind: overlayPalette}
 		layout := model.layout()
-		if layout.overlayHeight > 0 && layout.chatHeight < 1 {
-			t.Fatalf("height %d: overlay %d left chat with %d rows", height, layout.overlayHeight, layout.chatHeight)
+		if layout.overlay.height > 0 && layout.chatHeight < 1 {
+			t.Fatalf("height %d: overlay %d left chat with %d rows", height, layout.overlay.height, layout.chatHeight)
 		}
 	}
 }

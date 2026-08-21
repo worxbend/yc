@@ -45,7 +45,8 @@ type listOverlayState struct {
 }
 
 // renderListOverlay draws one docked overlay.
-func renderListOverlay(width, height, contentHeight int, framed bool, st listOverlayState) string {
+func renderListOverlay(width int, pane dockedPane, st listOverlayState) string {
+	height, contentHeight, framed := pane.height, pane.contentHeight, pane.framed
 	contentWidth := width
 	if framed {
 		contentWidth = clampMin(width-4, 1)

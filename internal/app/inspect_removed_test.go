@@ -38,7 +38,7 @@ func TestInspectNeverReprintsARemovedBody(t *testing.T) {
 		}
 
 		for _, width := range []int{40, 80, 200} {
-			rendered := strings.Join(plainLines(renderInspect(width, 14, 12, true, st)), "\n")
+			rendered := strings.Join(plainLines(renderInspect(width, dockedPane{height: 14, contentHeight: 12, framed: true}, st)), "\n")
 			if strings.Contains(rendered, secret) {
 				t.Fatalf("%s at width %d reprinted the removed body:\n%s", kind, width, rendered)
 			}
@@ -78,7 +78,7 @@ func TestInspectStillShowsTheBodyOfALiveMessage(t *testing.T) {
 		{Type: youtube.FragmentText, Text: "a perfectly ordinary line"},
 	}
 
-	rendered := strings.Join(plainLines(renderInspect(200, 14, 12, true, st)), "\n")
+	rendered := strings.Join(plainLines(renderInspect(200, dockedPane{height: 14, contentHeight: 12, framed: true}, st)), "\n")
 	if !strings.Contains(rendered, "a perfectly ordinary line") {
 		t.Fatalf("inspect withheld a live message's body:\n%s", rendered)
 	}
