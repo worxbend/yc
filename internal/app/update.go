@@ -161,13 +161,6 @@ func (m shellModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // return. Sub-handlers that still answer with a model are adopted explicitly
 // through adopt below, so there is exactly one way a key changes the model.
 func (m *shellModel) handleKey(msg tea.KeyMsg) tea.Cmd {
-	// adopt takes over a model a sub-handler built and returns its command.
-	adopt := func(model tea.Model, cmd tea.Cmd) tea.Cmd {
-		if next, ok := model.(shellModel); ok {
-			*m = next
-		}
-		return cmd
-	}
 	// Any key other than a second ctrl+L abandons a pending clear, so a stray
 	// press cannot arm the confirmation and sit waiting for an unrelated
 	// keystroke to trigger it later.
@@ -193,7 +186,7 @@ func (m *shellModel) handleKey(msg tea.KeyMsg) tea.Cmd {
 	// prompt below is: while it is open every key is query text, so typing a
 	// word that happens to contain "d" cannot arm a deletion.
 	if model, cmd, handled := m.handleSearchKey(msg); handled {
-		return adopt(model, cmd)
+		return m.adopt(model, cmd)
 	}
 
 	// Moderation is consumed before the global toggles because its duration
@@ -222,14 +215,14 @@ func (m *shellModel) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 	if m.overlay.open() {
-		return adopt(m.handleOverlayKey(msg))
+		return m.adopt(m.handleOverlayKey(msg))
 	}
 
 	// The mention completion strip claims tab, up, down, and esc, but only
 	// while it is showing something. Claiming them unconditionally would
 	// break the bindings those keys carry everywhere else in the composer.
 	if model, cmd, handled := m.handleMentionKey(msg); handled {
-		return adopt(model, cmd)
+		return m.adopt(model, cmd)
 	}
 
 	// The space leader chord is consumed before every other binding. It is
@@ -244,10 +237,35 @@ func (m *shellModel) handleKey(msg tea.KeyMsg) tea.Cmd {
 	}
 	if m.focus == focusSidebar {
 		if model, cmd, handled := m.handleSidebarKey(msg); handled {
-			return adopt(model, cmd)
+			return m.adopt(model, cmd)
 		}
 	}
 
+	return m.handleBindingKey(msg)
+}
+
+// adopt takes over a model a sub-handler built and returns its command.
+//
+// Sub-handlers come in two shapes: most mutate the model through the pointer
+// receiver, but some still answer with a model value. This is the single
+// place the second shape is folded back in, so there is exactly one way a key
+// changes the model.
+func (m *shellModel) adopt(model tea.Model, cmd tea.Cmd) tea.Cmd {
+	if next, ok := model.(shellModel); ok {
+		*m = next
+	}
+	return cmd
+}
+
+// handleBindingKey runs the default key bindings: the ones that apply once no
+// modal surface above them has claimed the key.
+//
+// It is separate from handleKey because the two answer different questions.
+// handleKey decides who owns this keystroke - the splash, the search line, a
+// moderation prompt, an overlay, the leader chord - and that ordering is the
+// whole point of it. This is the table of what the keys actually do, which is
+// a flat lookup and reads as one.
+func (m *shellModel) handleBindingKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.Type {
 	case tea.KeyTab:
 		m.cycleFocus()
@@ -330,14 +348,14 @@ func (m *shellModel) handleKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	case tea.KeyEnter:
 		if m.focus == focusComposer {
-			return adopt(m.queueComposerSend())
+			return m.adopt(m.queueComposerSend())
 		}
 	case tea.KeySpace:
 		if m.focus == focusComposer {
 			m.insertComposerText(" ")
 		}
 	case tea.KeyRunes:
-		return adopt(m.handleRuneKey(msg))
+		return m.adopt(m.handleRuneKey(msg))
 	}
 	return nil
 }
