@@ -138,16 +138,9 @@ type chatState struct {
 	// from the poller replaces the echo instead of duplicating it.
 	localEchoes map[string]struct{}
 
-	// seenIDs and seenRing are the bounded ring of message IDs this chat has
-	// already filed, and the only defense against a re-delivered backlog.
-	//
-	// The poller dedupes within one session, but its ring dies with it: ctrl+r
-	// and the reconnect ladder both build a fresh transport, which primes with
-	// no page token and an empty ring, so YouTube re-sends the whole recent
-	// history. Without this the user's own reconnect key printed every message
-	// on screen a second time.
-	seenIDs  map[string]struct{}
-	seenRing boundedRing
+	// seen is the bounded set of message IDs already filed here, which is what
+	// stops a reconnect reprinting the backlog. See seenMessageSet in seen.go.
+	seen seenMessageSet
 
 	// moderations retains deletions, bans, and timeouts for the activity
 	// column.
@@ -476,7 +469,12 @@ func (s *chatStateSet) applyMessage(message youtube.Message) (*chatState, bool) 
 	if state == nil {
 		return nil, false
 	}
-	if !state.markSeen(message.ID) {
+	// Normalized once here so the echo lookup and the dedupe set agree on the
+	// key: admit trims too, and a mismatch would let an echoed message be
+	// filed under one spelling and looked up under another.
+	id := strings.TrimSpace(message.ID)
+	_, echoed := state.localEchoes[id]
+	if !state.seen.admit(id, echoed) {
 		return nil, false
 	}
 	state.roster.observe(message)
@@ -699,35 +697,6 @@ func (s *chatState) trimScrollback(limit int) {
 	s.messages = s.messages[:limit]
 }
 
-// markSeen records a message ID and reports whether it is new to this chat.
-//
-// A message with no ID is always new: locally generated system rows carry none
-// and there is nothing to key them by. A pending local echo is also let
-// through, because the authoritative copy carries the same ID and appendMessage
-// has to see it in order to swap the optimistic row for the real one.
-func (s *chatState) markSeen(id string) bool {
-	if s == nil {
-		return false
-	}
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return true
-	}
-	if s.seenIDs == nil {
-		s.seenIDs = make(map[string]struct{}, seenMessageRingSize)
-	}
-	if _, echoed := s.localEchoes[id]; !echoed {
-		if _, ok := s.seenIDs[id]; ok {
-			return false
-		}
-	}
-	if evicted := s.seenRing.record(id, seenMessageRingSize); evicted != "" {
-		delete(s.seenIDs, evicted)
-	}
-	s.seenIDs[id] = struct{}{}
-	return true
-}
-
 // flushActiveReveals moves every in-flight reveal straight into history.
 //
 // Only the active chat animates, and only the active chat's queue is advanced,
@@ -857,8 +826,7 @@ func (s *chatState) clearHistory(cfg animation.Config, clock animation.Clock) {
 	// The dedupe ring goes with the history. Keeping it would make a clear
 	// followed by a reconnect suppress the very backlog the reconnect fetched,
 	// leaving the user staring at an empty chat they cannot refill.
-	s.seenIDs = nil
-	s.seenRing.reset()
+	s.seen.reset()
 	s.moderations = nil
 	s.selected = nil
 	s.replyTo = nil

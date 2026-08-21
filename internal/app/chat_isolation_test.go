@@ -77,7 +77,7 @@ func fingerprint(state *chatState) chatFingerprint {
 		moderations:  len(state.moderations),
 		status:       state.status.Status,
 		rosterSize:   state.roster.size(),
-		seenSize:     len(state.seenIDs),
+		seenSize:     state.seen.size(),
 	}
 }
 
@@ -126,7 +126,7 @@ func TestEveryPerChatFieldSurvivesASwitchAndIsInvisibleFromElsewhere(t *testing.
 		})
 		for _, message := range state.messages {
 			state.roster.observe(message)
-			state.markSeen(message.ID)
+			state.seen.admit(message.ID, false)
 		}
 	}
 	// Distinct filter sets, including the empty one, so "filters bled" is not
