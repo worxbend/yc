@@ -20,9 +20,11 @@ const mockChatInterval = 650 * time.Millisecond
 const mockLiveChatID = "mock-live-chat"
 
 // MockChatClient is the credential-free scripted chat source behind
-// `yc chat --mock`. It performs no network and no filesystem work, and it
-// exercises every normalized event kind so the full UI can be driven, demoed,
-// and smoke-tested without an account.
+// `yc chat --mock` - this script, not the similarly named one in
+// internal/youtube/fake_chat.go, which only ever runs under that package's own
+// tests. It performs no network and no filesystem work, and it exercises every
+// normalized event kind so the full UI can be driven, demoed, and smoke-tested
+// without an account.
 //
 // The script is fixed rather than random: a bug report that says "the third
 // Super Chat wraps wrong" has to mean the same thing on someone else's machine.

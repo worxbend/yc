@@ -23,8 +23,16 @@ type FakeChatConfig struct {
 }
 
 // FakeChatClient is a deterministic chat source with no network and no
-// credentials. It backs `yc chat --mock`, which is the primary demo path, the
-// bug-report path, and the CI smoke path, and so must exercise every event kind.
+// credentials, used by this package's own tests as a stand-in for the poller.
+//
+// It does NOT back `yc chat --mock`. That path runs app.RunMockWithOptions,
+// which is driven by the script in internal/app/mock_source.go. The two are
+// separate scripts for separate jobs: this one exercises normalization and
+// stream ordering against the youtube types, that one drives the whole UI.
+//
+// The distinction is written down because the names do not carry it - there is
+// an app.FakeChatClient as well - and a contributor sent here to "fix something
+// you can see in --mock" would otherwise edit a script the binary never runs.
 type FakeChatClient struct {
 	cfg FakeChatConfig
 
