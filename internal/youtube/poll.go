@@ -748,29 +748,33 @@ func (p *Poller) emitMessage(ctx context.Context, message Message) bool {
 }
 
 func (p *Poller) emitState(ctx context.Context, state ConnectionState) {
-	select {
-	case p.states <- state:
-	case <-ctx.Done():
-	}
+	emitOrCancel(ctx, p.states, state)
 }
 
 func (p *Poller) emitModeration(ctx context.Context, event ModerationEvent) {
-	select {
-	case p.moderations <- event:
-	case <-ctx.Done():
-	}
+	emitOrCancel(ctx, p.moderations, event)
 }
 
 func (p *Poller) emitRoom(ctx context.Context, event RoomEvent) {
-	select {
-	case p.rooms <- event:
-	case <-ctx.Done():
-	}
+	emitOrCancel(ctx, p.rooms, event)
 }
 
 func (p *Poller) emitPoll(ctx context.Context, poll PollState) {
+	emitOrCancel(ctx, p.polls, poll)
+}
+
+// emitOrCancel delivers one value on an outbound stream, blocking until the
+// consumer takes it or the session is canceled.
+//
+// Blocking is the deliberate choice for every stream that uses it: a dropped
+// lifecycle transition, moderation event, room event, or poll update is not
+// recoverable - a lost "failed" state leaves the interface claiming to be
+// connected, and a lost deletion leaves words on screen that were meant to
+// come off it. Messages are the one stream that drops instead, because a
+// flood of chat is survivable and stalling the poller behind it is not.
+func emitOrCancel[T any](ctx context.Context, stream chan<- T, value T) {
 	select {
-	case p.polls <- poll:
+	case stream <- value:
 	case <-ctx.Done():
 	}
 }

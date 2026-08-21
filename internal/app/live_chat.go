@@ -562,29 +562,28 @@ func (c *LiveChatClient) emitMessage(message youtube.Message) {
 // load-bearing - a dropped "failed" leaves the UI claiming to be connected - so
 // this one waits rather than dropping, bounded by the session context.
 func (c *LiveChatClient) emitState(ctx context.Context, state youtube.ConnectionState) {
-	select {
-	case c.states <- state:
-	case <-ctx.Done():
-	}
+	emitOrCancel(ctx, c.states, state)
 }
 
 func (c *LiveChatClient) emitModeration(ctx context.Context, event youtube.ModerationEvent) {
-	select {
-	case c.moderations <- event:
-	case <-ctx.Done():
-	}
+	emitOrCancel(ctx, c.moderations, event)
 }
 
 func (c *LiveChatClient) emitRoomEvent(ctx context.Context, event youtube.RoomEvent) {
-	select {
-	case c.rooms <- event:
-	case <-ctx.Done():
-	}
+	emitOrCancel(ctx, c.rooms, event)
 }
 
 func (c *LiveChatClient) emitPoll(ctx context.Context, poll youtube.PollState) {
+	emitOrCancel(ctx, c.polls, poll)
+}
+
+// emitOrCancel delivers one value on an outbound stream, blocking until the
+// shell takes it or the session is canceled. Every stream that forwards from
+// a transport uses it; emitMessage above is the deliberate exception that
+// drops instead, so a chat flood cannot stall the forwarder behind it.
+func emitOrCancel[T any](ctx context.Context, stream chan<- T, value T) {
 	select {
-	case c.polls <- poll:
+	case stream <- value:
 	case <-ctx.Done():
 	}
 }
