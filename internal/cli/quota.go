@@ -20,7 +20,7 @@ import (
 // It spends nothing: the ledger is read from the persisted store, so the
 // command that tells you how much budget is left cannot itself consume any.
 func runQuota(args []string, stdout, stderr io.Writer) int {
-	cfg, code := loadConfigForFlags("quota", args, stderr)
+	cfg, code := loadConfigForFlags("quota", quotaUsage, "quota", args, stdout, stderr)
 	if code != ExitOK {
 		return code
 	}

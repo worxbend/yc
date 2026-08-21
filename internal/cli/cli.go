@@ -456,6 +456,12 @@ func runConfig(args []string, stdout, stderr io.Writer) int {
 
 	switch strings.TrimSpace(args[0]) {
 	case "path":
+		// path takes no flags, so it never reaches parseCommandFlags and would
+		// otherwise answer --help by printing the path.
+		if hasHelpArg(args[1:]) {
+			fmt.Fprint(stdout, configPathUsage)
+			return ExitOK
+		}
 		path, err := config.DefaultPath()
 		if err != nil {
 			fmt.Fprintf(stderr, "config path: %s\n", config.RedactDisplayValue(err.Error()))
@@ -468,8 +474,8 @@ func runConfig(args []string, stdout, stderr io.Writer) int {
 		fs.SetOutput(stderr)
 		var cfgPath string
 		fs.StringVar(&cfgPath, "config", "", "config file path")
-		if err := fs.Parse(args[1:]); err != nil {
-			return ExitUsage
+		if code, ok := parseCommandFlags(fs, args[1:], configShowUsage, "config", stdout, stderr); !ok {
+			return code
 		}
 		cfg, _, err := loadConfigWithStoredCredentials(context.Background(), os.Environ(), config.Overrides{ConfigPath: cfgPath})
 		if err != nil {
@@ -508,7 +514,7 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 	var debugFlags debugFlagOptions
 	fs.StringVar(&cfgPath, "config", "", "config file path")
 	addDebugFlags(fs, &debugFlags)
-	if code, ok := parseCommandFlags(fs, args, "", "", stdout, stderr); !ok {
+	if code, ok := parseCommandFlags(fs, args, doctorUsage, "doctor", stdout, stderr); !ok {
 		return code
 	}
 
@@ -636,7 +642,7 @@ func runProfile(args []string, stdout, stderr io.Writer) int {
 
 // runProfileList prints every palette name, marking the active one.
 func runProfileList(args []string, stdout, stderr io.Writer) int {
-	cfg, code := loadConfigForFlags("profile list", args, stderr)
+	cfg, code := loadConfigForFlags("profile list", profileListUsage, "profile list", args, stdout, stderr)
 	if code != ExitOK {
 		return code
 	}
@@ -689,7 +695,7 @@ func paletteRoleFlagList() string {
 
 // runProfileShow prints the resolved palette's nine roles.
 func runProfileShow(args []string, stdout, stderr io.Writer) int {
-	cfg, code := loadConfigForFlags("profile show", args, stderr)
+	cfg, code := loadConfigForFlags("profile show", profileShowUsage, "", args, stdout, stderr)
 	if code != ExitOK {
 		return code
 	}
@@ -723,8 +729,8 @@ func runProfileSet(args []string, stdout, stderr io.Writer) int {
 	for i, role := range paletteRoles {
 		fs.StringVar(&overrides[i], role.name, "", role.usage)
 	}
-	if err := fs.Parse(flagArgs); err != nil {
-		return ExitUsage
+	if code, ok := parseCommandFlags(fs, flagArgs, profileSetUsage, "profile", stdout, stderr); !ok {
+		return code
 	}
 
 	if name != "custom" {
@@ -756,14 +762,16 @@ func runProfileSet(args []string, stdout, stderr io.Writer) int {
 
 // loadConfigForFlags parses a bare --config flag set and loads the config,
 // which is the shape most read-only subcommands need.
-func loadConfigForFlags(name string, args []string, stderr io.Writer) (config.Config, int) {
+//
+// usage is the one-line summary --help answers with. stdout has to be threaded
+// through for that: it was nil here, which is what sent `yc quota --help` and
+// `yc profile list --help` to stderr with a usage exit code.
+func loadConfigForFlags(name, usage, argNoun string, args []string, stdout, stderr io.Writer) (config.Config, int) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var cfgPath string
 	fs.StringVar(&cfgPath, "config", "", "config file path")
-	// No usage text and no argument noun: these subcommands take flags only
-	// and have no help page of their own.
-	if code, ok := parseCommandFlags(fs, args, "", "", nil, stderr); !ok {
+	if code, ok := parseCommandFlags(fs, args, usage, argNoun, stdout, stderr); !ok {
 		return config.Config{}, code
 	}
 	return loadCommandConfig(config.Overrides{ConfigPath: cfgPath}, stderr)
@@ -774,15 +782,21 @@ func loadConfigForFlags(name string, args []string, stderr io.Writer) (config.Co
 // reports whether the command should carry on; when it should not, the returned
 // code is what the command returns.
 //
-// An empty usage skips the help shortcut, for subcommands with no help page.
-// An empty argNoun skips the positional check, for the two that either accept
-// positional arguments or word the complaint themselves.
+// An empty argNoun skips the positional check, for the subcommands that either
+// accept positional arguments or word the complaint themselves.
 //
 // Help goes to stdout because someone asked for it, while errors go to stderr,
 // so `yc login --help | less` shows the page and a mistyped flag still reaches
 // the terminal.
+//
+// Asking for help is never a usage error, and a subcommand with no prose page
+// of its own still answers with its flag list rather than nothing. The help
+// check used to be skipped when usage was empty, which let --help fall through
+// to fs.Parse; the flag package reports that as an error, so `yc doctor --help`
+// printed a bare flag dump to stderr and exited 2. That broke `| less` and made
+// every wrapper that reads the exit code think the command had been misused.
 func parseCommandFlags(fs *flag.FlagSet, args []string, usage, argNoun string, stdout, stderr io.Writer) (int, bool) {
-	if usage != "" && hasHelpArg(args) {
+	if hasHelpArg(args) {
 		fmt.Fprint(stdout, usage)
 		fs.SetOutput(stdout)
 		fs.PrintDefaults()
@@ -810,6 +824,57 @@ func loadCommandConfig(overrides config.Overrides, stderr io.Writer) (config.Con
 	}
 	return cfg, ExitOK
 }
+
+// Usage pages for the flag-only subcommands. They are short because these
+// commands take nothing but --config: the point is that `--help` answers on
+// stdout with an OK status rather than being treated as a mistake.
+const (
+	doctorUsage = `Usage:
+  yc doctor [--config path] [--debug-log] [--debug-log-path path]
+
+Reports what yc can see: config file, credentials, cache and log directories,
+terminal capabilities, and the estimated quota ledger. Runs no network calls.
+
+`
+	quotaUsage = `Usage:
+  yc quota [--config path]
+
+Prints today's estimated quota use, per endpoint, from the local ledger.
+The figures are estimates: Google publishes no per-call cost for live chat.
+
+`
+	profileListUsage = `Usage:
+  yc profile list [--config path]
+
+Lists the built-in theme presets and marks the active one.
+
+`
+	profileShowUsage = `Usage:
+  yc profile show [--config path]
+
+Prints the active theme's palette, role by role. A theme name may be given but
+is currently ignored: the palette shown is always the configured one.
+
+`
+	profileSetUsage = `Usage:
+  yc profile set <name> [--<role> '#rrggbb']... [--config path]
+
+Selects a theme, or overrides individual palette roles when <name> is "custom".
+
+`
+	configPathUsage = `Usage:
+  yc config path
+
+Prints where yc looks for its config file. Takes no flags.
+
+`
+	configShowUsage = `Usage:
+  yc config show [--config path]
+
+Prints the effective configuration with every secret redacted.
+
+`
+)
 
 // loginTimeoutDefault bounds how long `yc login` waits for the browser round
 // trip before giving the terminal back.

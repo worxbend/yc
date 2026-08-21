@@ -57,6 +57,15 @@ currency, tier, and the buyer's message.
 // recorded while chat was open. Running it with logging disabled or an empty
 // log directory yields a header-only CSV rather than an error, because "no
 // Super Chats" is an answer, not a failure.
+const exportSuperchatsUsage = `Usage:
+  yc export superchats [--dir path] [--out file] [--config path]
+
+Reads the chat logs and writes a CSV ledger of Super Chats and Super Stickers:
+timestamp, chat, author, amount, currency, tier, message. Amounts are integer
+micros, so no value passes through a float.
+
+`
+
 func runExportSuperchats(args []string, stdout, stderr io.Writer) int {
 	var dirFlag, outFlag, cfgPath string
 	fs := flag.NewFlagSet("export superchats", flag.ContinueOnError)
@@ -64,12 +73,8 @@ func runExportSuperchats(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&dirFlag, "dir", "", "chat log directory to read")
 	fs.StringVar(&outFlag, "out", "", "output file; empty writes to stdout")
 	fs.StringVar(&cfgPath, "config", "", "config file path")
-	if err := fs.Parse(args); err != nil {
-		return ExitUsage
-	}
-	if fs.NArg() != 0 {
-		fmt.Fprintf(stderr, "unexpected argument %q\n", fs.Arg(0))
-		return ExitUsage
+	if code, ok := parseCommandFlags(fs, args, exportSuperchatsUsage, "export", stdout, stderr); !ok {
+		return code
 	}
 
 	dir := strings.TrimSpace(dirFlag)
