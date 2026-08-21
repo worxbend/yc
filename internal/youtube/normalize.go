@@ -106,8 +106,8 @@ func normalizeChatMessage(item liveChatMessage, kind EventKind, at time.Time, op
 
 	switch kind {
 	case EventKindText:
-		if snippet.TextMessageDetails != nil && strings.TrimSpace(snippet.TextMessageDetails.MessageText) != "" {
-			msg.setText(snippet.TextMessageDetails.MessageText)
+		if snippet.TextMessageDetails != nil {
+			msg.setTextIfPresent(snippet.TextMessageDetails.MessageText)
 		}
 
 	case EventKindSuperChat:
@@ -117,9 +117,7 @@ func normalizeChatMessage(item liveChatMessage, kind EventKind, at time.Time, op
 				Tier:    details.Tier,
 				Comment: details.UserComment,
 			}
-			if strings.TrimSpace(details.UserComment) != "" {
-				msg.setText(details.UserComment)
-			}
+			msg.setTextIfPresent(details.UserComment)
 		}
 
 	case EventKindSuperSticker:
@@ -135,11 +133,9 @@ func normalizeChatMessage(item liveChatMessage, kind EventKind, at time.Time, op
 				AltText:   details.SuperStickerMetadata.AltText,
 				Language:  language,
 			}
-			if strings.TrimSpace(details.SuperStickerMetadata.AltText) != "" {
-				// The alt text is the only renderable form of a sticker:
-				// yc never fetches images.
-				msg.setText(details.SuperStickerMetadata.AltText)
-			}
+			// The alt text is the only renderable form of a sticker: yc never
+			// fetches images.
+			msg.setTextIfPresent(details.SuperStickerMetadata.AltText)
 		}
 
 	case EventKindFanFunding:
@@ -152,18 +148,14 @@ func normalizeChatMessage(item liveChatMessage, kind EventKind, at time.Time, op
 				Amount:  money(details.AmountMicros, details.Currency, details.AmountDisplayString),
 				Comment: details.UserComment,
 			}
-			if strings.TrimSpace(details.UserComment) != "" {
-				msg.setText(details.UserComment)
-			}
+			msg.setTextIfPresent(details.UserComment)
 		}
 
 	case EventKindGift:
 		if details, ok := giftDetails(snippet); ok {
 			msg.Gift = &details
-			if strings.TrimSpace(details.AltText) != "" {
-				msg.setText(details.AltText)
-			} else if strings.TrimSpace(details.Name) != "" {
-				msg.setText(details.Name)
+			if !msg.setTextIfPresent(details.AltText) {
+				msg.setTextIfPresent(details.Name)
 			}
 		}
 
@@ -189,9 +181,7 @@ func normalizeChatMessage(item liveChatMessage, kind EventKind, at time.Time, op
 			msg.Author.MemberLevelName = details.MemberLevelName
 			msg.Author.MemberMonths = details.MemberMonth
 			msg.Author.IsMember = true
-			if strings.TrimSpace(details.UserComment) != "" {
-				msg.setText(details.UserComment)
-			}
+			msg.setTextIfPresent(details.UserComment)
 		}
 
 	case EventKindMembershipGifting:
@@ -256,6 +246,21 @@ func buildMessage(item liveChatMessage, kind EventKind, at time.Time, opts Norma
 func (m *Message) setText(text string) {
 	m.Text = text
 	m.Fragments = SplitFragments(text)
+}
+
+// setTextIfPresent sets the renderable text only when there is some, and
+// reports whether it did.
+//
+// Every event kind that carries a comment, an alt text, or a name makes the
+// same check before using it: an event whose optional text field is absent or
+// blank must keep the display text buildMessage already derived rather than
+// overwrite it with nothing.
+func (m *Message) setTextIfPresent(text string) bool {
+	if strings.TrimSpace(text) == "" {
+		return false
+	}
+	m.setText(text)
+	return true
 }
 
 // normalizeDeletion handles messageDeletedEvent and messageRetractedEvent.

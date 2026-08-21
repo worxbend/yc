@@ -93,18 +93,20 @@ func TextFrame(text string, cfg TextConfig, elapsed time.Duration) []TextCell {
 		return mergeTextCells(staticTextCells(units, cfg))
 	}
 
+	var cells []TextCell
 	switch cfg.Effect {
 	case TextEffectTypewriter:
-		return mergeTextCells(typewriterCells(units, cfg, elapsed))
+		cells = typewriterCells(units, cfg, elapsed)
 	case TextEffectGradientWave:
-		return mergeTextCells(gradientWaveCells(units, cfg, elapsed))
+		cells = gradientWaveCells(units, cfg, elapsed)
 	case TextEffectShimmer:
-		return mergeTextCells(shimmerCells(units, cfg, elapsed))
+		cells = shimmerCells(units, cfg, elapsed)
 	case TextEffectBounce:
-		return mergeTextCells(bounceCells(units, cfg, elapsed))
+		cells = bounceCells(units, cfg, elapsed)
 	default:
-		return mergeTextCells(staticTextCells(units, cfg))
+		cells = staticTextCells(units, cfg)
 	}
+	return mergeTextCells(cells)
 }
 
 // TextDone reports whether a typewriter has finished. It is meaningless for the
