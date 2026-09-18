@@ -327,6 +327,83 @@ Skipped this session, with reasons:
 - **Everything in *Credentialed YouTube Validation: NONE*.** Untouched, and
   still true: no part of `yc` has been run against Google.
 
+## 2026-09-18 v0.3.0 Release Gate
+
+Environment: host Linux 7.2.4 (CachyOS) x86-64, Go 1.26.6, Docker available.
+No credentials present or used. As with the two sessions above, the toolchain
+gate ran in the ordinary working checkout, **not** under a throwaway
+`HOME`/XDG; the dry run's smokes and the published-binary smokes below were
+isolated, the former by the script's own `mktemp -d` harness and the latter by
+an explicit `env -i` with `HOME` and all four XDG directories pointed into a
+throwaway directory.
+
+Toolchain gate, all clean: `gofmt -l .` (empty), `go build ./...`,
+`go vet ./...`, `go tool staticcheck ./...`, `go test ./...`,
+`go test -race ./...`, `go tool govulncheck ./...` ("No vulnerabilities
+found"), and `golangci-lint run` at **v2.13.2**, reporting `0 issues.` Note
+that this is a **newer** golangci-lint than the v2.12.2 the two sessions above
+used and than `.github/workflows/ci.yml` pins; CI ran its own pinned version
+against the same tree and passed, so both versions are witnessed, but the
+local run is not the pinned one.
+
+Release artifacts: `scripts/release-dry-run.sh --version v0.3.0` passed end to
+end, including the Docker build and the container smokes (`--help`,
+`--version`, `doctor`, `config show`, `chat --mock`). The image reported
+`yc 0.3.0`, so the version stamp was proven before the tag existed.
+
+CI and publication: CI run `35383887186` on `ba091bb` (the pushed `main`)
+concluded **success** before the tag was created. Tag `v0.3.0` triggered
+release run `35384111924`, which also concluded **success**. Both conclusions
+were read with `gh run view <id> --json conclusion`, not from a piped
+`gh run watch`, whose exit code is the pipe's and not the run's.
+
+Published release verified as a consumer, not on the workflow's word: all seven
+expected assets are present; `checksums.txt` verifies against the downloaded
+`yc_linux_amd64`, `yc_linux_arm64` and `install.sh` via `sha256sum -c`; the
+downloaded `install.sh` is **byte-identical** to `scripts/install.sh` by
+`diff`; and the downloaded amd64 binary reports `yc 0.3.0`.
+
+Published-binary smokes, under `env -i` with an isolated `HOME` and XDG set:
+`--help`, `--version`, `doctor`, `config show`, `config path`, `quota`,
+`profile list`, `profile show`, `login --dry-run`, `setup --non-interactive`
+and `chat --mock` all exit **0**; `chat --video dQw4w9WgXcQ` with no credential
+exits **2**. `--help` on the multi-word subcommands (`config show`,
+`profile list`, `export superchats`) exits 0 with the page on **stdout** and
+nothing on stderr, so the v0.2.2 headline fix still holds in this release. The
+combined output of `--help`, `doctor`, `config show` and `quota` was scanned
+for an `AIza…`-shaped key, a `ya29.`/`1//0…`-shaped token and a Google
+authorization URL; none appeared.
+
+The v0.2.2 session's zsh note earned its place again. A loop of the form
+`for c in "config show"; do run $c; done` reported exit 2 for all three
+multi-word subcommands and looked exactly like a shipped regression in the
+thing v0.2.2 fixed. It is the same false alarm: zsh does not word-split
+unquoted parameter expansions, so `config show` reached the binary as one
+literal argument and was correctly rejected as an unknown command. Passing the
+words separately shows exit 0, which is what the results above record.
+
+This release is a rendering change — rounded panel borders, a bold active tab,
+a highlighted selection row in the list overlays, key-bright/description-muted
+key hints, label/value hierarchy in the inspect panel and the two non-chat
+tabs, and a usage gauge on the Quota tab.
+
+Skipped this session, with reasons:
+
+- **Interactive terminal checks.** No tmux/pty walkthrough was run, and this
+  release changes rendering, which is exactly what such a walkthrough would
+  witness. The geometry invariants are covered by tests — every frame is
+  asserted rectangular and exactly the terminal's size at 1x1, 8x3, 20x6,
+  40x12, 80x24, 100x30, 160x50 and 200x60, and each pane's rows are width-
+  checked — and one frame was rendered and read by eye at 100x30 and 120x32
+  through the non-TTY path. But **no human has watched this release's frame in
+  a real terminal at multiple sizes, or during a live resize.** That is the
+  weakest claim in this entry.
+- **The curl-pipe installer end to end.** `install.sh` was downloaded, checksum
+  -verified, and confirmed byte-identical to the repository copy; it was **not
+  executed**.
+- **Everything in *Credentialed YouTube Validation: NONE*.** Untouched, and
+  still true: no part of `yc` has been run against Google.
+
 ## How To Add A Session
 
 Copy the shape above. Record:

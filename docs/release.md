@@ -280,14 +280,15 @@ gives them the chance to:
   verifier, or authorization URL. That rule is not negotiable; see
   [code-style.md](code-style.md).
 
-## Known Gap: The Container Reports `dev`
+## The Container's Version Stamp
 
-The `Dockerfile` builds with `-ldflags="-s -w"` and takes no version argument,
-so `docker run yc:local --version` prints `yc dev` even when built from a
-tagged tree. The published binaries are unaffected. Closing this means adding a
-`VERSION` build argument to the `Dockerfile` and passing it from the release
-script; until that happens, this document says so rather than implying the
-container is version-stamped.
+The `Dockerfile` takes a `VERSION` build argument, defaulting to `dev`, and
+stamps it through the same `-X github.com/worxbend/yc/internal/cli.Version`
+linker flag the published binaries use. `scripts/release-dry-run.sh` passes the
+release version and asserts the container reports `yc <version>`, so an
+unstamped image fails the dry run rather than shipping quietly. A plain
+`docker build` with no `--build-arg` still reports `yc dev`, which is correct:
+an unstamped build is a development build.
 
 ## What Is Deliberately Not Done
 
@@ -313,10 +314,10 @@ Per the honesty contract in [index.md](index.md):
 | The version ldflag reaches `yc --version` | **Ready** — a build stamped `0.1.0` reported `yc 0.1.0`; an unstamped build reports `yc dev`. |
 | The Docker image builds and runs | **Ready** — `docker build` succeeded and `--help`, `--version`, `doctor`, `config show`, and `chat --mock` all passed in the container. |
 | `scripts/install.sh` non-network paths | **Ready** — help, dry run, uninstall, non-Linux refusal, unsupported-architecture refusal, non-bash refusal, and malformed-tag rejection all executed. |
-| `scripts/install.sh` download and verification | **Partial** — exercised end to end against a local server serving real release artifacts, including checksum mismatch, a non-digest checksum file, a missing checksum asset, an empty binary, an unwritable directory, and upgrade-in-place. Never run against a real GitHub Release. |
-| `.github/workflows/release.yml` | **Planned** — never executed. The repository has no tags. Every shell block in it was extracted from the YAML and run locally against real artifacts, including the release-notes generation and its re-run guard, but GitHub has never run the workflow. |
+| `scripts/install.sh` download and verification | **Partial** — exercised end to end against a local server serving real release artifacts, including checksum mismatch, a non-digest checksum file, a missing checksum asset, an empty binary, an unwritable directory, and upgrade-in-place. The published `install.sh` has been downloaded, checksum-verified, and confirmed byte-identical to `scripts/install.sh`, but the curl-pipe path has never been **executed** against a real GitHub Release. |
+| `.github/workflows/release.yml` | **Ready** — executed for `v0.1.0`, `v0.2.0`, `v0.2.1`, `v0.2.2`, and `v0.3.0`, each concluding success and publishing all seven assets. |
 | `.github/workflows/release-dry-run.yml` | **Planned** — never executed on GitHub; its script and installer rehearsal steps were run locally. |
-| Published release assets | **Planned** — no release exists. |
+| Published release assets | **Ready** — verified as a consumer for `v0.2.1`, `v0.2.2`, and `v0.3.0`: all seven assets present, `checksums.txt` verified with `sha256sum -c`, and the downloaded amd64 binary reporting the tagged version. |
 
 Update this table when a release is actually cut, and record the manual
 verification in [manual-validation.md](manual-validation.md).
