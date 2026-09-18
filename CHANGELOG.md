@@ -12,6 +12,49 @@ Released binaries are stamped with their tag.
 
 Nothing yet.
 
+## [0.3.0] - 2026-09-18
+
+A visual pass over the whole frame. No keybinding, no layout geometry, no
+configuration, and no behavior changes — everything is where it was, it just
+says more about itself.
+
+### Added
+
+- The Quota tab draws a usage gauge under its headline figure, colored by the
+  same success/warning/error thresholds the status bar's meter already uses, so
+  the two surfaces cannot disagree about whether the day is in trouble. There
+  is no history chart: `yc` retains only the current snapshot of the ledger,
+  and a graph drawn from one sample would be an invention.
+
+### Changed
+
+- Every panel has rounded corners — chat, the chats sidebar, the activity
+  column, the command palette, the chat and emoji pickers, inspect, and both
+  non-chat tabs. They all draw through one function, so this is one change
+  rather than nine.
+- The active tab is bold. The tab bar paints one gradient across the whole row
+  and gave every label identical weight, so which tab you were on was carried
+  entirely by an asterisk.
+- The selected row in the command palette, the chat picker and the emoji picker
+  carries an accent-tinted background across its full width, rather than being
+  marked only by a caret drawn in the same color as every other row. The caret
+  stays, so the selection is still readable on a terminal that cannot show the
+  tint.
+- The key legend reads key-bright, description-muted instead of one flat color,
+  in both the one-line footer and the expanded `?` help. The keys themselves
+  are unchanged; they are still generated from the same table.
+- The inspect panel bolds each row's leading label. The values stay muted and
+  uncolored on purpose: that panel exists to show exactly what `yc` parsed, and
+  coloring a value by its content would claim a structure the raw `key=value`
+  form does not have.
+- Stream Info and the Quota tab render as label/value tables instead of one
+  flat color.
+
+### Notes
+
+The screenshots in `README.md` and `docs/` are regenerated, as always, from the
+real `View()` output rather than drawn by hand.
+
 ## [0.2.2] - 2026-08-21
 
 A CLI contract fix and a round of internal cleanup. The one change you will
@@ -407,7 +450,8 @@ The first release. Everything below is the initial implementation.
   Windows binaries, no snap, no package-manager manifests, no signing,
   notarization, SBOM, or provenance.
 
-[Unreleased]: https://github.com/worxbend/yc/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/worxbend/yc/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/worxbend/yc/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/worxbend/yc/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/worxbend/yc/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/worxbend/yc/compare/v0.1.0...v0.2.0
