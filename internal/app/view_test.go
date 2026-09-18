@@ -354,7 +354,7 @@ func TestGoldenWideFrame(t *testing.T) {
 	wantRow := map[int][]string{
 		0: {"*1:Chat", "2:Stream Info", "3:Quota"},
 		1: {"⟳ 5.0s", "10,000", "est", "LIVE", "Launch Day Stream", "connected"},
-		2: {"┌─ 💬 Chat · Launch Day Stream · 👥 12,345"},
+		2: {"╭─ 💬 Chat · Launch Day Stream · 👥 12,345"},
 	}
 	for row, wants := range wantRow {
 		for _, want := range wants {

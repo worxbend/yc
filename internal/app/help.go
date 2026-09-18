@@ -40,21 +40,57 @@ type helpState struct {
 }
 
 // renderHelp draws the strip at the height the layout reserved.
+//
+// Each row is built key-token-bright, description-muted rather than one flat
+// color: a hint is a lookup ("what does r do"), not prose, and the key is the
+// part an eye scanning the row is after.
 func renderHelp(width, height int, st helpState) string {
 	lines := helpLines(width, height, st)
-	// The keyboard glyph marks the strip as the key legend without spending
-	// a word on saying so.
-	if len(lines) > 0 && width >= 6 {
-		lines[0] = "⌨ " + strings.TrimLeft(lines[0], " ")
-	}
-	for i := range lines {
-		lines[i] = fitLine(lines[i], width)
+	rows := make([]string, len(lines))
+	for i, line := range lines {
+		prefix := ""
+		if i == 0 && width >= 6 {
+			// The keyboard glyph marks the strip as the key legend without
+			// spending a word on saying so.
+			prefix = "⌨ "
+			line = strings.TrimLeft(line, " ")
+		}
+		rows[i] = styleHelpLine(prefix, line, width, st.Palette)
 	}
 	return lipgloss.NewStyle().
 		Width(width).
-		Foreground(lipgloss.Color(st.Palette.Muted)).
 		Background(lipgloss.Color(st.Palette.Surface)).
-		Render(strings.Join(lines, "\n"))
+		Render(strings.Join(rows, "\n"))
+}
+
+// styleHelpLine renders one row of "Keys: Description | Keys: Description"
+// (or, in the collapsed forms, bare key tokens with no description) to exactly
+// width cells, painted on the strip's own surface so no cell is left showing
+// the terminal's default.
+func styleHelpLine(prefix, line string, width int, palette theme.Palette) string {
+	writer := newPaneLineWriter(width, palette.Surface)
+	if prefix != "" {
+		writer.write(prefix, palette.Accent, true)
+	}
+	for i, part := range strings.Split(line, " | ") {
+		if i > 0 {
+			writer.write(" | ", palette.Muted, false)
+		}
+		writeHelpEntry(writer, part, palette)
+	}
+	return writer.String()
+}
+
+// writeHelpEntry writes one "Keys: Description" entry, or - when there is no
+// ": " to split on, as in the compact footer's bare key tokens - the whole
+// entry as a key.
+func writeHelpEntry(writer *paneLineWriter, part string, palette theme.Palette) {
+	key, description, ok := strings.Cut(part, ": ")
+	writer.write(key, palette.Foreground, true)
+	if ok {
+		writer.write(": ", palette.Muted, false)
+		writer.write(description, palette.Muted, false)
+	}
 }
 
 // helpLines picks the form that fits.

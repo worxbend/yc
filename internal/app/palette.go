@@ -4,10 +4,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/worxbend/yc/internal/animation"
 	"github.com/worxbend/yc/internal/render"
 	"github.com/worxbend/yc/internal/theme"
 )
+
+// listOverlaySelectionTint is how far the highlighted row's background is
+// pulled toward the overlay's accent. Selection has to read as one coherent
+// row rather than as another badge, so every cell of the row gets the tint -
+// not just the "❯ " marker - while staying a background text stays legible on.
+const listOverlaySelectionTint = 0.35
 
 // The command palette is the discovery surface: every documented key also
 // exists here as a searchable sentence, so a binding nobody remembers is still
@@ -94,13 +101,35 @@ func listOverlayLines(width, height int, st listOverlayState) []string {
 		}
 		start := windowStart(selected, len(st.Items), height-1)
 		for i := start; i < len(st.Items) && len(lines) < height; i++ {
-			lines = append(lines, fitLine(listOverlayRow(st, st.Items[i], i == selected), width))
+			row := fitLine(listOverlayRow(st, st.Items[i], i == selected), width)
+			if i == selected {
+				row = listOverlaySelectedRow(row, st.Palette)
+			}
+			lines = append(lines, row)
 		}
 	}
 	for len(lines) < height {
 		lines = append(lines, fitLine("", width))
 	}
 	return lines[:height]
+}
+
+// listOverlaySelectedRow paints the highlighted row's own background rather
+// than leaning on the "❯ " marker alone, so the row the query and enter act on
+// is unmistakable at a glance and the marker stays a redundant cue rather than
+// the only one - state must read without color too.
+func listOverlaySelectedRow(row string, palette theme.Palette) string {
+	accent := palette.Accent
+	if accent == "" {
+		accent = palette.Foreground
+	}
+	background := theme.Mix(palette.Surface, accent, listOverlaySelectionTint)
+	foreground := theme.ContrastCorrectedForeground(palette.Foreground, background, palette.Foreground)
+	return lipgloss.NewStyle().
+		Background(lipgloss.Color(background)).
+		Foreground(lipgloss.Color(foreground)).
+		Bold(true).
+		Render(row)
 }
 
 func listOverlayRow(st listOverlayState, item string, selected bool) string {

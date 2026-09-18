@@ -89,7 +89,7 @@ func TestRenderPaneHasExactDimensions(t *testing.T) {
 			t.Fatalf("row %d width = %d, want %d (%q)", i, got, width, line)
 		}
 	}
-	if !strings.HasPrefix(lines[0], "┌") || !strings.HasSuffix(lines[0], "┐") {
+	if !strings.HasPrefix(lines[0], "╭") || !strings.HasSuffix(lines[0], "╮") {
 		t.Fatalf("title row is not a border row: %q", lines[0])
 	}
 	if !strings.Contains(lines[0], "Chat") {

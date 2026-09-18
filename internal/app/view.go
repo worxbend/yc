@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -117,8 +118,7 @@ func (m shellModel) View() string {
 			layout.width, layout.streamInfo))
 	}
 	if layout.misc.shown() {
-		regions = append(regions, m.linesPane("⟳", "Quota · estimated", m.quotaLedgerLines(),
-			layout.width, layout.misc))
+		regions = append(regions, m.renderQuotaPane(layout.width, layout.misc))
 	}
 	if layout.overlay.shown() {
 		regions = append(regions, renderListOverlay(layout.width, layout.overlay, m.listOverlayState()))
@@ -434,57 +434,66 @@ func dockOverlay(normal, tall, width, height, remaining int) (dockedPane, int) {
 func (m shellModel) tabBarLine(width int) string {
 	handle, chat := m.tabBarContextParts()
 	context := strings.TrimSpace(strings.Join(nonEmpty(handle, chat), "  "))
-	tabs := m.tabBarTabs(false)
-	if ansi.StringWidth(tabs)+2+ansi.StringWidth(context) > width {
-		tabs = m.tabBarTabs(true)
+	tabs := m.tabBarTabSpans(false)
+	if tabs.width()+2+ansi.StringWidth(context) > width {
+		tabs = m.tabBarTabSpans(true)
 	}
-	if ansi.StringWidth(tabs)+2+ansi.StringWidth(context) > width {
-		tabs = m.activeTabLabel()
+	if tabs.width()+2+ansi.StringWidth(context) > width {
+		tabs = m.activeTabSpan()
 	}
 
-	line := tabs
-	if available := width - ansi.StringWidth(tabs); context != "" && available > 0 {
+	spans := append(gradientSpans(nil), tabs...)
+	if available := width - tabs.width(); context != "" && available > 0 {
 		contextWidth := available
 		if available > 2 {
 			contextWidth -= 2
 		}
 		visible := truncateDisplayWidth(context, contextWidth)
-		line += strings.Repeat(" ", available-ansi.StringWidth(visible)) + visible
+		spans = append(spans, gradientSpan{text: strings.Repeat(" ", available-ansi.StringWidth(visible)) + visible})
 	}
-	return gradientBackgroundLine(
-		fitLine(line, width), width,
+	return gradientBackgroundSpans(
+		spans, width,
 		m.theme.Accent, gradientEndColor(m.theme),
 		m.theme.Foreground, m.theme.Background,
-		m.gradientPhase(width), true,
+		m.gradientPhase(width),
 	)
 }
 
-func (m shellModel) tabBarTabs(compact bool) string {
-	parts := make([]string, 0, len(shellTabs))
+// tabBarTabSpans renders one span per tab, marked bold precisely on the active
+// one: the moving gradient background is one continuous surface, so boldness
+// is the only thing left to say "you are here" instead of every label reading
+// with identical weight.
+func (m shellModel) tabBarTabSpans(compact bool) gradientSpans {
+	spans := make(gradientSpans, 0, len(shellTabs)*2+1)
+	spans = append(spans, gradientSpan{text: " "})
 	for i, entry := range shellTabs {
+		if i > 0 {
+			spans = append(spans, gradientSpan{text: "  "})
+		}
+		active := entry.tab == m.activeTab
 		marker := " "
-		if entry.tab == m.activeTab {
+		if active {
 			marker = "*"
 		}
-		if compact && entry.tab != m.activeTab {
+		if compact && !active {
 			marker = ""
 		}
 		label := fmt.Sprintf("%s%d", marker, i+1)
 		if !compact {
 			label += ":" + entry.label
 		}
-		parts = append(parts, label)
+		spans = append(spans, gradientSpan{text: label, bold: active})
 	}
-	return " " + strings.Join(parts, "  ")
+	return spans
 }
 
-func (m shellModel) activeTabLabel() string {
+func (m shellModel) activeTabSpan() gradientSpans {
 	for i, entry := range shellTabs {
 		if entry.tab == m.activeTab {
-			return fmt.Sprintf(" *%d", i+1)
+			return gradientSpans{{text: fmt.Sprintf(" *%d", i+1), bold: true}}
 		}
 	}
-	return ""
+	return nil
 }
 
 func (m shellModel) tabBarContextParts() (string, string) {
@@ -1444,6 +1453,69 @@ func (m shellModel) quotaLedgerLines() []string {
 	return lines
 }
 
+// quotaGaugeCells is the usage bar's width in cells: wide enough to read as a
+// shape rather than a decoration, narrow enough to survive the misc tab's
+// narrowest framed width.
+const quotaGaugeCells = 24
+
+// renderQuotaPane draws the Quota tab: quotaLedgerLines with label/value
+// hierarchy, plus a semantically colored usage gauge under the headline
+// figure so the number that decides whether the session survives the stream
+// is scannable as a shape, not only as digits - the same success/warning/error
+// ramp the status bar's own meter uses, so the two never disagree.
+func (m shellModel) renderQuotaPane(width int, pane dockedPane) string {
+	height, contentHeight, framed := pane.height, pane.contentHeight, pane.framed
+	lines := m.quotaLedgerLines()
+	if !framed {
+		return backgroundStyledLine(fitBlock(strings.Join(lines, "\n"), width, height), m.theme.Surface)
+	}
+	contentWidth := clampMin(width-4, 1)
+	body := make([]string, 0, contentHeight+1)
+	for i, line := range lines {
+		if len(body) >= contentHeight {
+			break
+		}
+		body = append(body, styleLabelValueLine(fitLine(line, contentWidth), m.theme))
+		if i == 0 {
+			if gauge, ok := m.quotaGaugeLine(contentWidth); ok && len(body) < contentHeight {
+				body = append(body, gauge)
+			}
+		}
+	}
+	body = padLines(body, contentWidth, contentHeight, m.theme.Surface)
+	return renderPane(paneSpec{
+		palette:       m.theme,
+		icon:          "⟳",
+		title:         "Quota · estimated",
+		content:       strings.Join(body, "\n"),
+		width:         width,
+		contentHeight: contentHeight,
+		padding:       1,
+		accent:        m.theme.Accent,
+	})
+}
+
+// quotaGaugeLine renders " [▓▓▓▓░░░░] 62% left", or reports false when no
+// ledger is known - the same condition quotaLedgerLines itself checks, so the
+// bar never appears above a "no ledger" explanation.
+func (m shellModel) quotaGaugeLine(width int) (string, bool) {
+	snapshot, known := m.quotaSnapshot()
+	if !known {
+		return "", false
+	}
+	percent := snapshot.RemainingPercent() / 100
+	percent = min(max(percent, 0), 1)
+	filled := int(math.Round(percent * quotaGaugeCells))
+	color := quotaColor(m.theme, percent*100)
+	bar := "[" + strings.Repeat("▓", filled) + strings.Repeat("░", quotaGaugeCells-filled) + "]"
+
+	writer := newPaneLineWriter(width, m.theme.Surface)
+	writer.write(" ", m.theme.Muted, false)
+	writer.write(bar, color, false)
+	writer.write(fmt.Sprintf(" %.0f%% left", percent*100), color, true)
+	return writer.String(), true
+}
+
 func sortedEndpoints(byEndpoint map[string]int) []string {
 	endpoints := make([]string, 0, len(byEndpoint))
 	for endpoint := range byEndpoint {
@@ -1519,7 +1591,7 @@ func (m shellModel) linesPane(icon, title string, lines []string, width int, pan
 		if len(body) >= contentHeight {
 			break
 		}
-		body = append(body, paneStyledText(fitLine(line, contentWidth), m.theme.Foreground, m.theme.Surface, false))
+		body = append(body, styleLabelValueLine(fitLine(line, contentWidth), m.theme))
 	}
 	body = padLines(body, contentWidth, contentHeight, m.theme.Surface)
 	return renderPane(paneSpec{

@@ -76,7 +76,7 @@ func renderPane(spec paneSpec) string {
 		Height(spec.contentHeight).
 		Foreground(lipgloss.Color(spec.palette.Foreground)).
 		Background(lipgloss.Color(spec.palette.Surface)).
-		BorderStyle(lipgloss.NormalBorder()).
+		BorderStyle(lipgloss.RoundedBorder()).
 		BorderTop(false).
 		BorderRight(true).
 		BorderBottom(true).
@@ -98,7 +98,7 @@ func renderPane(spec paneSpec) string {
 // visible change rather than a shimmer nobody notices.
 const paneRailGradientSteps = 12
 
-// paneTitleLine draws "┌─ 💬 Chat ─────┐" on the canvas background, so the
+// paneTitleLine draws "╭─ 💬 Chat ─────╮" on the canvas background, so the
 // title reads as part of the gap between panes rather than as a content row.
 func paneTitleLine(spec paneSpec, railColor, canvas string) string {
 	width := spec.width
@@ -120,7 +120,7 @@ func paneTitleLine(spec paneSpec, railColor, canvas string) string {
 	labelWidth := ansi.StringWidth(labelText)
 	remainder := strings.Repeat("─", clampMin(innerWidth-labelWidth, 0))
 
-	left := paneStyledText("┌", railColor, canvas, true)
+	left := paneStyledText("╭", railColor, canvas, true)
 	var styledLabel string
 	if spec.focused {
 		styledLabel = gradientForegroundText(
@@ -134,7 +134,7 @@ func paneTitleLine(spec paneSpec, railColor, canvas string) string {
 	} else {
 		styledLabel = paneStyledText(labelText, spec.accent, canvas, true)
 	}
-	border := paneStyledText(remainder+"┐", spec.palette.Border, canvas, false)
+	border := paneStyledText(remainder+"╮", spec.palette.Border, canvas, false)
 	return left + styledLabel + border
 }
 
@@ -207,6 +207,34 @@ func (w *paneLineWriter) String() string {
 		w.used = w.width
 	}
 	return w.builder.String()
+}
+
+// styleLabelValueLine bolds-and-mutes a "Label   value" row: the label - the
+// run of text before its first run of two or more spaces, which is how every
+// caller already pads these columns to align - renders muted, and the value
+// beside it renders in the pane's normal foreground. A line with no such gap
+// (a blank separator, a section heading, a wrapped sentence of prose) renders
+// unchanged in the foreground, because there is no label to de-emphasize.
+//
+// This is what turns a lines-pane from one flat color into a scannable
+// label/value table without hand-coloring every field: Stream Info and the
+// Quota tab both share it, and a caller earns hierarchy by formatting its
+// fields with two aligning spaces, the same convention it already follows for
+// plain-text alignment.
+func styleLabelValueLine(line string, palette theme.Palette) string {
+	writer := newPaneLineWriter(ansi.StringWidth(line), palette.Surface)
+	trimmed := strings.TrimLeft(line, " ")
+	indent := line[:len(line)-len(trimmed)]
+	if indent != "" {
+		writer.write(indent, palette.Muted, false)
+	}
+	if gap := strings.Index(trimmed, "  "); gap > 0 {
+		writer.write(trimmed[:gap], palette.Muted, true)
+		writer.write(trimmed[gap:], palette.Foreground, false)
+	} else {
+		writer.write(trimmed, palette.Foreground, false)
+	}
+	return writer.String()
 }
 
 // clampMin is the lower-bound clamp used throughout the layout math, where a

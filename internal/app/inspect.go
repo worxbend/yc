@@ -37,10 +37,14 @@ func renderInspect(width int, pane dockedPane, st inspectState) string {
 		contentWidth = clampMin(width-4, 1)
 	}
 	lines := inspectLines(contentWidth, contentHeight, st)
-	for len(lines) < contentHeight {
-		lines = append(lines, fitLine("", contentWidth))
+	styled := make([]string, len(lines))
+	for i, line := range lines {
+		styled[i] = styleInspectLine(line, contentWidth, st.Palette)
 	}
-	content := strings.Join(lines, "\n")
+	for len(styled) < contentHeight {
+		styled = append(styled, backgroundStyledLine(fitLine("", contentWidth), st.Palette.Surface))
+	}
+	content := strings.Join(styled, "\n")
 	if !framed {
 		return backgroundStyledLine(fitBlock(content, width, height), st.Palette.Surface)
 	}
@@ -104,6 +108,24 @@ func inspectLines(width, height int, st inspectState) []string {
 		lines = append(lines, "text: "+compactDiagnosticText(message.Text))
 	}
 	return fitInspectLines(lines, width, height)
+}
+
+// styleInspectLine bolds a row's leading "label:" so the eye can find where
+// one field ends and the next begins in what is otherwise a dump of raw
+// values by design - see the package doc above. The value itself stays
+// muted rather than colored: this panel's whole point is showing exactly what
+// yc parsed, and coloring it by content would claim a structure the raw
+// key=value form does not have.
+func styleInspectLine(line string, width int, palette theme.Palette) string {
+	writer := newPaneLineWriter(width, palette.Surface)
+	label, rest, ok := strings.Cut(line, ": ")
+	if !ok {
+		writer.write(line, palette.Muted, false)
+		return writer.String()
+	}
+	writer.write(label+": ", palette.Accent, true)
+	writer.write(rest, palette.Muted, false)
+	return writer.String()
 }
 
 // fitInspectLines redacts every line before fitting it, so a secret can never
