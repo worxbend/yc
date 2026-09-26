@@ -1628,7 +1628,10 @@ yc chat --channel @somechannel'
     var STOP = {};
     var run = 0, playing = false, visible = true;
 
-    function guard(id) { if (id !== run || !playing) throw STOP; }
+    // Pause and Play bump run while a sequence is awaiting, so every check
+    // re-reads the shared state rather than trusting a local.
+    function current(id) { return id === run && playing; }
+    function guard(id) { if (!current(id)) throw STOP; }
     function wait(ms, id) {
       return new Promise(function (res, rej) {
         setTimeout(function () {
@@ -1838,7 +1841,7 @@ yc chat --channel @somechannel'
     async function loop() {
       var id = run;
       try {
-        while (id === run && playing) {
+        while (current(id)) {
           await sequence(id);
           guard(id);
         }
