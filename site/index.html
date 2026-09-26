@@ -23,7 +23,7 @@
   try {
     var t = localStorage.getItem('yc-theme');
     if (t === 'light' || t === 'dark') {
-      document.documentElement.setAttribute('data-theme', t);
+      document.documentElement.dataset.theme = t;
     }
   } catch (e) { /* private mode, file:// with storage disabled — auto is fine */ }
 })();
@@ -266,7 +266,6 @@ header.nav {
   margin: 0; font-family: var(--mono); font-weight: 700;
   font-size: clamp(9px, 2.1vw, 20px); line-height: 1.02; letter-spacing: 0;
   font-variant-ligatures: none; white-space: pre; tab-size: 0;
-  color: var(--brand);
   background: linear-gradient(110deg, var(--grad-a), var(--grad-b) 48%, var(--grad-c));
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent; color: transparent;
@@ -419,8 +418,17 @@ h1 .grad {
 .meter .bar {
   flex: 1 1 auto; height: 12px; border-radius: 999px; overflow: hidden;
   background: var(--panel-2); border: 1px solid var(--line-soft);
+  appearance: none; -webkit-appearance: none;
 }
-.meter .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--ok), var(--warn) 70%, var(--err)); }
+.meter .bar::-webkit-progress-bar { background: var(--panel-2); border-radius: 999px; }
+.meter .bar::-webkit-progress-value {
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--ok), var(--warn) 70%, var(--err));
+}
+.meter .bar::-moz-progress-bar {
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--ok), var(--warn) 70%, var(--err));
+}
 .meter .read { font-family: var(--mono); font-size: .85rem; color: var(--muted); white-space: nowrap; }
 
 .quota-facts { margin: 1.4rem 0 0; padding-left: 1.1rem; color: var(--muted); }
@@ -737,9 +745,9 @@ footer { border-top: 1px solid var(--line); padding: 2.5rem 0; color: var(--mute
 /* demo step list, stacked under the frame it narrates */
 .hero-demo { display: grid; gap: 1.1rem; align-content: start; grid-template-columns: minmax(0, 1fr); }
 .hero-demo > * { min-width: 0; }
-.demo-steps li { min-width: 0; }
 .demo-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
 .demo-steps li {
+  min-width: 0;
   display: flex; gap: .7rem; align-items: flex-start; padding: .6rem .8rem;
   border-radius: var(--radius-sm); border: 1px solid transparent;
   color: var(--muted); font-size: .92rem; transition: border-color .25s, background .25s, color .25s;
@@ -791,7 +799,9 @@ footer { border-top: 1px solid var(--line); padding: 2.5rem 0; color: var(--mute
 @media (forced-colors: active) {
   .term::after { display: none; }
   .term, .card, .stat, .doc, .theme { mix-blend-mode: normal; }
-  .sw, .sw span, .track, .track .fill, .meter .bar, .meter .bar i { forced-color-adjust: none; }
+  .sw, .sw span, .track, .track .fill, .meter .bar { forced-color-adjust: none; }
+  .meter .bar::-webkit-progress-value { forced-color-adjust: none; }
+  .meter .bar::-moz-progress-bar { forced-color-adjust: none; }
   .btn-primary { forced-color-adjust: none; }
 }
 </style>
@@ -826,7 +836,8 @@ footer { border-top: 1px solid var(--line); padding: 2.5rem 0; color: var(--mute
   <div class="wrap">
     <div class="hero-grid">
       <div>
-        <div class="logo-wrap" role="img" aria-label="yc">
+        <div class="logo-wrap">
+          <img class="sr-only" src="assets/yc-logo.svg" width="1" height="1" alt="yc">
 <pre class="logo" aria-hidden="true">██╗   ██╗ ██████╗
 ╚██╗ ██╔╝██╔════╝
  ╚████╔╝ ██║
@@ -873,7 +884,9 @@ footer { border-top: 1px solid var(--line); padding: 2.5rem 0; color: var(--mute
 
       <div class="hero-demo">
         <figure style="margin:0">
-          <div class="term" id="term" role="img" aria-label="A mock of the yc terminal interface: a tab bar, a quota status line reading 28 second interval with 8,850 of 10,000 estimated units spent and a STRETCHED marker, a chat pane of live messages including a Super Chat, a chats sidebar, an activity column, and a composer.">
+          <img class="sr-only" src="assets/screenshots/chat-grouped.svg" width="1" height="1"
+               alt="A mock of the yc terminal interface: a tab bar, a quota status line reading 28 second interval with 8,850 of 10,000 estimated units spent and a STRETCHED marker, a chat pane of live messages including a Super Chat, a chats sidebar, an activity column, and a composer.">
+          <div class="term" id="term">
             <div class="term-bar" aria-hidden="true">
               <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
               <span class="term-title">yc — chat</span>
@@ -956,7 +969,9 @@ footer { border-top: 1px solid var(--line); padding: 2.5rem 0; color: var(--mute
           <span class="who">YouTube's advised cadence · <code>~5s</code></span>
           <span class="out">quota gone at 2h47m</span>
         </div>
-        <div class="track a" role="img" aria-label="Polling every 5 seconds spends the estimated 10,000-unit daily budget after about 2 hours 47 minutes, roughly 12 percent of a 24-hour day.">
+        <img class="sr-only" src="assets/yc-logo.svg" width="1" height="1"
+             alt="Polling every 5 seconds spends the estimated 10,000-unit daily budget after about 2 hours 47 minutes, roughly 12 percent of a 24-hour day.">
+        <div class="track a" aria-hidden="true">
           <span class="fill" style="width:11.6%"></span>
         </div>
         <span class="mark">▲ 2h47m — the rest of the stream runs blind</span>
@@ -966,14 +981,18 @@ footer { border-top: 1px solid var(--line); padding: 2.5rem 0; color: var(--mute
           <span class="who">yc's budget floor · <code>~43s</code></span>
           <span class="out">lasts to the reset</span>
         </div>
-        <div class="track b" role="img" aria-label="Polling every 43 seconds spreads the same estimated 10,000-unit budget across the full 24 hours, so reading survives to the daily reset.">
+        <img class="sr-only" src="assets/yc-logo.svg" width="1" height="1"
+             alt="Polling every 43 seconds spreads the same estimated 10,000-unit budget across the full 24 hours, so reading survives to the daily reset.">
+        <div class="track b" aria-hidden="true">
           <span class="fill" style="width:100%"></span>
         </div>
         <span class="mark">▲ still reading at 23h59m</span>
       </div>
     </div>
 
-    <div class="term term-mini" role="img" aria-label="yc's status bar reading: 28 second interval, 8,850 of 10,000 estimated units spent, 12 percent left, about 1 hour 45 minutes remaining, mode STRETCHED.">
+    <img class="sr-only" src="assets/screenshots/chat-grouped.svg" width="1" height="1"
+         alt="yc's status bar reading: 28 second interval, 8,850 of 10,000 estimated units spent, 12 percent left, about 1 hour 45 minutes remaining, mode STRETCHED.">
+    <div class="term term-mini">
       <div class="term-bar" aria-hidden="true">
         <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
         <span class="term-title">yc — quota meter and cadence</span>
@@ -981,9 +1000,9 @@ footer { border-top: 1px solid var(--line); padding: 2.5rem 0; color: var(--mute
       <div class="term-status" aria-hidden="true">⟳ 28s · 8,850/10,000 est · <span class="warnc">12% left</span> · <span class="dim">~1h45m</span> · <i class="chip">STRETCHED</i></div>
     </div>
 
-    <div class="meter" role="progressbar" aria-valuemin="0" aria-valuemax="10000" aria-valuenow="8850"
-         aria-valuetext="8,850 of 10,000 estimated units spent; 12 percent left" aria-label="Estimated daily quota">
-      <span class="bar" aria-hidden="true"><i style="width:88.5%"></i></span>
+    <div class="meter">
+      <progress class="bar" max="10000" value="8850"
+                aria-label="Estimated daily quota: 8,850 of 10,000 estimated units spent; 12 percent left">8,850 / 10,000 est · 12% left</progress>
       <span class="read" aria-hidden="true">8,850 / 10,000 est · 12% left</span>
     </div>
 
@@ -1431,7 +1450,7 @@ yc chat --channel @somechannel'
   </div>
 </footer>
 
-<p class="sr-only" role="status" aria-live="polite" id="copy-status"></p>
+<output class="sr-only" aria-live="polite" id="copy-status"></output>
 
 <script>
 /* ============================================================================
@@ -1464,8 +1483,8 @@ yc chat --channel @somechannel'
     } catch (e) { /* storage unavailable */ }
 
     function apply() {
-      if (mode === 'auto') document.documentElement.removeAttribute('data-theme');
-      else document.documentElement.setAttribute('data-theme', mode);
+      if (mode === 'auto') delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = mode;
       icon.textContent = META[mode].icon;
       label.textContent = META[mode].label;
       btn.setAttribute('aria-label', 'Colour theme: ' + META[mode].name + '. Activate to change.');
@@ -1498,7 +1517,7 @@ yc chat --channel @somechannel'
       ta.select();
       var ok = false;
       try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
-      document.body.removeChild(ta);
+      ta.remove();
       return ok;
     }
 
@@ -1507,7 +1526,7 @@ yc chat --channel @somechannel'
       if (!btn) return;
       /* data-copy is the source of truth: scraping textContent would drag the
          "$" prompts and the comment lines in with it. */
-      var text = btn.getAttribute('data-copy') || '';
+      var text = btn.dataset.copy || '';
       write(text).then(function (ok) {
         if (ok) {
           btn.textContent = 'Copied';
@@ -1561,10 +1580,14 @@ yc chat --channel @somechannel'
         spend = $('outSpend'), clamp = $('calcClamp');
     var UNITS = 10000, COST = 5, FLOOR = 5;
 
-    function comma(n) { return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+    function comma(n) {
+      var s = n.toString(), out = '';
+      while (s.length > 3) { out = ',' + s.slice(-3) + out; s = s.slice(0, -3); }
+      return s + out;
+    }
 
     function recompute() {
-      var hours = parseInt(slider.value, 10);
+      var hours = Number.parseInt(slider.value, 10);
       var p = Math.floor(UNITS / COST);
       var raw = (hours * 3600) / p;
       var clamped = raw < FLOOR;
@@ -1619,13 +1642,13 @@ yc chat --channel @somechannel'
       if (text != null) n.textContent = text;
       return n;
     }
-    function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+    function clear(n) { while (n.firstChild) n.firstChild.remove(); }
     function step(i) {
       for (var k = 0; k < stepEls.length; k++) stepEls[k].classList.toggle('on', k === i);
     }
     function keys(list) {
       clear(keycaps);
-      for (var i = 0; i < list.length; i++) keycaps.appendChild(el('span', null, list[i]));
+      for (var key of list) keycaps.appendChild(el('span', null, key));
       keycaps.classList.add('on');
     }
     function keysOff() { keycaps.classList.remove('on'); }
@@ -1652,11 +1675,11 @@ yc chat --channel @somechannel'
       r.appendChild(el('span', 'who', who + ': '));
       r.appendChild(document.createTextNode(text));
       rows.appendChild(r);
-      while (rows.children.length > 8) rows.removeChild(rows.firstChild);
+      while (rows.children.length > 8) rows.firstChild.remove();
     }
     function actRow(text) {
       act.appendChild(el('div', 'act-row', text));
-      while (act.children.length > 8) act.removeChild(act.firstChild);
+      while (act.children.length > 8) act.firstChild.remove();
     }
     function chatEntry(name, active) {
       var r = el('div', 'chat-row' + (active ? ' on' : ''), (active ? '> ' : '  ') + name);
@@ -1680,8 +1703,8 @@ yc chat --channel @somechannel'
       draft.appendChild(span);
       draft.appendChild(caret);
       var chars = Array.from(text), acc = '';
-      for (var i = 0; i < chars.length; i++) {
-        acc += chars[i];
+      for (var ch of chars) {
+        acc += ch;
         span.textContent = acc;
         await wait(38, id);
       }
@@ -1771,8 +1794,8 @@ yc chat --channel @somechannel'
         ['b', 'juno', 'wait it stretches the interval by itself?'],
         ['a', 'rowan', 'yeah, and it shows you the arithmetic']
       ];
-      for (var s = 0; s < script.length; s++) {
-        chatRow(script[s][0], script[s][1], script[s][2]);
+      for (var msg of script) {
+        chatRow(msg[0], msg[1], msg[2]);
         await wait(700, id);
       }
 
@@ -1815,7 +1838,7 @@ yc chat --channel @somechannel'
     async function loop() {
       var id = run;
       try {
-        while (true) {
+        while (id === run && playing) {
           await sequence(id);
           guard(id);
         }
