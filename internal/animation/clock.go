@@ -46,9 +46,9 @@ func ScheduleFrame(interval time.Duration) tea.Cmd {
 	})
 }
 
-// Clock supplies the current time to reveal state. It is an interface so tests
+// Nower supplies the current time to reveal state. It is an interface so tests
 // drive animation from a fake clock rather than a wall-clock sleep.
-type Clock interface {
+type Nower interface {
 	Now() time.Time
 }
 

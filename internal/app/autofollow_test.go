@@ -198,7 +198,7 @@ func TestAutoFollowAdoptsTheNewStreamAndReconnects(t *testing.T) {
 		t.Fatalf("chatCount = %d, want 1", got)
 	}
 	// Messages stamped with the new routing key still land in this chat.
-	if found := model.chats.stateForChatID("newchatid"); found != state {
+	if model.chats.stateForChatID("newchatid") != state {
 		t.Fatal("a message for the new liveChatId would not route to the followed chat")
 	}
 }

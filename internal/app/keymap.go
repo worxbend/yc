@@ -22,6 +22,12 @@ type keyBinding struct {
 
 type keyGroup int
 
+// Key spellings shared by the binding table and the compact footer.
+const (
+	keyCtrlE = "ctrl+e"
+	keyCtrlP = "ctrl+p"
+)
+
 const (
 	keyGroupChat keyGroup = iota
 	keyGroupModeration
@@ -67,7 +73,7 @@ var keyBindings = []keyBinding{
 	{Keys: "y", Description: "copy selected message", Group: keyGroupChat},
 	{Keys: "r", Description: "reply", Group: keyGroupChat},
 	{Keys: "K", Description: "inspect", Group: keyGroupChat},
-	{Keys: "ctrl+e", Description: "emoji picker", Group: keyGroupChat},
+	{Keys: keyCtrlE, Description: "emoji picker", Group: keyGroupChat},
 	{Keys: "@ then tab", Description: "complete a mention", Group: keyGroupChat},
 
 	// Moderation is documented even when the credential cannot use it. The
@@ -98,7 +104,7 @@ var keyBindings = []keyBinding{
 	{Keys: "ctrl+y", Description: "emoji highlight", Group: keyGroupDisplay},
 	{Keys: "ctrl+n", Description: "full names", Group: keyGroupDisplay},
 
-	{Keys: "ctrl+p", Description: "commands", Group: keyGroupSession},
+	{Keys: keyCtrlP, Description: "commands", Group: keyGroupSession},
 	{Keys: "ctrl+r", Description: "reconnect", Group: keyGroupSession},
 	{Keys: "ctrl+l", Description: "clear (asks first)", Group: keyGroupSession},
 	{Keys: "q", Description: "quit", Group: keyGroupSession},
@@ -134,7 +140,7 @@ var compactFooter = []struct {
 	Keys  string
 	Label string
 }{
-	{Keys: "ctrl+p", Label: "ctrl+p"},
+	{Keys: keyCtrlP, Label: keyCtrlP},
 	{Keys: "i/o/a", Label: "i/esc"},
 	{Keys: "j/k", Label: "jk"},
 	{Keys: "space e", Label: "space e/c"},
@@ -142,7 +148,7 @@ var compactFooter = []struct {
 	{Keys: "1-4", Label: "1-4/0"},
 	{Keys: "?", Label: "?"},
 	{Keys: "r", Label: "r/K"},
-	{Keys: "ctrl+e", Label: "ctrl+e"},
+	{Keys: keyCtrlE, Label: keyCtrlE},
 	{Keys: "q", Label: "q quit/ctrl+c quit"},
 }
 

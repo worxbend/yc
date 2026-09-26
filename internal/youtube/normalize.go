@@ -106,110 +106,149 @@ func normalizeChatMessage(item liveChatMessage, kind EventKind, at time.Time, op
 
 	switch kind {
 	case EventKindText:
-		if snippet.TextMessageDetails != nil {
-			msg.setTextIfPresent(snippet.TextMessageDetails.MessageText)
-		}
-
+		applyTextDetails(&msg, snippet)
 	case EventKindSuperChat:
-		if details := snippet.SuperChatDetails; details != nil {
-			msg.SuperChat = &SuperChatDetails{
-				Amount:  money(details.AmountMicros, details.Currency, details.AmountDisplayString),
-				Tier:    details.Tier,
-				Comment: details.UserComment,
-			}
-			msg.setTextIfPresent(details.UserComment)
-		}
-
+		applySuperChat(&msg, snippet)
 	case EventKindSuperSticker:
-		if details := snippet.SuperStickerDetails; details != nil {
-			language := details.SuperStickerMetadata.AltTextLanguage
-			if strings.TrimSpace(language) == "" {
-				language = details.SuperStickerMetadata.Language
-			}
-			msg.SuperSticker = &SuperStickerDetails{
-				Amount:    money(details.AmountMicros, details.Currency, details.AmountDisplayString),
-				Tier:      details.Tier,
-				StickerID: details.SuperStickerMetadata.StickerID,
-				AltText:   details.SuperStickerMetadata.AltText,
-				Language:  language,
-			}
-			// The alt text is the only renderable form of a sticker: yc never
-			// fetches images.
-			msg.setTextIfPresent(details.SuperStickerMetadata.AltText)
-		}
-
+		applySuperSticker(&msg, snippet)
 	case EventKindFanFunding:
-		// fanFundingEvent predates Super Chat and has been deprecated since
-		// 2017. It is decoded into the Super Chat shape rather than given a
-		// pointer of its own, because it is the same fact - a tip with a
-		// comment - and RawType still records what actually arrived.
-		if details := snippet.FanFundingEventDetails; details != nil {
-			msg.SuperChat = &SuperChatDetails{
-				Amount:  money(details.AmountMicros, details.Currency, details.AmountDisplayString),
-				Comment: details.UserComment,
-			}
-			msg.setTextIfPresent(details.UserComment)
-		}
-
+		applyFanFunding(&msg, snippet)
 	case EventKindGift:
-		if details, ok := giftDetails(snippet); ok {
-			msg.Gift = &details
-			if !msg.setTextIfPresent(details.AltText) {
-				msg.setTextIfPresent(details.Name)
-			}
-		}
-
+		applyGift(&msg, snippet)
 	case EventKindNewSponsor:
-		if details := snippet.NewSponsorDetails; details != nil {
-			membershipKind := MembershipNew
-			if details.IsUpgrade {
-				membershipKind = MembershipUpgrade
-			}
-			msg.Membership = &MembershipDetails{Kind: membershipKind, LevelName: details.MemberLevelName}
-			msg.Author.MemberLevelName = details.MemberLevelName
-			msg.Author.IsMember = true
-		}
-
+		applyNewSponsor(&msg, snippet)
 	case EventKindMemberMilestone:
-		if details := snippet.MemberMilestoneChatDetails; details != nil {
-			msg.Membership = &MembershipDetails{
-				Kind:      MembershipMilestone,
-				LevelName: details.MemberLevelName,
-				Months:    details.MemberMonth,
-				Comment:   details.UserComment,
-			}
-			msg.Author.MemberLevelName = details.MemberLevelName
-			msg.Author.MemberMonths = details.MemberMonth
-			msg.Author.IsMember = true
-			msg.setTextIfPresent(details.UserComment)
-		}
-
+		applyMemberMilestone(&msg, snippet)
 	case EventKindMembershipGifting:
-		if details := snippet.MembershipGiftingDetails; details != nil {
-			msg.Membership = &MembershipDetails{
-				Kind:      MembershipGifting,
-				LevelName: details.GiftMembershipsLevelName,
-				GiftCount: details.GiftMembershipsCount,
-			}
-		}
-
+		applyMembershipGifting(&msg, snippet)
 	case EventKindGiftMembershipReceived:
-		if details := snippet.GiftMembershipReceivedDetails; details != nil {
-			msg.Membership = &MembershipDetails{
-				Kind:                    MembershipGiftReceived,
-				LevelName:               details.MemberLevelName,
-				GifterChannelID:         details.GifterChannelID,
-				AssociatedGiftMessageID: details.AssociatedMembershipGiftingMessageID,
-			}
-			msg.Author.MemberLevelName = details.MemberLevelName
-			msg.Author.IsMember = true
-		}
+		applyGiftReceived(&msg, snippet)
 	}
 
 	// Badges are derived after the membership details have had their say, so
 	// a newSponsorEvent shows a member badge on the row that announces it.
 	msg.Badges = BadgesForAuthor(msg.Author)
 	return msg
+}
+
+// applyTextDetails swaps in the textMessageDetails body when one arrived.
+func applyTextDetails(msg *Message, snippet liveChatSnippet) {
+	if snippet.TextMessageDetails != nil {
+		msg.setTextIfPresent(snippet.TextMessageDetails.MessageText)
+	}
+}
+
+// applySuperChat attaches the Super Chat amount and comment.
+func applySuperChat(msg *Message, snippet liveChatSnippet) {
+	if details := snippet.SuperChatDetails; details != nil {
+		msg.SuperChat = &SuperChatDetails{
+			Amount:  money(details.AmountMicros, details.Currency, details.AmountDisplayString),
+			Tier:    details.Tier,
+			Comment: details.UserComment,
+		}
+		msg.setTextIfPresent(details.UserComment)
+	}
+}
+
+// applySuperSticker attaches the Super Sticker amount and alt text.
+func applySuperSticker(msg *Message, snippet liveChatSnippet) {
+	if details := snippet.SuperStickerDetails; details != nil {
+		language := details.SuperStickerMetadata.AltTextLanguage
+		if strings.TrimSpace(language) == "" {
+			language = details.SuperStickerMetadata.Language
+		}
+		msg.SuperSticker = &SuperStickerDetails{
+			Amount:    money(details.AmountMicros, details.Currency, details.AmountDisplayString),
+			Tier:      details.Tier,
+			StickerID: details.SuperStickerMetadata.StickerID,
+			AltText:   details.SuperStickerMetadata.AltText,
+			Language:  language,
+		}
+		// The alt text is the only renderable form of a sticker: yc never
+		// fetches images.
+		msg.setTextIfPresent(details.SuperStickerMetadata.AltText)
+	}
+}
+
+// applyFanFunding decodes the deprecated pre-Super-Chat tip into the Super
+// Chat shape.
+//
+// fanFundingEvent predates Super Chat and has been deprecated since 2017. It
+// is decoded into the Super Chat shape rather than given a pointer of its
+// own, because it is the same fact - a tip with a comment - and RawType still
+// records what actually arrived.
+func applyFanFunding(msg *Message, snippet liveChatSnippet) {
+	if details := snippet.FanFundingEventDetails; details != nil {
+		msg.SuperChat = &SuperChatDetails{
+			Amount:  money(details.AmountMicros, details.Currency, details.AmountDisplayString),
+			Comment: details.UserComment,
+		}
+		msg.setTextIfPresent(details.UserComment)
+	}
+}
+
+// applyGift attaches the gift details from either documented wire shape.
+func applyGift(msg *Message, snippet liveChatSnippet) {
+	if details, ok := giftDetails(snippet); ok {
+		msg.Gift = &details
+		if !msg.setTextIfPresent(details.AltText) {
+			msg.setTextIfPresent(details.Name)
+		}
+	}
+}
+
+// applyNewSponsor marks the author as a member, upgraded or new.
+func applyNewSponsor(msg *Message, snippet liveChatSnippet) {
+	if details := snippet.NewSponsorDetails; details != nil {
+		membershipKind := MembershipNew
+		if details.IsUpgrade {
+			membershipKind = MembershipUpgrade
+		}
+		msg.Membership = &MembershipDetails{Kind: membershipKind, LevelName: details.MemberLevelName}
+		msg.Author.MemberLevelName = details.MemberLevelName
+		msg.Author.IsMember = true
+	}
+}
+
+// applyMemberMilestone attaches the milestone and marks the author a member.
+func applyMemberMilestone(msg *Message, snippet liveChatSnippet) {
+	if details := snippet.MemberMilestoneChatDetails; details != nil {
+		msg.Membership = &MembershipDetails{
+			Kind:      MembershipMilestone,
+			LevelName: details.MemberLevelName,
+			Months:    details.MemberMonth,
+			Comment:   details.UserComment,
+		}
+		msg.Author.MemberLevelName = details.MemberLevelName
+		msg.Author.MemberMonths = details.MemberMonth
+		msg.Author.IsMember = true
+		msg.setTextIfPresent(details.UserComment)
+	}
+}
+
+// applyMembershipGifting records a batch of gifted memberships.
+func applyMembershipGifting(msg *Message, snippet liveChatSnippet) {
+	if details := snippet.MembershipGiftingDetails; details != nil {
+		msg.Membership = &MembershipDetails{
+			Kind:      MembershipGifting,
+			LevelName: details.GiftMembershipsLevelName,
+			GiftCount: details.GiftMembershipsCount,
+		}
+	}
+}
+
+// applyGiftReceived records a received gift and marks the author a member.
+func applyGiftReceived(msg *Message, snippet liveChatSnippet) {
+	if details := snippet.GiftMembershipReceivedDetails; details != nil {
+		msg.Membership = &MembershipDetails{
+			Kind:                    MembershipGiftReceived,
+			LevelName:               details.MemberLevelName,
+			GifterChannelID:         details.GifterChannelID,
+			AssociatedGiftMessageID: details.AssociatedMembershipGiftingMessageID,
+		}
+		msg.Author.MemberLevelName = details.MemberLevelName
+		msg.Author.IsMember = true
+	}
 }
 
 // buildMessage assembles the fields every normalized row shares.

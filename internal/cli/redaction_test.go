@@ -265,31 +265,41 @@ func TestCredentialBearingFieldsUseANonPrintingType(t *testing.T) {
 
 	for typeName, typ := range types {
 		for i := range typ.NumField() {
-			field := typ.Field(i)
-			if field.PkgPath != "" {
-				continue // unexported: unreachable by a caller's fmt verb
-			}
-			qualified := typeName + "." + field.Name
-			if exempt[qualified] {
-				continue
-			}
-			lowered := strings.ToLower(field.Name)
-			credentialish := false
-			for _, marker := range secretish {
-				if strings.Contains(lowered, marker) {
-					credentialish = true
-					break
-				}
-			}
-			if !credentialish {
-				continue
-			}
-			if field.Type != secretType {
-				t.Errorf("%s is a %s; a credential-bearing field must be auth.Secret so fmt cannot print it",
-					qualified, field.Type)
-			}
+			checkCredentialField(t, typeName, typ.Field(i), secretType, secretish, exempt)
 		}
 	}
+}
+
+// checkCredentialField verifies that one exported field naming a credential
+// holds an auth.Secret, the only field type fmt cannot print.
+func checkCredentialField(t *testing.T, typeName string, field reflect.StructField, secretType reflect.Type, secretish []string, exempt map[string]bool) {
+	t.Helper()
+	if field.PkgPath != "" {
+		return // unexported: unreachable by a caller's fmt verb
+	}
+	qualified := typeName + "." + field.Name
+	if exempt[qualified] {
+		return
+	}
+	if !namesCredential(field.Name, secretish) {
+		return
+	}
+	if field.Type != secretType {
+		t.Errorf("%s is a %s; a credential-bearing field must be auth.Secret so fmt cannot print it",
+			qualified, field.Type)
+	}
+}
+
+// namesCredential reports whether a field name suggests it holds credential
+// material.
+func namesCredential(fieldName string, secretish []string) bool {
+	lowered := strings.ToLower(fieldName)
+	for _, marker := range secretish {
+		if strings.Contains(lowered, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // Startup errors carry two layers of defense: the config-level display

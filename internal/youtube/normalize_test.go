@@ -37,15 +37,7 @@ func loadEventFixture(t *testing.T, name string) liveChatMessage {
 var fixtureNow = time.Date(2026, 8, 8, 21, 0, 0, 0, time.UTC)
 
 func TestNormalizeItemClassifiesEveryFixture(t *testing.T) {
-	tests := []struct {
-		fixture     string
-		wantKind    EventKind
-		wantType    MessageType
-		wantMessage bool
-		wantModType ModerationType
-		wantRoom    RoomEventType
-		wantPoll    bool
-	}{
+	tests := []fixtureClassification{
 		{fixture: "textMessageEvent", wantKind: EventKindText, wantType: MessageTypeChat, wantMessage: true},
 		{fixture: "superChatEvent", wantKind: EventKindSuperChat, wantType: MessageTypePaid, wantMessage: true},
 		{fixture: "superStickerEvent", wantKind: EventKindSuperSticker, wantType: MessageTypePaid, wantMessage: true},
@@ -73,52 +65,82 @@ func TestNormalizeItemClassifiesEveryFixture(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.fixture, func(t *testing.T) {
-			item := loadEventFixture(t, test.fixture)
-			result := normalizeItem(item, NormalizeOptions{Now: fixtureNow})
-
-			if test.wantMessage {
-				if len(result.Messages) != 1 {
-					t.Fatalf("messages = %d, want 1", len(result.Messages))
-				}
-				msg := result.Messages[0]
-				if msg.Kind != test.wantKind {
-					t.Fatalf("kind = %q, want %q", msg.Kind, test.wantKind)
-				}
-				if msg.Type != test.wantType {
-					t.Fatalf("type = %q, want %q", msg.Type, test.wantType)
-				}
-				if msg.RawType != item.Snippet.Type {
-					t.Fatalf("RawType = %q, want the original snippet.type %q", msg.RawType, item.Snippet.Type)
-				}
-				if msg.LiveChatID != "live-chat-1" {
-					t.Fatalf("LiveChatID = %q, want live-chat-1", msg.LiveChatID)
-				}
-			} else if len(result.Messages) != 0 {
-				t.Fatalf("messages = %#v, want none: a removal must not reprint the removed row", result.Messages)
-			}
-
-			if test.wantModType != "" {
-				if len(result.Moderations) != 1 {
-					t.Fatalf("moderations = %d, want 1", len(result.Moderations))
-				}
-				if got := result.Moderations[0].Type; got != test.wantModType {
-					t.Fatalf("moderation type = %q, want %q", got, test.wantModType)
-				}
-			}
-
-			if test.wantRoom != "" {
-				if len(result.RoomEvents) != 1 {
-					t.Fatalf("room events = %d, want 1", len(result.RoomEvents))
-				}
-				if got := result.RoomEvents[0].Type; got != test.wantRoom {
-					t.Fatalf("room event type = %q, want %q", got, test.wantRoom)
-				}
-			}
-
-			if test.wantPoll && len(result.Polls) != 1 {
-				t.Fatalf("polls = %d, want 1", len(result.Polls))
-			}
+			assertFixtureClassification(t, test)
 		})
+	}
+}
+
+type fixtureClassification struct {
+	fixture     string
+	wantKind    EventKind
+	wantType    MessageType
+	wantMessage bool
+	wantModType ModerationType
+	wantRoom    RoomEventType
+	wantPoll    bool
+}
+
+func assertFixtureClassification(t *testing.T, test fixtureClassification) {
+	t.Helper()
+	item := loadEventFixture(t, test.fixture)
+	result := normalizeItem(item, NormalizeOptions{Now: fixtureNow})
+	assertFixtureMessage(t, item, result, test)
+	assertFixtureModeration(t, result, test.wantModType)
+	assertFixtureRoomEvent(t, result, test.wantRoom)
+	if test.wantPoll && len(result.Polls) != 1 {
+		t.Fatalf("polls = %d, want 1", len(result.Polls))
+	}
+}
+
+func assertFixtureMessage(t *testing.T, item liveChatMessage, result NormalizeResult, test fixtureClassification) {
+	t.Helper()
+	if !test.wantMessage {
+		if len(result.Messages) != 0 {
+			t.Fatalf("messages = %#v, want none: a removal must not reprint the removed row", result.Messages)
+		}
+		return
+	}
+	if len(result.Messages) != 1 {
+		t.Fatalf("messages = %d, want 1", len(result.Messages))
+	}
+	msg := result.Messages[0]
+	if msg.Kind != test.wantKind {
+		t.Fatalf("kind = %q, want %q", msg.Kind, test.wantKind)
+	}
+	if msg.Type != test.wantType {
+		t.Fatalf("type = %q, want %q", msg.Type, test.wantType)
+	}
+	if msg.RawType != item.Snippet.Type {
+		t.Fatalf("RawType = %q, want the original snippet.type %q", msg.RawType, item.Snippet.Type)
+	}
+	if msg.LiveChatID != "live-chat-1" {
+		t.Fatalf("LiveChatID = %q, want live-chat-1", msg.LiveChatID)
+	}
+}
+
+func assertFixtureModeration(t *testing.T, result NormalizeResult, wantModType ModerationType) {
+	t.Helper()
+	if wantModType == "" {
+		return
+	}
+	if len(result.Moderations) != 1 {
+		t.Fatalf("moderations = %d, want 1", len(result.Moderations))
+	}
+	if got := result.Moderations[0].Type; got != wantModType {
+		t.Fatalf("moderation type = %q, want %q", got, wantModType)
+	}
+}
+
+func assertFixtureRoomEvent(t *testing.T, result NormalizeResult, wantRoom RoomEventType) {
+	t.Helper()
+	if wantRoom == "" {
+		return
+	}
+	if len(result.RoomEvents) != 1 {
+		t.Fatalf("room events = %d, want 1", len(result.RoomEvents))
+	}
+	if got := result.RoomEvents[0].Type; got != wantRoom {
+		t.Fatalf("room event type = %q, want %q", got, wantRoom)
 	}
 }
 
@@ -199,13 +221,7 @@ func TestNormalizeGiftAcceptsBothWireShapes(t *testing.T) {
 }
 
 func TestNormalizeMembershipDetails(t *testing.T) {
-	tests := []struct {
-		fixture   string
-		wantKind  MembershipKind
-		wantLevel string
-		wantCount int
-		wantMonth int
-	}{
+	tests := []membershipDetails{
 		{fixture: "newSponsorEvent", wantKind: MembershipNew, wantLevel: "Supporter"},
 		{fixture: "newSponsorEventUpgrade", wantKind: MembershipUpgrade, wantLevel: "Super Supporter"},
 		{fixture: "memberMilestoneChatEvent", wantKind: MembershipMilestone, wantLevel: "Supporter", wantMonth: 14},
@@ -214,24 +230,37 @@ func TestNormalizeMembershipDetails(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.fixture, func(t *testing.T) {
-			item := loadEventFixture(t, test.fixture)
-			msg := normalizeItem(item, NormalizeOptions{Now: fixtureNow}).Messages[0]
-			if msg.Membership == nil {
-				t.Fatal("Membership = nil, want details")
-			}
-			if msg.Membership.Kind != test.wantKind {
-				t.Fatalf("Kind = %q, want %q", msg.Membership.Kind, test.wantKind)
-			}
-			if msg.Membership.LevelName != test.wantLevel {
-				t.Fatalf("LevelName = %q, want %q", msg.Membership.LevelName, test.wantLevel)
-			}
-			if msg.Membership.GiftCount != test.wantCount {
-				t.Fatalf("GiftCount = %d, want %d", msg.Membership.GiftCount, test.wantCount)
-			}
-			if msg.Membership.Months != test.wantMonth {
-				t.Fatalf("Months = %d, want %d", msg.Membership.Months, test.wantMonth)
-			}
+			assertMembershipDetails(t, test)
 		})
+	}
+}
+
+type membershipDetails struct {
+	fixture   string
+	wantKind  MembershipKind
+	wantLevel string
+	wantCount int
+	wantMonth int
+}
+
+func assertMembershipDetails(t *testing.T, test membershipDetails) {
+	t.Helper()
+	item := loadEventFixture(t, test.fixture)
+	msg := normalizeItem(item, NormalizeOptions{Now: fixtureNow}).Messages[0]
+	if msg.Membership == nil {
+		t.Fatal("Membership = nil, want details")
+	}
+	if msg.Membership.Kind != test.wantKind {
+		t.Fatalf("Kind = %q, want %q", msg.Membership.Kind, test.wantKind)
+	}
+	if msg.Membership.LevelName != test.wantLevel {
+		t.Fatalf("LevelName = %q, want %q", msg.Membership.LevelName, test.wantLevel)
+	}
+	if msg.Membership.GiftCount != test.wantCount {
+		t.Fatalf("GiftCount = %d, want %d", msg.Membership.GiftCount, test.wantCount)
+	}
+	if msg.Membership.Months != test.wantMonth {
+		t.Fatalf("Months = %d, want %d", msg.Membership.Months, test.wantMonth)
 	}
 }
 

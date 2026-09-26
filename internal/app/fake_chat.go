@@ -49,9 +49,9 @@ type fakeSendResult struct {
 
 var (
 	_ ChatClient         = (*FakeChatClient)(nil)
-	_ ModerationSource   = (*FakeChatClient)(nil)
-	_ RoomEventSource    = (*FakeChatClient)(nil)
-	_ PollSource         = (*FakeChatClient)(nil)
+	_ ModerationStreamer = (*FakeChatClient)(nil)
+	_ RoomEventStreamer  = (*FakeChatClient)(nil)
+	_ PollStreamer       = (*FakeChatClient)(nil)
 	_ QuotaReporter      = (*FakeChatClient)(nil)
 	_ MessageDropCounter = (*FakeChatClient)(nil)
 )

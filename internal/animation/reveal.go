@@ -212,14 +212,14 @@ type queuedReveal struct {
 // Queue is a bounded set of concurrent reveals.
 type Queue struct {
 	cfg       Config
-	clock     Clock
+	clock     Nower
 	items     []queuedReveal
 	overflows int
 }
 
 // NewQueue returns a queue with defaults applied. A nil clock reads the system
 // clock; tests pass a fake one instead of sleeping.
-func NewQueue(cfg Config, clock Clock) *Queue {
+func NewQueue(cfg Config, clock Nower) *Queue {
 	cfg = cfg.withDefaults()
 	if clock == nil {
 		clock = SystemClock{}

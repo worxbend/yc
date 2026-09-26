@@ -42,16 +42,21 @@ func TestTextFramePreservesDisplayWidthAcrossFrames(t *testing.T) {
 			if got := ansi.StringWidth(testCase.text); got != testCase.width {
 				t.Fatalf("fixture width = %d, want %d", got, testCase.width)
 			}
-			for _, effect := range []TextEffect{TextEffectNone, TextEffectTypewriter, TextEffectGradientWave, TextEffectShimmer} {
-				for step := -2; step < 40; step++ {
-					elapsed := time.Duration(step) * 60 * time.Millisecond
-					cells := TextFrame(testCase.text, textConfig(effect), elapsed)
-					if got := TextWidth(cells); got != testCase.width {
-						t.Fatalf("%s width at %s = %d, want %d (%q)", effect, elapsed, got, testCase.width, TextPlain(cells))
-					}
-				}
-			}
+			assertEffectsPreserveWidth(t, testCase.text, testCase.width)
 		})
+	}
+}
+
+func assertEffectsPreserveWidth(t *testing.T, text string, width int) {
+	t.Helper()
+	for _, effect := range []TextEffect{TextEffectNone, TextEffectTypewriter, TextEffectGradientWave, TextEffectShimmer} {
+		for step := -2; step < 40; step++ {
+			elapsed := time.Duration(step) * 60 * time.Millisecond
+			cells := TextFrame(text, textConfig(effect), elapsed)
+			if got := TextWidth(cells); got != width {
+				t.Fatalf("%s width at %s = %d, want %d (%q)", effect, elapsed, got, width, TextPlain(cells))
+			}
+		}
 	}
 }
 

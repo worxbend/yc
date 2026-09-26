@@ -114,7 +114,7 @@ func TestSidebarAutoShowsOnlyWithASecondChat(t *testing.T) {
 	}
 	pair := newModelForTest(t, "first", "second")
 	pair.width, pair.height = 120, 30
-	if got := pair.layout().sidebarWidth; got == 0 {
+	if pair.layout().sidebarWidth == 0 {
 		t.Fatal("two chats did not auto-show the sidebar")
 	}
 	// An explicit hide outranks the auto rule in both directions.
@@ -159,7 +159,7 @@ func TestViewIsPure(t *testing.T) {
 	model := newViewModel(t, 100, 30)
 	first := model.View()
 	time.Sleep(2 * time.Millisecond)
-	if second := model.View(); first != second {
+	if model.View() != first {
 		t.Fatal("two renders of the same state differed, so View reads a live clock")
 	}
 }
@@ -206,7 +206,7 @@ func TestEmptyStateScannerIsDroppedWhenAnimationIsOff(t *testing.T) {
 		t.Fatalf("animation=off still rendered a scanner: %q", got)
 	}
 	model.animationMode = "fast"
-	if got := model.emptyStateScanner(60, time.Second); got == "" {
+	if model.emptyStateScanner(60, time.Second) == "" {
 		t.Fatal("animation=fast rendered no scanner")
 	}
 }
@@ -283,7 +283,7 @@ func TestSystemRowsHaveNoIdentityColor(t *testing.T) {
 		t.Fatalf("a notice was given the identity color %q", got)
 	}
 	chat := youtube.Message{Type: youtube.MessageTypeChat, Author: youtube.Author{ChannelID: "UC-alice"}}
-	if got := model.messageAuthorColor(chat); got == "" {
+	if model.messageAuthorColor(chat) == "" {
 		t.Fatal("a chat message got no identity color")
 	}
 }
@@ -296,7 +296,7 @@ func TestTerminalBackgroundSequenceIsGatedOnInteractivity(t *testing.T) {
 		t.Fatalf("non-interactive output emitted %q", got)
 	}
 	model.terminalOutput = &strings.Builder{}
-	if got := model.themeBackgroundSequence(); got == "" {
+	if model.themeBackgroundSequence() == "" {
 		t.Fatal("interactive output emitted no background override")
 	}
 	// The sequence must be zero-width so it perturbs no layout math.

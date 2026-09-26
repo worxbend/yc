@@ -160,4 +160,4 @@ func leadingSpaces(line string) int {
 }
 
 // recordingIdentityLookup is a stand-in the mock defaults must not replace.
-type recordingIdentityLookup struct{ IdentityLookup }
+type recordingIdentityLookup struct{ IdentityProvider }

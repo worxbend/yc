@@ -70,6 +70,11 @@ Flags:
 // by a tab the user may have already closed.
 const defaultLoginTimeout = 5 * time.Minute
 
+// startLoginAction names the failures that happen before the login has begun:
+// generating state or the PKCE verifier, and BeginLogin itself. They all read
+// the same to the user.
+const startLoginAction = "start login"
+
 // loginCallbackWaiter is the loopback listener the browser redirects to.
 type loginCallbackWaiter interface {
 	// RedirectURI is the address actually bound, including the ephemeral
@@ -224,20 +229,22 @@ func runLogin(args []string, stdout, stderr io.Writer) int {
 // printed a bare redacted error while others went through printLoginError,
 // which is the one that turns a cancellation or a timeout into plain words
 // instead of a Go error string.
-func failLogin(
-	ctx context.Context,
-	logger debuglog.Logger,
-	stderr io.Writer,
-	event, action string,
-	err error,
-	redactor auth.Redactor,
-	code int,
-) int {
-	if event != "" {
-		logger.Log(ctx, event, debuglog.Err("error", err))
+func failLogin(ctx context.Context, logger debuglog.Logger, stderr io.Writer, failure loginFailure) int {
+	if failure.event != "" {
+		logger.Log(ctx, failure.event, debuglog.Err("error", failure.err))
 	}
-	printLoginError(stderr, action, err, redactor)
-	return code
+	printLoginError(stderr, failure.action, failure.err, failure.redactor)
+	return failure.code
+}
+
+// loginFailure describes one failed login step: the debug-log event (empty
+// skips the entry), the action printed to the user, and the exit code.
+type loginFailure struct {
+	event    string
+	action   string
+	err      error
+	redactor auth.Redactor
+	code     int
 }
 
 // performLogin runs the interactive half of `yc login`.
@@ -261,7 +268,9 @@ func performLogin(cfg config.Config, redirectURI string, scopes []auth.Scope, ti
 		if err == nil {
 			err = errors.New("credential store unavailable")
 		}
-		return failLogin(context.Background(), logger, stderr, "cli.login.storage_failed", "prepare credential storage", err, baseRedactor, ExitFailure)
+		return failLogin(context.Background(), logger, stderr, loginFailure{
+			event: "cli.login.storage_failed", action: "prepare credential storage", err: err, redactor: baseRedactor, code: ExitFailure,
+		})
 	}
 
 	// State and the PKCE verifier are generated here and carried through the
@@ -274,16 +283,22 @@ func performLogin(cfg config.Config, redirectURI string, scopes []auth.Scope, ti
 	// cannot end the wait.
 	state, err := auth.NewState()
 	if err != nil {
-		return failLogin(context.Background(), logger, stderr, "", "start login", err, baseRedactor, ExitFailure)
+		return failLogin(context.Background(), logger, stderr, loginFailure{
+			action: startLoginAction, err: err, redactor: baseRedactor, code: ExitFailure,
+		})
 	}
 	verifier, err := auth.NewCodeVerifier()
 	if err != nil {
-		return failLogin(context.Background(), logger, stderr, "", "start login", err, baseRedactor, ExitFailure)
+		return failLogin(context.Background(), logger, stderr, loginFailure{
+			action: startLoginAction, err: err, redactor: baseRedactor, code: ExitFailure,
+		})
 	}
 
 	waiter, err := newLoginCallbackWaiter(redirectURI, state)
 	if err != nil {
-		return failLogin(context.Background(), logger, stderr, "cli.login.callback_unavailable", "login callback unavailable", err, baseRedactor, ExitUsage)
+		return failLogin(context.Background(), logger, stderr, loginFailure{
+			event: "cli.login.callback_unavailable", action: "login callback unavailable", err: err, redactor: baseRedactor, code: ExitUsage,
+		})
 	}
 	defer func() { _ = waiter.Close() }()
 
@@ -307,7 +322,9 @@ func performLogin(cfg config.Config, redirectURI string, scopes []auth.Scope, ti
 
 	challenge, err := flow.BeginLogin(ctx, request)
 	if err != nil {
-		return failLogin(ctx, logger, stderr, "cli.login.begin_failed", "start login", err, request.Redactor(), ExitFailure)
+		return failLogin(ctx, logger, stderr, loginFailure{
+			event: "cli.login.begin_failed", action: startLoginAction, err: err, redactor: request.Redactor(), code: ExitFailure,
+		})
 	}
 	logger = logger.WithSecrets(challenge.AuthorizationURL, challenge.State)
 	logger.Log(ctx, "cli.login.begin_succeeded", slog.Int("scope_count", len(challenge.Scopes)))
@@ -317,13 +334,17 @@ func performLogin(cfg config.Config, redirectURI string, scopes []auth.Scope, ti
 	fmt.Fprintln(stdout, "Tokens are saved privately and are never printed.")
 
 	if err := openLoginBrowser(ctx, challenge.AuthorizationURL.Reveal()); err != nil {
-		return failLogin(ctx, logger, stderr, "cli.login.browser_failed", "open browser", err, challenge.Redactor(), ExitFailure)
+		return failLogin(ctx, logger, stderr, loginFailure{
+			event: "cli.login.browser_failed", action: "open browser", err: err, redactor: challenge.Redactor(), code: ExitFailure,
+		})
 	}
 	logger.Log(ctx, "cli.login.browser_opened")
 
 	callback, err := waiter.Wait(ctx, challenge.State)
 	if err != nil {
-		return failLogin(ctx, logger, stderr, "cli.login.callback_failed", "wait for the OAuth callback", err, challenge.Redactor(), ExitFailure)
+		return failLogin(ctx, logger, stderr, loginFailure{
+			event: "cli.login.callback_failed", action: "wait for the OAuth callback", err: err, redactor: challenge.Redactor(), code: ExitFailure,
+		})
 	}
 	callback.CodeVerifier = verifier
 	callback.RedirectURI = request.RedirectURI
@@ -337,7 +358,9 @@ func performLogin(cfg config.Config, redirectURI string, scopes []auth.Scope, ti
 
 	result, err := flow.CompleteLogin(ctx, callback)
 	if err != nil {
-		return failLogin(ctx, logger, stderr, "cli.login.complete_failed", "complete login", err, callback.Redactor(), ExitFailure)
+		return failLogin(ctx, logger, stderr, loginFailure{
+			event: "cli.login.complete_failed", action: "complete login", err: err, redactor: callback.Redactor(), code: ExitFailure,
+		})
 	}
 	logger = logger.WithSecrets(result.Tokens.AccessToken, result.Tokens.RefreshToken)
 	logger.Log(ctx, "cli.login.complete_succeeded",
@@ -346,7 +369,9 @@ func performLogin(cfg config.Config, redirectURI string, scopes []auth.Scope, ti
 	)
 
 	if err := persistLogin(ctx, cfg, result); err != nil {
-		return failLogin(ctx, logger, stderr, "cli.login.save_failed", "save credentials", err, result.Redactor(), ExitFailure)
+		return failLogin(ctx, logger, stderr, loginFailure{
+			event: "cli.login.save_failed", action: "save credentials", err: err, redactor: result.Redactor(), code: ExitFailure,
+		})
 	}
 	logger.Log(ctx, "cli.login.save_succeeded")
 	printLoginSuccess(stdout, result)

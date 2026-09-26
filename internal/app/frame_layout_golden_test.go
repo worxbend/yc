@@ -162,20 +162,25 @@ func TestNoEventKindRendersAsNothing(t *testing.T) {
 				model := layoutFrameModel(t, layout, size.width, size.height)
 				model.activeChatState().messages = []youtube.Message{message}
 
-				rows := model.visibleChatRows(model.layout())
-				var printed int
-				for _, row := range rows {
-					if strings.TrimSpace(ansi.Strip(row)) != "" {
-						printed++
-					}
-				}
-				if printed == 0 {
+				if layoutGoldenPrintedRows(model.visibleChatRows(model.layout())) == 0 {
 					t.Fatalf("%s/%s: event kind %q rendered no visible row",
 						layout, size.name, message.Kind)
 				}
 			}
 		}
 	}
+}
+
+// layoutGoldenPrintedRows counts the rows that show anything once styling is
+// stripped.
+func layoutGoldenPrintedRows(rows []string) int {
+	var printed int
+	for _, row := range rows {
+		if strings.TrimSpace(ansi.Strip(row)) != "" {
+			printed++
+		}
+	}
+	return printed
 }
 
 // The whole corpus on screen at once, scrolled from the bottom to the top, must
@@ -210,7 +215,7 @@ func TestCyclingLayoutsLiveKeepsEveryFrameExact(t *testing.T) {
 
 		for step := 0; step < 2*len(allLayouts)+1; step++ {
 			seen[model.messageLayout] = true
-			if got := render.NormalizeLayoutMode(string(model.messageLayout)); got != model.messageLayout {
+			if render.NormalizeLayoutMode(string(model.messageLayout)) != model.messageLayout {
 				t.Fatalf("%s: ctrl+g produced the unknown layout %q", size.name, model.messageLayout)
 			}
 			if got := model.effectiveConfig.Features.MessageLayout; got != string(model.messageLayout) {

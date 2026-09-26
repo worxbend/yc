@@ -43,6 +43,9 @@ const defaultMinInterval = time.Second
 // the same second and turn a poll into a thundering herd.
 const pollJitterFraction = 0.10
 
+// quotaResetLayout renders the estimated daily-quota reset in pause messages.
+const quotaResetLayout = "15:04 MST"
+
 // PollerClient is the slice of the REST client the poller actually uses.
 //
 // It exists so the poll loop depends on five calls rather than on the whole
@@ -526,7 +529,7 @@ func (p *Poller) handleListError(
 		p.emitState(ctx, ConnectionState{
 			Status: ConnectionPaused,
 			ChatID: target.LiveChatID,
-			Detail: "daily quota exhausted; polling paused until " + quota.ResetAt(now).Local().Format("15:04 MST") + " (est.)",
+			Detail: "daily quota exhausted; polling paused until " + quota.ResetAt(now).Local().Format(quotaResetLayout) + " (est.)",
 			Err:    err,
 			At:     now,
 		})
@@ -685,7 +688,7 @@ func (p *Poller) reserveTripped(snapshot quota.Snapshot) (string, bool) {
 	}
 	if snapshot.RemainingUnits <= 0 {
 		return "daily quota exhausted (est.); polling paused until " +
-			snapshot.ResetAt.Local().Format("15:04 MST") + ". Press ctrl+r to override", true
+			snapshot.ResetAt.Local().Format(quotaResetLayout) + ". Press ctrl+r to override", true
 	}
 	if p.cfg.ReservePercent <= 0 {
 		return "", false
@@ -695,7 +698,7 @@ func (p *Poller) reserveTripped(snapshot quota.Snapshot) (string, bool) {
 		return "", false
 	}
 	return "quota reserve reached (est.); sends still available, polling paused until " +
-		snapshot.ResetAt.Local().Format("15:04 MST") + ". Press ctrl+r to override", true
+		snapshot.ResetAt.Local().Format(quotaResetLayout) + ". Press ctrl+r to override", true
 }
 
 // chatEnded reports whether this response says the chat is over.

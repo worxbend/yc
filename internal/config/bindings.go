@@ -77,43 +77,54 @@ func bindingIndex(cfg *Config) map[string]binding {
 func collectBindings(value reflect.Value, out *[]binding) {
 	structType := value.Type()
 	for i := 0; i < structType.NumField(); i++ {
-		field := structType.Field(i)
-		if !field.IsExported() {
-			continue
-		}
-		tomlTag := strings.TrimSpace(field.Tag.Get("toml"))
-		if tomlTag == "-" {
-			continue
-		}
-		fieldValue := value.Field(i)
-		if strings.HasPrefix(tomlTag, ",") && strings.Contains(tomlTag, "inline") {
-			if fieldValue.Kind() != reflect.Struct {
-				continue
-			}
-			if fieldValue.Type() == paletteType {
-				collectPaletteBindings(fieldValue, out)
-				continue
-			}
-			collectBindings(fieldValue, out)
-			continue
-		}
-		key, _, _ := strings.Cut(tomlTag, ",")
-		key = strings.TrimSpace(key)
-		if key == "" {
-			continue
-		}
-		kind, ok := kindOf(fieldValue)
-		if !ok {
-			continue
-		}
-		*out = append(*out, binding{
-			TOMLKey: key,
-			EnvKeys: splitEnvKeys(field.Tag.Get("env")),
-			Secret:  strings.EqualFold(strings.TrimSpace(field.Tag.Get("secret")), "true"),
-			Kind:    kind,
-			target:  fieldValue,
-		})
+		collectFieldBinding(value, structType.Field(i), out)
 	}
+}
+
+// collectFieldBinding appends the binding for one struct field, recursing
+// instead when the field is inlined.
+func collectFieldBinding(value reflect.Value, field reflect.StructField, out *[]binding) {
+	if !field.IsExported() {
+		return
+	}
+	tomlTag := strings.TrimSpace(field.Tag.Get("toml"))
+	if tomlTag == "-" {
+		return
+	}
+	fieldValue := value.FieldByIndex(field.Index)
+	if strings.HasPrefix(tomlTag, ",") && strings.Contains(tomlTag, "inline") {
+		collectInlineBindings(fieldValue, out)
+		return
+	}
+	key, _, _ := strings.Cut(tomlTag, ",")
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return
+	}
+	kind, ok := kindOf(fieldValue)
+	if !ok {
+		return
+	}
+	*out = append(*out, binding{
+		TOMLKey: key,
+		EnvKeys: splitEnvKeys(field.Tag.Get("env")),
+		Secret:  strings.EqualFold(strings.TrimSpace(field.Tag.Get("secret")), "true"),
+		Kind:    kind,
+		target:  fieldValue,
+	})
+}
+
+// collectInlineBindings recurses through a `toml:",inline"` field, treating
+// the theme palette specially because its keys are derived from field names.
+func collectInlineBindings(fieldValue reflect.Value, out *[]binding) {
+	if fieldValue.Kind() != reflect.Struct {
+		return
+	}
+	if fieldValue.Type() == paletteType {
+		collectPaletteBindings(fieldValue, out)
+		return
+	}
+	collectBindings(fieldValue, out)
 }
 
 // collectPaletteBindings maps the nine palette roles onto theme_<role> keys and

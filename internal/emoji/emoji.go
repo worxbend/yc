@@ -68,16 +68,13 @@ func isStandardCluster(runes []rune) bool {
 	if len(runes) == 0 {
 		return false
 	}
-	if isKeycapCluster(runes) {
+	if isKeycapCluster(runes) || isRegionalIndicatorFlag(runes) || isTagSequenceFlag(runes) {
 		return true
 	}
-	if isRegionalIndicatorFlag(runes) {
-		return true
-	}
-	if isTagSequenceFlag(runes) {
-		return true
-	}
+	return isJoinedBaseSequence(runes)
+}
 
+func isJoinedBaseSequence(runes []rune) bool {
 	seenBase := false
 	expectBase := true
 	for _, r := range runes {
@@ -89,12 +86,12 @@ func isStandardCluster(runes []rune) bool {
 			seenBase = true
 			expectBase = false
 		case isModifier(r):
-			if expectBase || !seenBase {
+			if !followsBase(seenBase, expectBase) {
 				return false
 			}
 		case isVariationSelector(r):
 		case r == zeroWidthJoin:
-			if expectBase || !seenBase {
+			if !followsBase(seenBase, expectBase) {
 				return false
 			}
 			expectBase = true
@@ -102,6 +99,12 @@ func isStandardCluster(runes []rune) bool {
 			return false
 		}
 	}
+	return seenBase && !expectBase
+}
+
+// followsBase reports whether a modifier or a ZWJ may legally appear here:
+// only directly after a base, never as the first rune or right after a ZWJ.
+func followsBase(seenBase, expectBase bool) bool {
 	return seenBase && !expectBase
 }
 
@@ -155,41 +158,42 @@ func isBase(r rune) bool {
 	if isModifier(r) || isRegionalIndicator(r) {
 		return false
 	}
-	switch {
-	case r == 0x00A9 || r == 0x00AE || r == 0x203C || r == 0x2049 ||
-		r == 0x2122 || r == 0x2139 || r == 0x2328 || r == 0x23CF ||
-		r == 0x24C2 || r == 0x25B6 || r == 0x25C0 || r == 0x3030 ||
-		r == 0x303D || r == 0x3297 || r == 0x3299:
+	if isBaseSymbol(r) {
 		return true
-	case r >= 0x2194 && r <= 0x2199:
-		return true
-	case r >= 0x21A9 && r <= 0x21AA:
-		return true
-	case r >= 0x231A && r <= 0x231B:
-		return true
-	case r >= 0x23E9 && r <= 0x23F3:
-		return true
-	case r >= 0x23F8 && r <= 0x23FA:
-		return true
-	case r >= 0x25AA && r <= 0x25AB:
-		return true
-	case r >= 0x25FB && r <= 0x25FE:
-		return true
-	case r >= 0x2600 && r <= 0x27BF:
-		return true
-	case r >= 0x2934 && r <= 0x2935:
-		return true
-	case r >= 0x2B05 && r <= 0x2B07:
-		return true
-	case r >= 0x2B1B && r <= 0x2B1C:
-		return true
-	case r == 0x2B50 || r == 0x2B55:
-		return true
-	case r >= 0x1F000 && r <= 0x1FAFF:
-		return true
-	default:
-		return false
 	}
+	for _, span := range baseSpans {
+		if r >= span[0] && r <= span[1] {
+			return true
+		}
+	}
+	return false
+}
+
+var baseSpans = [][2]rune{
+	{0x2194, 0x2199},
+	{0x21A9, 0x21AA},
+	{0x231A, 0x231B},
+	{0x23E9, 0x23F3},
+	{0x23F8, 0x23FA},
+	{0x25AA, 0x25AB},
+	{0x25FB, 0x25FE},
+	{0x2600, 0x27BF},
+	{0x2934, 0x2935},
+	{0x2B05, 0x2B07},
+	{0x2B1B, 0x2B1C},
+	{0x1F000, 0x1FAFF},
+}
+
+func isBaseSymbol(r rune) bool {
+	switch r {
+	case 0x00A9, 0x00AE, 0x203C, 0x2049,
+		0x2122, 0x2139, 0x2328, 0x23CF,
+		0x24C2, 0x25B6, 0x25C0, 0x3030,
+		0x303D, 0x3297, 0x3299,
+		0x2B50, 0x2B55:
+		return true
+	}
+	return false
 }
 
 func isKeycapBase(r rune) bool {

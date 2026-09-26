@@ -45,30 +45,40 @@ func FuzzSanitizeUserText(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, input string) {
 		got := sanitizeUserText(input)
-		for _, r := range got {
-			if r == '\n' {
-				continue
-			}
-			if unicode.IsControl(r) {
-				t.Errorf("control rune %U survived in %q (input %q)", r, got, input)
-			}
-			if isBidiControl(r) {
-				t.Errorf("bidi control %U survived in %q (input %q)", r, got, input)
-			}
-		}
-		if stripped := ansi.Strip(got); stripped != got {
-			t.Errorf("ansi.Strip is not the identity on sanitized output: %q -> %q (input %q)", got, stripped, input)
-		}
-		// Sanitizing twice must change nothing: a fixed point guarantees the
-		// replacements themselves never manufacture new unsafe content.
-		if again := sanitizeUserText(got); again != got {
-			t.Errorf("sanitizeUserText is not idempotent: %q -> %q (input %q)", got, again, input)
-		}
-		if input == "" && got != "" {
-			t.Errorf("empty input produced %q", got)
-		}
-		if !strings.ContainsFunc(input, isUnsafeRune) && !strings.Contains(input, "\x1b") && ansi.Strip(input) == input && got != input {
-			t.Errorf("safe input was altered: %q -> %q", input, got)
-		}
+		assertNoUnsafeRunesSurvived(t, input, got)
+		assertSanitizeInvariants(t, input, got)
 	})
+}
+
+func assertNoUnsafeRunesSurvived(t *testing.T, input, got string) {
+	t.Helper()
+	for _, r := range got {
+		if r == '\n' {
+			continue
+		}
+		if unicode.IsControl(r) {
+			t.Errorf("control rune %U survived in %q (input %q)", r, got, input)
+		}
+		if isBidiControl(r) {
+			t.Errorf("bidi control %U survived in %q (input %q)", r, got, input)
+		}
+	}
+}
+
+func assertSanitizeInvariants(t *testing.T, input, got string) {
+	t.Helper()
+	if stripped := ansi.Strip(got); stripped != got {
+		t.Errorf("ansi.Strip is not the identity on sanitized output: %q -> %q (input %q)", got, stripped, input)
+	}
+	// Sanitizing twice must change nothing: a fixed point guarantees the
+	// replacements themselves never manufacture new unsafe content.
+	if again := sanitizeUserText(got); again != got {
+		t.Errorf("sanitizeUserText is not idempotent: %q -> %q (input %q)", got, again, input)
+	}
+	if input == "" && got != "" {
+		t.Errorf("empty input produced %q", got)
+	}
+	if !strings.ContainsFunc(input, isUnsafeRune) && !strings.Contains(input, "\x1b") && ansi.Strip(input) == input && got != input {
+		t.Errorf("safe input was altered: %q -> %q", input, got)
+	}
 }

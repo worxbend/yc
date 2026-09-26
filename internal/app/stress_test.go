@@ -188,21 +188,56 @@ func TestLiveShellHighThroughputChatStressHarness(t *testing.T) {
 	// width narrower than the sidebar would like.
 	widths := []int{100, 40, render.MinimumRenderWidth + 2, 72, 160}
 
-	// --- phase one: undisturbed flood ---------------------------------------
+	model = stressFloodUndisturbed(t, model)
+	model, typed := stressFloodWithInteraction(t, model, clock, widths)
+
+	// --- accounting ---------------------------------------------------------
 	//
-	// The queue bound is only meaningful while messages are actually animating,
-	// so this phase does nothing but deliver. Scrolling away, which phase two
-	// does, legitimately routes messages down the static path and would hide
-	// whether the bound holds at all.
+	// Every fed message must be either in history, mid-reveal, or deliberately
+	// trimmed. Anything else is a silent loss, which is the failure mode a
+	// moderator cannot detect for themselves.
+	state := model.activeChatState()
+	if got := len(state.messages); got > stressScrollback {
+		t.Errorf("history holds %d messages, above the scrollback limit of %d", got, stressScrollback)
+	}
+	// The order/message pair can no longer diverge - activeReveals owns both
+	// and changes them together - so what is left to check is that the
+	// animation queue and the tracked set still agree.
+	if got := state.revealQueue.Len(); got != state.active.len() {
+		t.Errorf("queue holds %d reveals but the model tracks %d", got, state.active.len())
+	}
+
+	// --- composer -----------------------------------------------------------
+	if got := model.activeChatState().composerText; len(got) != typed || strings.Trim(got, "x") != "" {
+		t.Errorf("composer holds %q after %d keystrokes; input was dropped during the flood", got, typed)
+	}
+
+	model = stressSendDuringFlood(t, model, client, clock)
+
+	// --- layout stability at every width -----------------------------------
+	//
+	// The model is still loaded here - full history, live reveals, a send
+	// result in the status line - so this renders a working shell rather than a
+	// quiescent one.
+	stressAssertFrameAtSizes(t, model, append(widths, 8, 200), []int{3, 24, 60}, "post-burst")
+}
+
+// stressFloodUndisturbed is phase one of the harness: delivery and nothing
+// else.
+//
+// The queue bound is only meaningful while messages are actually animating,
+// so this phase does nothing but deliver. Scrolling away, which phase two
+// does, legitimately routes messages down the static path and would hide
+// whether the bound holds at all.
+func stressFloodUndisturbed(t *testing.T, model shellModel) shellModel {
+	t.Helper()
 	maxQueue := 0
 	for i, message := range stressBurst(300) {
 		model = feedStress(t, model, message)
 
 		state := model.activeChatState()
 		depth := state.revealQueue.Len()
-		if depth > maxQueue {
-			maxQueue = depth
-		}
+		maxQueue = max(maxQueue, depth)
 		// The bound is the whole contract: overflow completes the oldest
 		// reveal rather than growing the queue or dropping the message.
 		if depth > animation.DefaultMaxQueued {
@@ -226,12 +261,16 @@ func TestLiveShellHighThroughputChatStressHarness(t *testing.T) {
 	if model.activeChatState().revealQueue.OverflowCount() == 0 {
 		t.Fatal("300 messages through a 32-slot queue completed nothing early; the overflow path never ran")
 	}
+	return model
+}
 
-	// --- phase two: flood plus interaction ----------------------------------
-	//
-	// Resizes, scrolling, and typing interleaved with delivery. Scrolling away
-	// deliberately sends messages down the static-append path, so this phase
-	// asserts responsiveness and geometry rather than queue depth.
+// stressFloodWithInteraction is phase two of the harness: resizes, scrolling,
+// and typing interleaved with delivery. Scrolling away deliberately sends
+// messages down the static-append path, so this phase asserts responsiveness
+// and geometry rather than queue depth. It reports how many keystrokes it
+// typed into the composer.
+func stressFloodWithInteraction(t *testing.T, model shellModel, clock *stressClock, widths []int) (shellModel, int) {
+	t.Helper()
 	typed := 0
 	scrolledAwayDeliveries := 0
 	for i, message := range stressBurst(300) {
@@ -245,33 +284,9 @@ func TestLiveShellHighThroughputChatStressHarness(t *testing.T) {
 			t.Fatalf("message %d: reveal queue grew to %d during interaction", i, got)
 		}
 
-		switch {
-		case i%37 == 0:
-			// Resize mid-flood. Rows already revealing must be re-measured
-			// against the new width rather than restarted or left over-wide.
-			size := tea.WindowSizeMsg{Width: widths[(i/37)%len(widths)], Height: 24 + (i/37)%12}
-			next, _ := model.Update(size)
-			model = next.(shellModel)
-		case i%23 == 0:
-			// Advance the reveal animation by a real tick's worth of clock.
-			clock.advance(2 * animation.DefaultFrameInterval)
-			next, _ := model.Update(revealTickMsg{})
-			model = next.(shellModel)
-		case i%17 == 0:
-			next, _ := model.Update(key(tea.KeyPgUp))
-			model = next.(shellModel)
-		case i%11 == 0:
-			next, _ := model.Update(key(tea.KeyEnd))
-			model = next.(shellModel)
-		case i%7 == 0:
-			// Input responsiveness: a keystroke during the flood must land in
-			// the composer, not be swallowed by the message path.
-			if model.focus != focusComposer {
-				next, _ := model.Update(runeKey('i'))
-				model = next.(shellModel)
-			}
-			next, _ := model.Update(runeKey('x'))
-			model = next.(shellModel)
+		var didType bool
+		model, didType = stressInteract(model, clock, widths, i)
+		if didType {
 			typed++
 		}
 
@@ -286,29 +301,46 @@ func TestLiveShellHighThroughputChatStressHarness(t *testing.T) {
 	if scrolledAwayDeliveries == 0 {
 		t.Fatal("no message arrived while scrolled away; the static-append path went unasserted")
 	}
+	return model, typed
+}
 
-	// --- accounting ---------------------------------------------------------
-	//
-	// Every fed message must be either in history, mid-reveal, or deliberately
-	// trimmed. Anything else is a silent loss, which is the failure mode a
-	// moderator cannot detect for themselves.
-	state := model.activeChatState()
-	if got := len(state.messages); got > stressScrollback {
-		t.Errorf("history holds %d messages, above the scrollback limit of %d", got, stressScrollback)
+// stressInteract applies the phase-two interaction scheduled for delivery i,
+// reporting whether it typed a keystroke into the composer.
+func stressInteract(model shellModel, clock *stressClock, widths []int, i int) (shellModel, bool) {
+	var next tea.Model
+	switch {
+	case i%37 == 0:
+		// Resize mid-flood. Rows already revealing must be re-measured
+		// against the new width rather than restarted or left over-wide.
+		size := tea.WindowSizeMsg{Width: widths[(i/37)%len(widths)], Height: 24 + (i/37)%12}
+		next, _ = model.Update(size)
+	case i%23 == 0:
+		// Advance the reveal animation by a real tick's worth of clock.
+		clock.advance(2 * animation.DefaultFrameInterval)
+		next, _ = model.Update(revealTickMsg{})
+	case i%17 == 0:
+		next, _ = model.Update(key(tea.KeyPgUp))
+	case i%11 == 0:
+		next, _ = model.Update(key(tea.KeyEnd))
+	case i%7 == 0:
+		// Input responsiveness: a keystroke during the flood must land in
+		// the composer, not be swallowed by the message path.
+		if model.focus != focusComposer {
+			next, _ = model.Update(runeKey('i'))
+			model = next.(shellModel)
+		}
+		next, _ = model.Update(runeKey('x'))
+		return next.(shellModel), true
+	default:
+		return model, false
 	}
-	// The order/message pair can no longer diverge - activeReveals owns both
-	// and changes them together - so what is left to check is that the
-	// animation queue and the tracked set still agree.
-	if got := state.revealQueue.Len(); got != state.active.len() {
-		t.Errorf("queue holds %d reveals but the model tracks %d", got, state.active.len())
-	}
+	return next.(shellModel), false
+}
 
-	// --- composer -----------------------------------------------------------
-	if got := model.activeChatState().composerText; len(got) != typed || strings.Trim(got, "x") != "" {
-		t.Errorf("composer holds %q after %d keystrokes; input was dropped during the flood", got, typed)
-	}
-
-	// --- send during the flood ---------------------------------------------
+// stressSendDuringFlood sends the composer's text while the burst is still in
+// flight and asserts it dispatched exactly once and completed.
+func stressSendDuringFlood(t *testing.T, model shellModel, client *FakeChatClient, clock *stressClock) shellModel {
+	t.Helper()
 	client.QueueSendResult(youtube.SendResult{MessageID: "sent-1", AcceptedAt: clock.now}, nil)
 	next, cmd := model.Update(key(tea.KeyEnter))
 	model = next.(shellModel)
@@ -327,16 +359,17 @@ func TestLiveShellHighThroughputChatStressHarness(t *testing.T) {
 	if got := len(client.SentRequests()); got != 1 {
 		t.Errorf("dispatched %d sends, want 1", got)
 	}
+	return model
+}
 
-	// --- layout stability at every width -----------------------------------
-	//
-	// The model is still loaded here - full history, live reveals, a send
-	// result in the status line - so this renders a working shell rather than a
-	// quiescent one.
-	for _, width := range append(widths, 8, 200) {
-		for _, height := range []int{3, 24, 60} {
+// stressAssertFrameAtSizes resizes model to every width and height pair and
+// asserts each frame is exactly rectangular.
+func stressAssertFrameAtSizes(t *testing.T, model shellModel, widths, heights []int, label string) {
+	t.Helper()
+	for _, width := range widths {
+		for _, height := range heights {
 			resized, _ := model.Update(tea.WindowSizeMsg{Width: width, Height: height})
-			assertRectangularFrame(t, resized.(shellModel), fmt.Sprintf("post-burst at %dx%d", width, height))
+			assertRectangularFrame(t, resized.(shellModel), fmt.Sprintf("%s at %dx%d", label, width, height))
 		}
 	}
 }
@@ -448,14 +481,7 @@ func TestHighThroughputBurstIsBoundedInEveryAnimationMode(t *testing.T) {
 			for _, message := range stressBurst(400) {
 				model = feedStress(t, model, message)
 				clock.advance(5 * time.Millisecond)
-
-				state := model.activeChatState()
-				if got := state.revealQueue.Len(); got > animation.DefaultMaxQueued {
-					t.Fatalf("reveal queue grew to %d in %s mode", got, mode)
-				}
-				if got := len(state.messages); got > stressScrollback {
-					t.Fatalf("history grew to %d in %s mode, above the limit of %d", got, mode, stressScrollback)
-				}
+				stressAssertBounded(t, model.activeChatState(), mode)
 			}
 
 			if mode == "off" && model.activeChatState().revealQueue.Len() != 0 {
@@ -463,6 +489,18 @@ func TestHighThroughputBurstIsBoundedInEveryAnimationMode(t *testing.T) {
 			}
 			assertRectangularFrame(t, model, mode+" mode after the burst")
 		})
+	}
+}
+
+// stressAssertBounded asserts state's reveal queue and history both stay
+// within their limits in the given animation mode.
+func stressAssertBounded(t *testing.T, state *chatState, mode string) {
+	t.Helper()
+	if got := state.revealQueue.Len(); got > animation.DefaultMaxQueued {
+		t.Fatalf("reveal queue grew to %d in %s mode", got, mode)
+	}
+	if got := len(state.messages); got > stressScrollback {
+		t.Fatalf("history grew to %d in %s mode, above the limit of %d", got, mode, stressScrollback)
 	}
 }
 

@@ -151,8 +151,8 @@ type Config struct {
 // Store persists the estimated ledger through internal/storage, keyed by
 // credential fingerprint and Pacific date.
 type Store interface {
-	LoadLedger(fingerprint string, day string) (map[string]int, error)
-	SaveLedger(fingerprint string, day string, byEndpoint map[string]int) error
+	LoadLedger(fingerprint, day string) (map[string]int, error)
+	SaveLedger(fingerprint, day string, byEndpoint map[string]int) error
 }
 
 // Ledger accumulates estimated unit spend for the current Pacific day.

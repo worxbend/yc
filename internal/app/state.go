@@ -212,7 +212,7 @@ type chatStateSet struct {
 	states map[string]*chatState
 
 	animationConfig animation.Config
-	clock           animation.Clock
+	clock           animation.Nower
 	scrollbackLimit int
 
 	// rowBlocks and rowCache are the view's render scratch. They live on the
@@ -233,7 +233,7 @@ type chatStateSet struct {
 	placeholder *chatState
 }
 
-func newChatStateSet(targets []youtube.ChatTarget, animationConfig animation.Config, clock animation.Clock, scrollbackLimit int) *chatStateSet {
+func newChatStateSet(targets []youtube.ChatTarget, animationConfig animation.Config, clock animation.Nower, scrollbackLimit int) *chatStateSet {
 	set := &chatStateSet{
 		states:          make(map[string]*chatState),
 		animationConfig: animationConfig,
@@ -700,7 +700,7 @@ func (s *chatState) trimScrollback(limit int) {
 // so a chat switched away from mid-reveal would otherwise hold its newest
 // messages in activeMessages forever: invisible to the filters, to j/k, and to
 // the retained history the user scrolls back through.
-func (s *chatState) flushActiveReveals(cfg animation.Config, clock animation.Clock) {
+func (s *chatState) flushActiveReveals(cfg animation.Config, clock animation.Nower) {
 	if s == nil || s.active.len() == 0 {
 		return
 	}
@@ -804,7 +804,7 @@ func (s *chatState) markMessagesDeleted(match func(youtube.Message) bool) int {
 
 // clearHistory drops everything retained for the chat. It is destructive and
 // unbounded, which is why the key that reaches it asks for confirmation first.
-func (s *chatState) clearHistory(cfg animation.Config, clock animation.Clock) {
+func (s *chatState) clearHistory(cfg animation.Config, clock animation.Nower) {
 	if s == nil {
 		return
 	}

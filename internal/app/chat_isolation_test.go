@@ -456,11 +456,7 @@ func TestEveryFilterCombinationIsAPurePredicate(t *testing.T) {
 		want := deepHistorySnapshot(state.messages)
 		wantLen := len(state.messages)
 
-		for index, filter := range filters {
-			if mask&(1<<index) != 0 {
-				state.filters.toggle(filter)
-			}
-		}
+		chatIsolationApplyFilterMask(state, filters, mask)
 
 		visible := state.visibleMessages("you")
 
@@ -473,16 +469,7 @@ func TestEveryFilterCombinationIsAPurePredicate(t *testing.T) {
 
 		// The visible set is an order-preserving subsequence of history: a
 		// filter may hide a row but must never reorder or invent one.
-		cursor := 0
-		for _, message := range visible {
-			for cursor < len(state.messages) && state.messages[cursor].ID != message.ID {
-				cursor++
-			}
-			if cursor >= len(state.messages) {
-				t.Fatalf("mask %04b produced %q, which is not in history in order", mask, message.ID)
-			}
-			cursor++
-		}
+		chatIsolationRequireSubsequence(t, mask, visible, state.messages)
 		if mask == 0 && len(visible) != wantLen {
 			t.Fatalf("the empty filter set hid %d rows", wantLen-len(visible))
 		}
@@ -495,6 +482,31 @@ func TestEveryFilterCombinationIsAPurePredicate(t *testing.T) {
 		if got := deepHistorySnapshot(state.visibleMessages("you")); got != want {
 			t.Fatalf("mask %04b did not restore on reset:\n got %q\nwant %q", mask, got, want)
 		}
+	}
+}
+
+// chatIsolationApplyFilterMask toggles every filter whose bit is set in mask.
+func chatIsolationApplyFilterMask(state *chatState, filters []messageFilter, mask int) {
+	for index, filter := range filters {
+		if mask&(1<<index) != 0 {
+			state.filters.toggle(filter)
+		}
+	}
+}
+
+// chatIsolationRequireSubsequence fails unless visible appears in history in
+// the same order, with nothing invented.
+func chatIsolationRequireSubsequence(t *testing.T, mask int, visible, history []youtube.Message) {
+	t.Helper()
+	cursor := 0
+	for _, message := range visible {
+		for cursor < len(history) && history[cursor].ID != message.ID {
+			cursor++
+		}
+		if cursor >= len(history) {
+			t.Fatalf("mask %04b produced %q, which is not in history in order", mask, message.ID)
+		}
+		cursor++
 	}
 }
 

@@ -256,74 +256,16 @@ func (m shellModel) layout() shellLayout {
 	}
 
 	if m.helpExpanded {
-		// The ladder runs as far as there are key groups, so a terminal tall
-		// enough to show every section does. Truncating help is a reasonable
-		// answer on a short terminal and a poor one on a tall one: a group
-		// that never renders is a group nobody can discover.
-		switch {
-		case height >= 26:
-			layout.helpHeight = len(keyGroupOrder)
-		case height >= 22:
-			layout.helpHeight = 5
-		case height >= 18:
-			layout.helpHeight = 4
-		case height >= 14:
-			layout.helpHeight = 3
-		case height >= 10:
-			layout.helpHeight = 2
-		}
+		layout.helpHeight = expandedHelpHeight(height, layout.helpHeight)
 	}
 
 	if m.activeTab == tabChat {
-		layout.composerHeight = composerBlockHeight
-		if m.activeChatState().replyTo != nil {
-			layout.composerHeight++
-		}
-		if height < composerShortTerminal {
-			layout.composerHeight = composerShortBlockHeight
-		}
-		layout.composerFramed = width >= composerFramedMinWidth
+		layout.composerHeight, layout.composerFramed = composerLayout(height, width, m.activeChatState().replyTo != nil)
 	}
 
-	// The rows left for chat, recomputed after each reduction below rather
-	// than adjusted. The two shortened copies of this subtraction used to omit
-	// helpHeight - correct only because help had just been set to zero, which
-	// is a fact a reader had to reconstruct from the surrounding branch and
-	// which anyone inserting a step between them would silently break.
-	remainingRows := func() int {
-		return height - layout.tabBarHeight - layout.statusHeight - layout.helpHeight - layout.composerHeight
-	}
+	remaining := layout.shrinkToFit(height, width)
 
-	remaining := remainingRows()
-	if remaining < composerShortBlockHeight && layout.composerHeight > composerShortBlockHeight {
-		layout.composerHeight = composerShortBlockHeight
-		remaining = remainingRows()
-	}
-	if remaining < 1 && layout.helpHeight > 0 {
-		layout.helpHeight = 0
-		remaining = remainingRows()
-	}
-	if remaining < 1 && layout.composerHeight > 0 {
-		// Everything else has already been reduced; the composer absorbs
-		// whatever is left rather than the frame overflowing.
-		layout.composerHeight = clampMin(height-layout.tabBarHeight-layout.statusHeight, 0)
-		layout.composerFramed = layout.composerHeight >= 3 && width >= composerFramedMinWidth
-		remaining = remainingRows()
-	}
-
-	// Exactly one docked surface gets height. The list overlays outrank
-	// inspect because the user just asked for one; inspect is a standing
-	// toggle that can wait a frame.
-	switch {
-	case m.overlay.open():
-		tall := dockedOverlayTallHeight
-		if m.overlay.kind == overlayTargetPicker {
-			tall = targetPickerTallHeight
-		}
-		layout.overlay, remaining = dockOverlay(dockedOverlayHeight, tall, width, height, remaining)
-	case m.activeChatState().inspectOpen:
-		layout.inspect, remaining = dockOverlay(dockedOverlayHeight, dockedOverlayTallHeight, width, height, remaining)
-	}
+	remaining = m.dockOverlayPanes(&layout, width, height, remaining)
 
 	layout.chatHeight = clampMin(remaining, 0)
 	// The activity column is measured first and handed to the sidebar as the
@@ -354,6 +296,90 @@ func (m shellModel) layout() shellLayout {
 		layout.clearChatRegion()
 	}
 	return layout
+}
+
+// expandedHelpHeight climbs the help ladder as far as there are key groups, so
+// a terminal tall enough to show every section does. Truncating help is a
+// reasonable answer on a short terminal and a poor one on a tall one: a group
+// that never renders is a group nobody can discover. The current height is
+// kept when the terminal is too short for even the lowest rung.
+func expandedHelpHeight(height, current int) int {
+	switch {
+	case height >= 26:
+		return len(keyGroupOrder)
+	case height >= 22:
+		return 5
+	case height >= 18:
+		return 4
+	case height >= 14:
+		return 3
+	case height >= 10:
+		return 2
+	}
+	return current
+}
+
+// composerLayout sizes the composer block for the chat tab: the full block,
+// one row taller while a reply is armed, or the short block when the terminal
+// cannot spare the rows.
+func composerLayout(height, width int, replying bool) (composerHeight int, framed bool) {
+	composerHeight = composerBlockHeight
+	if replying {
+		composerHeight++
+	}
+	if height < composerShortTerminal {
+		composerHeight = composerShortBlockHeight
+	}
+	return composerHeight, width >= composerFramedMinWidth
+}
+
+// remainingRows is the row count left for chat, recomputed after each
+// reduction rather than adjusted. The two shortened copies of this
+// subtraction used to omit helpHeight - correct only because help had just
+// been set to zero, which is a fact a reader had to reconstruct from the
+// surrounding branch and which anyone inserting a step between them would
+// silently break.
+func (l shellLayout) remainingRows(height int) int {
+	return height - l.tabBarHeight - l.statusHeight - l.helpHeight - l.composerHeight
+}
+
+// shrinkToFit reduces the composer and the help ladder until the fixed rows
+// fit the terminal, returning the rows left for chat.
+func (l *shellLayout) shrinkToFit(height, width int) int {
+	remaining := l.remainingRows(height)
+	if remaining < composerShortBlockHeight && l.composerHeight > composerShortBlockHeight {
+		l.composerHeight = composerShortBlockHeight
+		remaining = l.remainingRows(height)
+	}
+	if remaining < 1 && l.helpHeight > 0 {
+		l.helpHeight = 0
+		remaining = l.remainingRows(height)
+	}
+	if remaining < 1 && l.composerHeight > 0 {
+		// Everything else has already been reduced; the composer absorbs
+		// whatever is left rather than the frame overflowing.
+		l.composerHeight = clampMin(height-l.tabBarHeight-l.statusHeight, 0)
+		l.composerFramed = l.composerHeight >= 3 && width >= composerFramedMinWidth
+		remaining = l.remainingRows(height)
+	}
+	return remaining
+}
+
+// dockOverlayPanes gives height to exactly one docked surface. The list
+// overlays outrank inspect because the user just asked for one; inspect is a
+// standing toggle that can wait a frame.
+func (m shellModel) dockOverlayPanes(layout *shellLayout, width, height, remaining int) int {
+	switch {
+	case m.overlay.open():
+		tall := dockedOverlayTallHeight
+		if m.overlay.kind == overlayTargetPicker {
+			tall = targetPickerTallHeight
+		}
+		layout.overlay, remaining = dockOverlay(dockedOverlayHeight, tall, width, height, remaining)
+	case m.activeChatState().inspectOpen:
+		layout.inspect, remaining = dockOverlay(dockedOverlayHeight, dockedOverlayTallHeight, width, height, remaining)
+	}
+	return remaining
 }
 
 // applyChatHeights derives the chat and side-pane content heights from the
@@ -847,60 +873,86 @@ func (m shellModel) styleChatRowWindow(blocks []chatRowBlock, rowWidth, start, c
 	if capacity < 0 {
 		capacity = chatRowBlockCount(blocks)
 	}
-	rows := make([]string, 0, clampMin(capacity, 0))
-	index := 0
-	// want reports whether the row at the current global index falls inside
-	// the requested window, and stops the walk once it is past the end.
-	want := func() (keep, done bool) {
-		switch {
-		case index < start:
-			return false, false
-		case count >= 0 && len(rows) >= count:
-			return false, true
-		default:
-			return true, false
-		}
+	walker := chatRowWindowWalker{
+		rows:        make([]string, 0, clampMin(capacity, 0)),
+		start:       start,
+		count:       count,
+		rowWidth:    rowWidth,
+		selectedID:  replyMessageID(m.activeChatState().selected),
+		searchQuery: strings.TrimSpace(m.activeChatState().searchQuery),
 	}
-
-	selectedID := replyMessageID(m.activeChatState().selected)
-	searchQuery := strings.TrimSpace(m.activeChatState().searchQuery)
 	for _, block := range blocks {
-		selected := selectedID != "" && block.message.ID == selectedID
-		matched := searchQuery != "" && !block.message.Deleted &&
-			messageMatchesSearch(block.message, searchQuery)
-		if block.separatorBefore {
-			keep, done := want()
-			if done {
-				return rows
-			}
-			if keep {
-				rows = append(rows, m.messageGroupSeparator(rowWidth))
-			}
-			index++
-		}
-		if len(block.rows) == 0 {
-			keep, done := want()
-			if done {
-				return rows
-			}
-			if keep {
-				rows = append(rows, m.messageRowString(block, 0, render.Row{}, rowWidth, selected, matched))
-			}
-			index++
-			continue
-		}
-		for rowIndex, row := range block.rows {
-			keep, done := want()
-			if done {
-				return rows
-			}
-			if keep {
-				rows = append(rows, m.messageRowString(block, rowIndex, row, rowWidth, selected, matched))
-			}
-			index++
+		if m.walkBlockRows(&walker, block) {
+			return walker.rows
 		}
 	}
-	return rows
+	return walker.rows
+}
+
+// chatRowWindowWalker tracks the global row position while blocks are folded
+// into the requested window of styled rows.
+type chatRowWindowWalker struct {
+	rows        []string
+	index       int
+	start       int
+	count       int
+	rowWidth    int
+	selectedID  string
+	searchQuery string
+}
+
+// want reports whether the row at the current global index falls inside the
+// requested window, and stops the walk once it is past the end.
+func (w *chatRowWindowWalker) want() (keep, done bool) {
+	index := w.index
+	w.index++
+	switch {
+	case index < w.start:
+		return false, false
+	case w.count >= 0 && len(w.rows) >= w.count:
+		return false, true
+	default:
+		return true, false
+	}
+}
+
+// offer renders and keeps the next global row when it falls inside the
+// window, reporting whether the walk is past the window's end. The row is
+// rendered lazily so skipped rows cost no styling work.
+func (w *chatRowWindowWalker) offer(renderRow func() string) bool {
+	keep, done := w.want()
+	if done {
+		return true
+	}
+	if keep {
+		w.rows = append(w.rows, renderRow())
+	}
+	return false
+}
+
+// walkBlockRows folds one block into the window, reporting whether the walk
+// is past the window's end.
+func (m shellModel) walkBlockRows(w *chatRowWindowWalker, block chatRowBlock) bool {
+	selected := w.selectedID != "" && block.message.ID == w.selectedID
+	matched := w.searchQuery != "" && !block.message.Deleted &&
+		messageMatchesSearch(block.message, w.searchQuery)
+	if block.separatorBefore &&
+		w.offer(func() string { return m.messageGroupSeparator(w.rowWidth) }) {
+		return true
+	}
+	if len(block.rows) == 0 {
+		return w.offer(func() string {
+			return m.messageRowString(block, 0, render.Row{}, w.rowWidth, selected, matched)
+		})
+	}
+	for rowIndex, row := range block.rows {
+		if w.offer(func() string {
+			return m.messageRowString(block, rowIndex, row, w.rowWidth, selected, matched)
+		}) {
+			return true
+		}
+	}
+	return false
 }
 
 // messageRowString draws one chat row: the group gutter rail, the event glyph

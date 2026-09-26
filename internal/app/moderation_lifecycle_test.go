@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -556,55 +557,60 @@ func TestConfirmedTimeoutReachesTheTransportUnchanged(t *testing.T) {
 // in exactly one place. Everywhere else they must reach whatever normally owns
 // them - most importantly the composer, where they are just text.
 func TestModerationLettersAreInertOutsideTheChatPane(t *testing.T) {
-	t.Run("composer", func(t *testing.T) {
-		model, client := moderationModel(t)
-		model.focus = focusComposer
-		for _, r := range []rune{moderationDeleteRune, moderationTimeoutRune, moderationBanRune} {
-			model, _ = pressModeration(t, model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-		}
-		if got := model.activeChatState().composerText; got != "dtb" {
-			t.Fatalf("composer text = %q, want %q: moderation stole the keystrokes", got, "dtb")
-		}
-		if model.moderation.stage != moderationStageIdle {
-			t.Fatalf("stage = %v, want idle", model.moderation.stage)
-		}
-		if len(client.bans)+len(client.deletedIDs) != 0 {
-			t.Fatal("the composer dispatched a moderation request")
-		}
-	})
+	t.Run("composer", moderationLettersInertInComposer)
+	t.Run("overlay open", moderationLettersInertUnderOverlay)
+	t.Run("leader pending", moderationLettersInertWithLeaderPending)
+	t.Run("other tab", moderationLettersInertOnOtherTab)
+}
 
-	t.Run("overlay open", func(t *testing.T) {
-		model, _ := moderationModel(t)
-		model.toggleOverlay(overlayPalette)
-		if !model.overlay.open() {
-			t.Fatal("the palette did not open")
-		}
-		model, _ = pressModeration(t, model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{moderationBanRune}})
-		if model.moderation.stage != moderationStageIdle {
-			t.Fatalf("an overlay let b arm a ban: stage %v", model.moderation.stage)
-		}
-	})
+func moderationLettersInertInComposer(t *testing.T) {
+	model, client := moderationModel(t)
+	model.focus = focusComposer
+	for _, r := range []rune{moderationDeleteRune, moderationTimeoutRune, moderationBanRune} {
+		model, _ = pressModeration(t, model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	if got := model.activeChatState().composerText; got != "dtb" {
+		t.Fatalf("composer text = %q, want %q: moderation stole the keystrokes", got, "dtb")
+	}
+	if model.moderation.stage != moderationStageIdle {
+		t.Fatalf("stage = %v, want idle", model.moderation.stage)
+	}
+	if len(client.bans)+len(client.deletedIDs) != 0 {
+		t.Fatal("the composer dispatched a moderation request")
+	}
+}
 
-	t.Run("leader pending", func(t *testing.T) {
-		model, _ := moderationModel(t)
-		model, _ = pressModeration(t, model, tea.KeyMsg{Type: tea.KeySpace})
-		if !model.leaderPending {
-			t.Fatal("space did not arm the leader")
-		}
-		model, _ = pressModeration(t, model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{moderationDeleteRune}})
-		if model.moderation.stage != moderationStageIdle {
-			t.Fatalf("a pending leader let d arm a delete: stage %v", model.moderation.stage)
-		}
-	})
+func moderationLettersInertUnderOverlay(t *testing.T) {
+	model, _ := moderationModel(t)
+	model.toggleOverlay(overlayPalette)
+	if !model.overlay.open() {
+		t.Fatal("the palette did not open")
+	}
+	model, _ = pressModeration(t, model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{moderationBanRune}})
+	if model.moderation.stage != moderationStageIdle {
+		t.Fatalf("an overlay let b arm a ban: stage %v", model.moderation.stage)
+	}
+}
 
-	t.Run("other tab", func(t *testing.T) {
-		model, _ := moderationModel(t)
-		model.activeTab = tabMisc
-		model, _ = pressModeration(t, model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{moderationBanRune}})
-		if model.moderation.stage != moderationStageIdle {
-			t.Fatalf("the quota tab let b arm a ban: stage %v", model.moderation.stage)
-		}
-	})
+func moderationLettersInertWithLeaderPending(t *testing.T) {
+	model, _ := moderationModel(t)
+	model, _ = pressModeration(t, model, tea.KeyMsg{Type: tea.KeySpace})
+	if !model.leaderPending {
+		t.Fatal("space did not arm the leader")
+	}
+	model, _ = pressModeration(t, model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{moderationDeleteRune}})
+	if model.moderation.stage != moderationStageIdle {
+		t.Fatalf("a pending leader let d arm a delete: stage %v", model.moderation.stage)
+	}
+}
+
+func moderationLettersInertOnOtherTab(t *testing.T) {
+	model, _ := moderationModel(t)
+	model.activeTab = tabMisc
+	model, _ = pressModeration(t, model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{moderationBanRune}})
+	if model.moderation.stage != moderationStageIdle {
+		t.Fatalf("the quota tab let b arm a ban: stage %v", model.moderation.stage)
+	}
 }
 
 // The moderation keys stay in the help overlay whether or not they work, and
@@ -622,44 +628,7 @@ func TestExpandedHelpDrawsTheModerationGroupOnRealTerminals(t *testing.T) {
 		{72, 22},
 	} {
 		model.width, model.height = size.width, size.height
-		layout := model.layout()
-		if layout.helpHeight <= 0 {
-			t.Fatalf("%dx%d: expanded help got no rows", size.width, size.height)
-		}
-		// The group must survive the height ladder, which is what decides how
-		// many groups get a row at all.
-		lines := helpLines(layout.width, layout.helpHeight, model.helpState())
-		want := helpGroupLine(keyGroupModeration)
-		var reserved bool
-		for _, line := range lines {
-			if strings.HasPrefix(line, want) {
-				reserved = true
-			}
-		}
-		if !reserved {
-			t.Fatalf("%dx%d: the height ladder truncated the moderation group away:\n%s",
-				size.width, size.height, strings.Join(lines, "\n"))
-		}
-
-		// And the drawn row must at least reach the first key, so a moderator
-		// on a narrow terminal still learns the group exists. Help rows
-		// truncate at the width like every other group, so the whole row is
-		// only asserted where there is room for it.
-		rendered := ansi.Strip(renderHelp(layout.width, layout.helpHeight, model.helpState()))
-		first := keyBindingsInGroup(keyGroupModeration)[0]
-		if !strings.Contains(rendered, first.Keys+": "+strings.Fields(first.Description)[0]) {
-			t.Fatalf("%dx%d: the moderation row was truncated to nothing:\n%s",
-				size.width, size.height, rendered)
-		}
-		if size.width >= 130 {
-			for _, binding := range keyBindingsInGroup(keyGroupModeration) {
-				prefix := binding.Keys + ": " + strings.Fields(binding.Description)[0]
-				if !strings.Contains(rendered, prefix) {
-					t.Fatalf("%dx%d: expanded help omits %q:\n%s",
-						size.width, size.height, prefix, rendered)
-				}
-			}
-		}
+		assertModerationHelpDrawn(t, model)
 	}
 
 	// At the tallest rung every group renders, so a sixth group cannot be
@@ -667,5 +636,44 @@ func TestExpandedHelpDrawsTheModerationGroupOnRealTerminals(t *testing.T) {
 	model.width, model.height = 120, 40
 	if got := model.layout().helpHeight; got != len(keyGroupOrder) {
 		t.Fatalf("a tall terminal reserved %d help rows for %d key groups", got, len(keyGroupOrder))
+	}
+}
+
+// assertModerationHelpDrawn checks that the expanded help at the model's size
+// both reserves a row for the moderation group and draws at least its first key.
+func assertModerationHelpDrawn(t *testing.T, model shellModel) {
+	t.Helper()
+	layout := model.layout()
+	if layout.helpHeight <= 0 {
+		t.Fatalf("%dx%d: expanded help got no rows", model.width, model.height)
+	}
+	// The group must survive the height ladder, which is what decides how
+	// many groups get a row at all.
+	lines := helpLines(layout.width, layout.helpHeight, model.helpState())
+	want := helpGroupLine(keyGroupModeration)
+	if !slices.ContainsFunc(lines, func(line string) bool { return strings.HasPrefix(line, want) }) {
+		t.Fatalf("%dx%d: the height ladder truncated the moderation group away:\n%s",
+			model.width, model.height, strings.Join(lines, "\n"))
+	}
+
+	// And the drawn row must at least reach the first key, so a moderator
+	// on a narrow terminal still learns the group exists. Help rows
+	// truncate at the width like every other group, so the whole row is
+	// only asserted where there is room for it.
+	rendered := ansi.Strip(renderHelp(layout.width, layout.helpHeight, model.helpState()))
+	first := keyBindingsInGroup(keyGroupModeration)[0]
+	if !strings.Contains(rendered, first.Keys+": "+strings.Fields(first.Description)[0]) {
+		t.Fatalf("%dx%d: the moderation row was truncated to nothing:\n%s",
+			model.width, model.height, rendered)
+	}
+	if model.width < 130 {
+		return
+	}
+	for _, binding := range keyBindingsInGroup(keyGroupModeration) {
+		prefix := binding.Keys + ": " + strings.Fields(binding.Description)[0]
+		if !strings.Contains(rendered, prefix) {
+			t.Fatalf("%dx%d: expanded help omits %q:\n%s",
+				model.width, model.height, prefix, rendered)
+		}
 	}
 }

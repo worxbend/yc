@@ -393,21 +393,7 @@ type svgCell struct {
 }
 
 func ansiToSVG(rendered, title string) string {
-	lines := strings.Split(strings.TrimRight(stripOSC(rendered), "\n"), "\n")
-	grid := make([][]svgCell, 0, len(lines))
-	columns := 0
-	for _, line := range lines {
-		cells := parseANSILine(line)
-		width := 0
-		for _, cell := range cells {
-			width += cell.width
-		}
-		columns = max(columns, width)
-		grid = append(grid, cells)
-	}
-	if columns == 0 {
-		columns = 80
-	}
+	grid, columns := svgGrid(rendered)
 
 	bodyWidth := float64(columns)*svgCellWidth + svgPadding*2
 	bodyHeight := float64(len(grid))*svgLineHeight + svgPadding*2 + svgTitleBar
@@ -431,33 +417,60 @@ func ansiToSVG(rendered, title string) string {
 	fmt.Fprintf(&b, `<g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace" font-size="%.0f">`+"\n", svgFontSize)
 	for row, cells := range grid {
 		y := svgTitleBar + svgPadding + float64(row)*svgLineHeight
-		column := 0
 		// Backgrounds first, so text always paints on top of its own chip.
-		for _, cell := range cells {
-			if cell.bg != "" && cell.width > 0 {
-				fmt.Fprintf(&b, `<rect x="%.2f" y="%.2f" width="%.2f" height="%.2f" fill="%s"/>`,
-					svgPadding+float64(column)*svgCellWidth, y, float64(cell.width)*svgCellWidth, svgLineHeight, cell.bg)
-			}
-			column += cell.width
+		writeSVGBackgrounds(&b, cells, y)
+		writeSVGText(&b, cells, y)
+		b.WriteString("\n")
+	}
+	b.WriteString("</g>\n</svg>\n")
+	return b.String()
+}
+
+// svgGrid parses every rendered row into styled cells and reports the widest
+// row in columns, defaulting to 80 for an empty frame.
+func svgGrid(rendered string) ([][]svgCell, int) {
+	lines := strings.Split(strings.TrimRight(stripOSC(rendered), "\n"), "\n")
+	grid := make([][]svgCell, 0, len(lines))
+	columns := 0
+	for _, line := range lines {
+		cells := parseANSILine(line)
+		columns = max(columns, cellsWidth(cells))
+		grid = append(grid, cells)
+	}
+	if columns == 0 {
+		columns = 80
+	}
+	return grid, columns
+}
+
+// cellsWidth is the total display width of a row of cells.
+func cellsWidth(cells []svgCell) int {
+	width := 0
+	for _, cell := range cells {
+		width += cell.width
+	}
+	return width
+}
+
+// writeSVGBackgrounds paints one rect per cell that carries a background.
+func writeSVGBackgrounds(b *strings.Builder, cells []svgCell, y float64) {
+	column := 0
+	for _, cell := range cells {
+		if cell.bg != "" && cell.width > 0 {
+			fmt.Fprintf(b, `<rect x="%.2f" y="%.2f" width="%.2f" height="%.2f" fill="%s"/>`,
+				svgPadding+float64(column)*svgCellWidth, y, float64(cell.width)*svgCellWidth, svgLineHeight, cell.bg)
 		}
-		column = 0
-		for _, cell := range cells {
-			// A whitespace-only run contributes nothing beyond the background
-			// rect already drawn for it above.
-			if strings.TrimSpace(cell.text) == "" {
-				column += cell.width
-				continue
-			}
-			attrs := ""
-			if cell.bold {
-				attrs += ` font-weight="600"`
-			}
-			if cell.italic {
-				attrs += ` font-style="italic"`
-			}
-			if cell.strikethrough {
-				attrs += ` text-decoration="line-through"`
-			}
+		column += cell.width
+	}
+}
+
+// writeSVGText paints the glyph runs of one row on top of its backgrounds.
+func writeSVGText(b *strings.Builder, cells []svgCell, y float64) {
+	column := 0
+	for _, cell := range cells {
+		// A whitespace-only run contributes nothing beyond the background
+		// rect already drawn for it.
+		if strings.TrimSpace(cell.text) != "" {
 			fill := cell.fg
 			if fill == "" {
 				fill = "#e6e6e6"
@@ -465,15 +478,28 @@ func ansiToSVG(rendered, title string) string {
 			// textLength pins each run to an exact cell count. Without it the
 			// font's natural advance drifts from the grid over a long line and
 			// the right-hand columns walk off the edge.
-			fmt.Fprintf(&b, `<text x="%.2f" y="%.2f" fill="%s"%s textLength="%.2f" lengthAdjust="spacingAndGlyphs" xml:space="preserve">%s</text>`,
-				svgPadding+float64(column)*svgCellWidth, y+svgFontSize, fill, attrs,
+			fmt.Fprintf(b, `<text x="%.2f" y="%.2f" fill="%s"%s textLength="%.2f" lengthAdjust="spacingAndGlyphs" xml:space="preserve">%s</text>`,
+				svgPadding+float64(column)*svgCellWidth, y+svgFontSize, fill, svgTextAttrs(cell),
 				float64(cell.width)*svgCellWidth, escapeXML(cell.text))
-			column += cell.width
 		}
-		b.WriteString("\n")
+		column += cell.width
 	}
-	b.WriteString("</g>\n</svg>\n")
-	return b.String()
+}
+
+// svgTextAttrs renders a cell's bold, italic, and strikethrough flags as SVG
+// text attributes.
+func svgTextAttrs(cell svgCell) string {
+	attrs := ""
+	if cell.bold {
+		attrs += ` font-weight="600"`
+	}
+	if cell.italic {
+		attrs += ` font-style="italic"`
+	}
+	if cell.strikethrough {
+		attrs += ` text-decoration="line-through"`
+	}
+	return attrs
 }
 
 // backgroundOf picks the most common background color as the window fill, so
@@ -503,19 +529,7 @@ func stripOSC(value string) string {
 	var b strings.Builder
 	for i := 0; i < len(value); {
 		if value[i] == 0x1b && i+1 < len(value) && value[i+1] == ']' {
-			j := i + 2
-			for j < len(value) {
-				if value[j] == 0x07 {
-					j++
-					break
-				}
-				if value[j] == 0x1b && j+1 < len(value) && value[j+1] == '\\' {
-					j += 2
-					break
-				}
-				j++
-			}
-			i = j
+			i = oscEnd(value, i+2)
 			continue
 		}
 		b.WriteByte(value[i])
@@ -524,14 +538,24 @@ func stripOSC(value string) string {
 	return b.String()
 }
 
+// oscEnd returns the index just past the terminator (BEL or ST) of an OSC
+// sequence whose payload starts at start, or len(value) if it never ends.
+func oscEnd(value string, start int) int {
+	for j := start; j < len(value); j++ {
+		if value[j] == 0x07 {
+			return j + 1
+		}
+		if value[j] == 0x1b && j+1 < len(value) && value[j+1] == '\\' {
+			return j + 2
+		}
+	}
+	return len(value)
+}
+
 // visibleWidth is the display width of a styled line, used by the rectangularity
 // assertion.
 func visibleWidth(line string) int {
-	width := 0
-	for _, cell := range parseANSILine(line) {
-		width += cell.width
-	}
-	return width
+	return cellsWidth(parseANSILine(line))
 }
 
 func parseANSILine(line string) []svgCell {
@@ -549,15 +573,11 @@ func parseANSILine(line string) []svgCell {
 	runes := []rune(line)
 	for i := 0; i < len(runes); {
 		if runes[i] == 0x1b && i+1 < len(runes) && runes[i+1] == '[' {
-			j := i + 2
-			for j < len(runes) && runes[j] != 'm' && !isANSIFinal(runes[j]) {
-				j++
-			}
+			j := csiEnd(runes, i+2)
 			if j < len(runes) && runes[j] == 'm' {
 				flush()
 				applySGR(&state, string(runes[i+2:j]))
-				current.fg, current.bg = state.fg, state.bg
-				current.bold, current.italic, current.strikethrough = state.bold, state.italic, state.strikethrough
+				current.adoptStyle(state)
 			}
 			i = j + 1
 			continue
@@ -568,14 +588,29 @@ func parseANSILine(line string) []svgCell {
 		if cluster == "" {
 			cluster = string(runes[i])
 		}
-		current.fg, current.bg = state.fg, state.bg
-		current.bold, current.italic, current.strikethrough = state.bold, state.italic, state.strikethrough
+		current.adoptStyle(state)
 		current.text += cluster
 		current.width += ansi.StringWidth(cluster)
 		i += len([]rune(cluster))
 	}
 	flush()
 	return cells
+}
+
+// csiEnd returns the index of the byte that ends a CSI sequence whose
+// parameters start at start: an 'm', another final byte, or len(runes).
+func csiEnd(runes []rune, start int) int {
+	j := start
+	for j < len(runes) && runes[j] != 'm' && !isANSIFinal(runes[j]) {
+		j++
+	}
+	return j
+}
+
+// adoptStyle copies the SGR state's colors and attributes onto the cell.
+func (c *svgCell) adoptStyle(state svgCell) {
+	c.fg, c.bg = state.fg, state.bg
+	c.bold, c.italic, c.strikethrough = state.bold, state.italic, state.strikethrough
 }
 
 func isANSIFinal(r rune) bool {

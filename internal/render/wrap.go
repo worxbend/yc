@@ -86,37 +86,8 @@ func (w *wrapper) breakRow(indentWidth int) {
 func (w *wrapper) add(fragments []Fragment) {
 	width, indentWidth := w.width, w.indentWidth
 	for _, fragment := range fragments {
-		if fragment.WidthCells > 0 || isAtomicFragment(fragment) {
-			fragmentWidth := fragment.Width()
-			if fragmentWidth == 0 {
-				continue
-			}
-			if w.used+fragmentWidth > width && w.used > indentWidth {
-				w.breakRow(indentWidth)
-			}
-			if w.used+fragmentWidth > width && w.used == indentWidth && w.used > 0 && fragmentWidth <= width {
-				// The fragment cannot fit beside the indent but would fit
-				// on a full-width row, so give up the indent.
-				//
-				// The row being abandoned must be emitted first if it holds
-				// anything real. On the content pass indentWidth is exactly
-				// the prefix width, so used == indentWidth is also true on
-				// the very first row - where the row holds the timestamp,
-				// badges, and author name. Discarding it unconditionally
-				// would drop the whole prefix whenever a message opened
-				// with a long mention or an amount chip, leaving an
-				// unattributed line in chat at ordinary terminal widths.
-				if rowHasContent(w.current) {
-					w.rows = append(w.rows, w.current)
-				}
-				w.current = Row{}
-				w.used = 0
-			}
-			if w.used+fragmentWidth <= width {
-				w.current.Append(fragment)
-				w.used += fragmentWidth
-				continue
-			}
+		if w.addAtomic(fragment) {
+			continue
 		}
 
 		// Prefer a break between words. Chat is prose, and breaking mid-word
@@ -133,6 +104,47 @@ func (w *wrapper) add(fragments []Fragment) {
 			w.addClusters(fragment, chunk)
 		}
 	}
+}
+
+// addAtomic places a fragment that must stay whole and reports whether it was
+// handled. A fragment that still does not fit on a full-width row returns
+// false, so the caller falls back to wrapping it cluster by cluster.
+func (w *wrapper) addAtomic(fragment Fragment) bool {
+	if fragment.WidthCells <= 0 && !isAtomicFragment(fragment) {
+		return false
+	}
+	fragmentWidth := fragment.Width()
+	if fragmentWidth == 0 {
+		return true
+	}
+	width, indentWidth := w.width, w.indentWidth
+	if w.used+fragmentWidth > width && w.used > indentWidth {
+		w.breakRow(indentWidth)
+	}
+	if w.used+fragmentWidth > width && w.used == indentWidth && w.used > 0 && fragmentWidth <= width {
+		// The fragment cannot fit beside the indent but would fit
+		// on a full-width row, so give up the indent.
+		//
+		// The row being abandoned must be emitted first if it holds
+		// anything real. On the content pass indentWidth is exactly
+		// the prefix width, so used == indentWidth is also true on
+		// the very first row - where the row holds the timestamp,
+		// badges, and author name. Discarding it unconditionally
+		// would drop the whole prefix whenever a message opened
+		// with a long mention or an amount chip, leaving an
+		// unattributed line in chat at ordinary terminal widths.
+		if rowHasContent(w.current) {
+			w.rows = append(w.rows, w.current)
+		}
+		w.current = Row{}
+		w.used = 0
+	}
+	if w.used+fragmentWidth <= width {
+		w.current.Append(fragment)
+		w.used += fragmentWidth
+		return true
+	}
+	return false
 }
 
 // wrapChunks splits text into word-sized pieces, each a run of non-space

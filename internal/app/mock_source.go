@@ -46,10 +46,10 @@ type MockChatClient struct {
 }
 
 var (
-	_ ChatClient       = (*MockChatClient)(nil)
-	_ ModerationSource = (*MockChatClient)(nil)
-	_ RoomEventSource  = (*MockChatClient)(nil)
-	_ QuotaReporter    = (*MockChatClient)(nil)
+	_ ChatClient         = (*MockChatClient)(nil)
+	_ ModerationStreamer = (*MockChatClient)(nil)
+	_ RoomEventStreamer  = (*MockChatClient)(nil)
+	_ QuotaReporter      = (*MockChatClient)(nil)
 )
 
 // NewMockChatClient returns a scripted client for the named chat.

@@ -6,6 +6,12 @@ import (
 	"strings"
 )
 
+// The pure extremes several presets build on.
+const (
+	presetBlack = "#000000"
+	presetWhite = "#ffffff"
+)
+
 // presets holds the built-in named palettes. Most take each scheme's
 // well-known published colors; yc, Claude, Codex, Btop, and Mono are authored
 // for this project.
@@ -58,7 +64,7 @@ var presets = map[string]Palette{
 		Success:    "#3fb950",
 	},
 	"btop": {
-		Background: "#000000",
+		Background: presetBlack,
 		Foreground: "#d3d3d3",
 		Accent:     "#00ff00",
 		Muted:      "#5a5a5a",
@@ -168,15 +174,15 @@ var presets = map[string]Palette{
 		Success:    "#31748f",
 	},
 	"mono": {
-		Background: "#000000",
-		Foreground: "#ffffff",
-		Accent:     "#ffffff",
+		Background: presetBlack,
+		Foreground: presetWhite,
+		Accent:     presetWhite,
 		Muted:      "#808080",
 		Border:     "#808080",
 		Surface:    "#1a1a1a",
 		Warning:    "#c0c0c0",
-		Error:      "#ffffff",
-		Success:    "#ffffff",
+		Error:      presetWhite,
+		Success:    presetWhite,
 	},
 	"catppuccin-macchiato": {
 		Background: "#24273a",
@@ -259,7 +265,7 @@ var presets = map[string]Palette{
 		Success:    "#859900",
 	},
 	"github-light": {
-		Background: "#ffffff",
+		Background: presetWhite,
 		Foreground: "#24292f",
 		Accent:     "#0969da",
 		Muted:      "#57606a",
@@ -471,7 +477,7 @@ var presets = map[string]Palette{
 	"matrix": {
 		// Pure black with phosphor green, one hue for accent and success
 		// because the reference it comes from only had the one.
-		Background: "#000000",
+		Background: presetBlack,
 		Foreground: "#c8ffc8",
 		Accent:     "#00ff41",
 		Muted:      "#4f8f4f",
@@ -557,7 +563,7 @@ var presets = map[string]Palette{
 	"carbon": {
 		// True black with a single orange accent and otherwise system
 		// colors, for terminals where anything but pure black shows a seam.
-		Background: "#000000",
+		Background: presetBlack,
 		Foreground: "#f0f0f0",
 		Accent:     "#ff5f1f",
 		Muted:      "#8c8c8c",
@@ -686,7 +692,7 @@ var presets = map[string]Palette{
 	"spectre": {
 		// Pale cyan on true black; the accent is light rather than
 		// saturated, for a colder read than the neon presets.
-		Background: "#000000",
+		Background: presetBlack,
 		Foreground: "#e8f6fa",
 		Accent:     "#9fe8ff",
 		Muted:      "#6b8592",
@@ -700,7 +706,7 @@ var presets = map[string]Palette{
 		// True black with a silver accent and color kept for the roles
 		// that carry meaning, for anyone who wants the chrome quiet and
 		// only warnings and errors to speak.
-		Background: "#000000",
+		Background: presetBlack,
 		Foreground: "#e8eaed",
 		Accent:     "#cfd8dc",
 		Muted:      "#7a8288",

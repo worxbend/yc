@@ -130,7 +130,7 @@ func TestTheHolderIsWiredToTheTransports401Recovery(t *testing.T) {
 	// The holder is the shared credential source, so the renewed token is
 	// what every other client reads from now on rather than a value the
 	// transport kept to itself.
-	if got := holder.AccessToken().Reveal(); got != freshWireToken {
+	if holder.AccessToken().Reveal() != freshWireToken {
 		t.Fatal("the renewed token did not reach the shared holder")
 	}
 }

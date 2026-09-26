@@ -771,10 +771,14 @@ func parseTargetURL(raw string) (ChatTarget, bool) {
 		}
 		return ChatTarget{}, false
 	case "youtube.com", "m.youtube.com", "music.youtube.com", "youtube-nocookie.com":
+		return targetFromYouTubeURL(parsed, path)
 	default:
 		return ChatTarget{}, false
 	}
+}
 
+// targetFromYouTubeURL classifies the path and query of a youtube.com URL.
+func targetFromYouTubeURL(parsed *url.URL, path string) (ChatTarget, bool) {
 	if id := strings.TrimSpace(parsed.Query().Get("v")); videoIDPattern.MatchString(id) {
 		return ChatTarget{Kind: TargetVideoID, VideoID: id}, true
 	}
@@ -794,6 +798,18 @@ func parseTargetURL(raw string) (ChatTarget, bool) {
 		}
 		return ChatTarget{}, false
 	}
+	if target, ok := targetFromUserPath(path); ok {
+		return target, true
+	}
+	if strings.HasPrefix(path, "@") {
+		handle, _, _ := strings.Cut(path, "/")
+		return ChatTarget{Kind: TargetHandle, Handle: handle}, true
+	}
+	return ChatTarget{}, false
+}
+
+// targetFromUserPath maps the legacy /c/ and /user/ path forms to a handle.
+func targetFromUserPath(path string) (ChatTarget, bool) {
 	for _, prefix := range []string{"c/", "user/"} {
 		if rest, ok := strings.CutPrefix(path, prefix); ok {
 			rest, _, _ = strings.Cut(rest, "/")
@@ -802,10 +818,6 @@ func parseTargetURL(raw string) (ChatTarget, bool) {
 			}
 			return ChatTarget{}, false
 		}
-	}
-	if strings.HasPrefix(path, "@") {
-		handle, _, _ := strings.Cut(path, "/")
-		return ChatTarget{Kind: TargetHandle, Handle: handle}, true
 	}
 	return ChatTarget{}, false
 }

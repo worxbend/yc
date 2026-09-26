@@ -12,15 +12,7 @@ import (
 )
 
 func TestParseChatTarget(t *testing.T) {
-	tests := []struct {
-		raw        string
-		wantKind   TargetKind
-		wantVideo  string
-		wantChan   string
-		wantHandle string
-		wantChat   string
-		wantErr    bool
-	}{
+	tests := []parseTargetCase{
 		{raw: "dQw4w9WgXcQ", wantKind: TargetVideoID, wantVideo: "dQw4w9WgXcQ"},
 		{raw: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", wantKind: TargetVideoID, wantVideo: "dQw4w9WgXcQ"},
 		{raw: "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42s", wantKind: TargetVideoID, wantVideo: "dQw4w9WgXcQ"},
@@ -51,35 +43,50 @@ func TestParseChatTarget(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.raw, func(t *testing.T) {
-			target, err := ParseChatTarget(test.raw)
-			if test.wantErr {
-				if err == nil {
-					t.Fatalf("ParseChatTarget(%q) = %#v, want an error", test.raw, target)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("ParseChatTarget(%q) error = %v", test.raw, err)
-			}
-			if target.Kind != test.wantKind {
-				t.Fatalf("Kind = %q, want %q", target.Kind, test.wantKind)
-			}
-			if target.VideoID != test.wantVideo {
-				t.Fatalf("VideoID = %q, want %q", target.VideoID, test.wantVideo)
-			}
-			if target.ChannelID != test.wantChan {
-				t.Fatalf("ChannelID = %q, want %q", target.ChannelID, test.wantChan)
-			}
-			if target.Handle != test.wantHandle {
-				t.Fatalf("Handle = %q, want %q", target.Handle, test.wantHandle)
-			}
-			if target.LiveChatID != test.wantChat {
-				t.Fatalf("LiveChatID = %q, want %q", target.LiveChatID, test.wantChat)
-			}
-			if target.Raw != test.raw {
-				t.Fatalf("Raw = %q, want the input preserved", target.Raw)
-			}
+			assertParseChatTarget(t, test)
 		})
+	}
+}
+
+type parseTargetCase struct {
+	raw        string
+	wantKind   TargetKind
+	wantVideo  string
+	wantChan   string
+	wantHandle string
+	wantChat   string
+	wantErr    bool
+}
+
+func assertParseChatTarget(t *testing.T, test parseTargetCase) {
+	t.Helper()
+	target, err := ParseChatTarget(test.raw)
+	if test.wantErr {
+		if err == nil {
+			t.Fatalf("ParseChatTarget(%q) = %#v, want an error", test.raw, target)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("ParseChatTarget(%q) error = %v", test.raw, err)
+	}
+	if target.Kind != test.wantKind {
+		t.Fatalf("Kind = %q, want %q", target.Kind, test.wantKind)
+	}
+	if target.VideoID != test.wantVideo {
+		t.Fatalf("VideoID = %q, want %q", target.VideoID, test.wantVideo)
+	}
+	if target.ChannelID != test.wantChan {
+		t.Fatalf("ChannelID = %q, want %q", target.ChannelID, test.wantChan)
+	}
+	if target.Handle != test.wantHandle {
+		t.Fatalf("Handle = %q, want %q", target.Handle, test.wantHandle)
+	}
+	if target.LiveChatID != test.wantChat {
+		t.Fatalf("LiveChatID = %q, want %q", target.LiveChatID, test.wantChat)
+	}
+	if target.Raw != test.raw {
+		t.Fatalf("Raw = %q, want the input preserved", target.Raw)
 	}
 }
 

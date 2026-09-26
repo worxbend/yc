@@ -29,19 +29,7 @@ func TestPollerReportsCadenceAndQuotaAsEstimates(t *testing.T) {
 	for {
 		snapshot := harness.poller.Quota()
 		if snapshot.ServerFloor == 4*time.Second {
-			if !snapshot.Estimated {
-				t.Error("the snapshot is not marked as an estimate; Google publishes no live-chat costs")
-			}
-			if snapshot.At.IsZero() {
-				t.Error("the snapshot carries no timestamp")
-			}
-			if snapshot.EffectiveInterval < snapshot.ServerFloor {
-				t.Errorf("effective interval %v is below the server floor %v; the floor is absolute",
-					snapshot.EffectiveInterval, snapshot.ServerFloor)
-			}
-			if snapshot.Mode == "" {
-				t.Error("the snapshot reports no cadence mode")
-			}
+			assertQuotaSnapshot(t, snapshot)
 			break
 		}
 		select {
@@ -56,6 +44,23 @@ func TestPollerReportsCadenceAndQuotaAsEstimates(t *testing.T) {
 	}
 	if got := harness.poller.DroppedMessages(); got != 0 {
 		t.Errorf("dropped = %d before any consumer fell behind", got)
+	}
+}
+
+func assertQuotaSnapshot(t *testing.T, snapshot quota.Snapshot) {
+	t.Helper()
+	if !snapshot.Estimated {
+		t.Error("the snapshot is not marked as an estimate; Google publishes no live-chat costs")
+	}
+	if snapshot.At.IsZero() {
+		t.Error("the snapshot carries no timestamp")
+	}
+	if snapshot.EffectiveInterval < snapshot.ServerFloor {
+		t.Errorf("effective interval %v is below the server floor %v; the floor is absolute",
+			snapshot.EffectiveInterval, snapshot.ServerFloor)
+	}
+	if snapshot.Mode == "" {
+		t.Error("the snapshot reports no cadence mode")
 	}
 }
 
@@ -155,7 +160,7 @@ func TestPollerReconnectResumesFromTheRetainedPageToken(t *testing.T) {
 	// The request after the reconnect must carry a page token; a bare request
 	// is a re-prime.
 	last := queries[len(queries)-1]
-	if got := last.Get("pageToken"); got == "" {
+	if last.Get("pageToken") == "" {
 		t.Errorf("the reconnect polled with no page token: %v", last)
 	}
 }

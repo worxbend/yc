@@ -337,29 +337,33 @@ func (h *credentialHolder) startRefreshLoop(ctx context.Context, onError func(er
 	if !h.canRefresh() {
 		return
 	}
-	go func() {
-		for {
-			expiry := h.expiresAt()
-			if expiry.IsZero() {
-				return
-			}
-			wait := time.Until(expiry) - refreshLeadTime
-			if wait < time.Second {
-				wait = time.Second
-			}
-			timer := time.NewTimer(wait)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return
-			case <-timer.C:
-			}
-			if err := h.Refresh(ctx); err != nil && onError != nil {
-				onError(err)
-			}
-			if ctx.Err() != nil {
-				return
-			}
+	go h.refreshLoop(ctx, onError)
+}
+
+// refreshLoop wakes shortly before each expiry and renews the token, stopping
+// when the context ends or the expiry becomes unknown.
+func (h *credentialHolder) refreshLoop(ctx context.Context, onError func(error)) {
+	for {
+		expiry := h.expiresAt()
+		if expiry.IsZero() {
+			return
 		}
-	}()
+		wait := time.Until(expiry) - refreshLeadTime
+		if wait < time.Second {
+			wait = time.Second
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		if err := h.Refresh(ctx); err != nil && onError != nil {
+			onError(err)
+		}
+		if ctx.Err() != nil {
+			return
+		}
+	}
 }

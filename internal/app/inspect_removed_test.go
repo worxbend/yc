@@ -39,31 +39,38 @@ func TestInspectNeverReprintsARemovedBody(t *testing.T) {
 
 		for _, width := range []int{40, 80, 200} {
 			rendered := strings.Join(plainLines(renderInspect(width, dockedPane{height: 14, contentHeight: 12, framed: true}, st)), "\n")
-			if strings.Contains(rendered, secret) {
-				t.Fatalf("%s at width %d reprinted the removed body:\n%s", kind, width, rendered)
-			}
-			// Even a prefix of it is a leak: the panel truncates, and half a
-			// slur is still a slur on a streamed terminal.
-			for _, word := range strings.Fields(secret) {
-				if len(word) < 5 {
-					continue
-				}
-				if strings.Contains(rendered, word) {
-					t.Fatalf("%s at width %d leaked the word %q from the removed body:\n%s",
-						kind, width, word, rendered)
-				}
-			}
-			// The panel stays honest about what it is withholding rather than
-			// quietly dropping the field, which would read as "no text".
-			if !strings.Contains(rendered, "text: removed") {
-				t.Fatalf("%s at width %d does not say the body was removed:\n%s", kind, width, rendered)
-			}
-			// The deleted flag lives on the message line, which truncates like
-			// every other line, so it is only asserted where there is room.
-			if width >= 200 && !strings.Contains(rendered, "deleted=true") {
-				t.Fatalf("%s at width %d does not report the message as deleted:\n%s", kind, width, rendered)
-			}
+			inspectRemovedRequireWithheld(t, kind, width, rendered, secret)
 		}
+	}
+}
+
+// inspectRemovedRequireWithheld fails when rendered repeats the removed body,
+// or any long word of it, or stops saying that the body was withheld.
+func inspectRemovedRequireWithheld(t *testing.T, kind youtube.EventKind, width int, rendered, secret string) {
+	t.Helper()
+	if strings.Contains(rendered, secret) {
+		t.Fatalf("%s at width %d reprinted the removed body:\n%s", kind, width, rendered)
+	}
+	// Even a prefix of it is a leak: the panel truncates, and half a
+	// slur is still a slur on a streamed terminal.
+	for _, word := range strings.Fields(secret) {
+		if len(word) < 5 {
+			continue
+		}
+		if strings.Contains(rendered, word) {
+			t.Fatalf("%s at width %d leaked the word %q from the removed body:\n%s",
+				kind, width, word, rendered)
+		}
+	}
+	// The panel stays honest about what it is withholding rather than
+	// quietly dropping the field, which would read as "no text".
+	if !strings.Contains(rendered, "text: removed") {
+		t.Fatalf("%s at width %d does not say the body was removed:\n%s", kind, width, rendered)
+	}
+	// The deleted flag lives on the message line, which truncates like
+	// every other line, so it is only asserted where there is room.
+	if width >= 200 && !strings.Contains(rendered, "deleted=true") {
+		t.Fatalf("%s at width %d does not report the message as deleted:\n%s", kind, width, rendered)
 	}
 }
 

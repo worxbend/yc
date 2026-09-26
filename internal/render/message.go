@@ -506,39 +506,7 @@ func messagePrefix(msg youtube.Message, opts Options) []Fragment {
 	}
 
 	author := usernameText(msg, opts)
-	includeTimestamp := opts.Width >= minWidthTimestamp
-	includeBadges := opts.Width >= minWidthWideChip && len(msg.Badges) > 0 && opts.badgeMode() != BadgeModeOff
-	includeAvatar := opts.Assets.ShowAvatars && opts.Width >= minWidthNarrowChip
-	// LayoutCompact trades every decoration for message text.
-	if opts.layout() == LayoutCompact {
-		includeTimestamp, includeBadges, includeAvatar = false, false, false
-	}
-
-	for {
-		fixedWidth := 2 // the ": " separator
-		if includeTimestamp {
-			fixedWidth += timestampWidth
-		}
-		if includeBadges {
-			fixedWidth += badgeSetWidth(msg.Badges, opts)
-		}
-		if includeAvatar {
-			fixedWidth += opts.Assets.AvatarWidthCells
-		}
-
-		if fixedWidth+textWidth(author) <= opts.Width || (!includeAvatar && !includeBadges && !includeTimestamp) {
-			break
-		}
-		if includeBadges {
-			includeBadges = false
-			continue
-		}
-		if includeAvatar {
-			includeAvatar = false
-			continue
-		}
-		includeTimestamp = false
-	}
+	includeTimestamp, includeBadges, includeAvatar := prefixDecorations(msg, opts, textWidth(author))
 
 	var fragments []Fragment
 	if includeAvatar {
@@ -561,6 +529,46 @@ func messagePrefix(msg youtube.Message, opts Options) []Fragment {
 		Style: FragmentStyle{Foreground: opts.Palette.Foreground},
 	})
 	return fragments
+}
+
+// prefixDecorations decides which of the timestamp, badges, and avatar fit
+// next to authorWidth cells of name at opts.Width, dropping badges first and
+// the timestamp last until the row closes.
+func prefixDecorations(msg youtube.Message, opts Options, authorWidth int) (timestamp, badges, avatar bool) {
+	// LayoutCompact trades every decoration for message text.
+	if opts.layout() == LayoutCompact {
+		return false, false, false
+	}
+	timestamp = opts.Width >= minWidthTimestamp
+	badges = opts.Width >= minWidthWideChip && len(msg.Badges) > 0 && opts.badgeMode() != BadgeModeOff
+	avatar = opts.Assets.ShowAvatars && opts.Width >= minWidthNarrowChip
+	for (timestamp || badges || avatar) && prefixFixedWidth(msg, opts, timestamp, badges, avatar)+authorWidth > opts.Width {
+		switch {
+		case badges:
+			badges = false
+		case avatar:
+			avatar = false
+		default:
+			timestamp = false
+		}
+	}
+	return timestamp, badges, avatar
+}
+
+// prefixFixedWidth is the column budget the chosen decorations spend: the
+// ": " separator plus each included piece.
+func prefixFixedWidth(msg youtube.Message, opts Options, timestamp, badges, avatar bool) int {
+	fixedWidth := 2 // the ": " separator
+	if timestamp {
+		fixedWidth += timestampWidth
+	}
+	if badges {
+		fixedWidth += badgeSetWidth(msg.Badges, opts)
+	}
+	if avatar {
+		fixedWidth += opts.Assets.AvatarWidthCells
+	}
+	return fixedWidth
 }
 
 // messageContent builds everything after the author: the deletion placeholder,

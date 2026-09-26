@@ -15,19 +15,27 @@ import (
 // - the one outcome the moderation design says must never happen.
 func TestFakeChatEmitsAMessageBeforeItsModeration(t *testing.T) {
 	fake := NewFakeChatClient(FakeChatConfig{LiveChatID: "fake-chat"})
+	assertModerationsFollowMessages(t, fake.script, firstMessageIndexes(fake.script))
+}
 
-	// Item index at which each message ID first reaches the message stream.
+// firstMessageIndexes maps each message ID to the script index at which it
+// first reaches the message stream.
+func firstMessageIndexes(script []NormalizeResult) map[string]int {
 	firstSeenAt := make(map[string]int)
-	for index, result := range fake.script {
+	for index, result := range script {
 		for _, message := range result.Messages {
 			if _, ok := firstSeenAt[message.ID]; !ok {
 				firstSeenAt[message.ID] = index
 			}
 		}
 	}
+	return firstSeenAt
+}
 
+func assertModerationsFollowMessages(t *testing.T, script []NormalizeResult, firstSeenAt map[string]int) {
+	t.Helper()
 	targeted := 0
-	for index, result := range fake.script {
+	for index, result := range script {
 		for _, event := range result.Moderations {
 			if event.TargetMessageID == "" {
 				continue

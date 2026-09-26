@@ -243,29 +243,34 @@ func TestTheReserveProtectsTheAbilityToModerate(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			poller := newPacingPoller(t, PollerConfig{ReservePercent: test.reserve})
-			detail, stop := poller.reserveTripped(test.snapshot)
-			if stop != test.wantStop {
-				t.Fatalf("reserveTripped = %v (%q), want %v", stop, detail, test.wantStop)
-			}
-			if !stop {
-				if detail != "" {
-					t.Fatalf("detail = %q, want none when polling continues", detail)
-				}
-				return
-			}
-			if !strings.Contains(detail, test.wantSaid) {
-				t.Fatalf("detail = %q, want it to mention %q", detail, test.wantSaid)
-			}
-			// Every quota figure yc shows is an estimate, and the user must
-			// always have a way to override a pause yc chose for them.
-			if !strings.Contains(detail, "(est.)") {
-				t.Fatalf("detail = %q, want the estimate marker", detail)
-			}
-			if !strings.Contains(detail, "ctrl+r") {
-				t.Fatalf("detail = %q, want the override named", detail)
-			}
+			assertReserveTrip(t, test.reserve, test.snapshot, test.wantStop, test.wantSaid)
 		})
+	}
+}
+
+func assertReserveTrip(t *testing.T, reserve int, snapshot quota.Snapshot, wantStop bool, wantSaid string) {
+	t.Helper()
+	poller := newPacingPoller(t, PollerConfig{ReservePercent: reserve})
+	detail, stop := poller.reserveTripped(snapshot)
+	if stop != wantStop {
+		t.Fatalf("reserveTripped = %v (%q), want %v", stop, detail, wantStop)
+	}
+	if !stop {
+		if detail != "" {
+			t.Fatalf("detail = %q, want none when polling continues", detail)
+		}
+		return
+	}
+	if !strings.Contains(detail, wantSaid) {
+		t.Fatalf("detail = %q, want it to mention %q", detail, wantSaid)
+	}
+	// Every quota figure yc shows is an estimate, and the user must
+	// always have a way to override a pause yc chose for them.
+	if !strings.Contains(detail, "(est.)") {
+		t.Fatalf("detail = %q, want the estimate marker", detail)
+	}
+	if !strings.Contains(detail, "ctrl+r") {
+		t.Fatalf("detail = %q, want the override named", detail)
 	}
 }
 
@@ -327,6 +332,7 @@ func TestTheDefaultSleepIsInterruptible(t *testing.T) {
 
 	// A canceled context cuts a long sleep short.
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
 		time.Sleep(10 * time.Millisecond)
 		cancel()

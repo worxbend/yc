@@ -41,23 +41,30 @@ func TestHelpIsNeverAUsageError(t *testing.T) {
 	for _, subcommand := range subcommands {
 		name := strings.Join(subcommand, " ")
 		t.Run(name, func(t *testing.T) {
-			for _, flag := range []string{"--help", "-h"} {
-				var stdout, stderr bytes.Buffer
-				args := append(append([]string{}, subcommand...), flag)
-
-				if code := Run(args, &stdout, &stderr); code != ExitOK {
-					t.Errorf("`yc %s %s` exited %d, want %d: asking for help is not a usage error",
-						name, flag, code, ExitOK)
-				}
-				if stdout.Len() == 0 {
-					t.Errorf("`yc %s %s` printed no help on stdout", name, flag)
-				}
-				if stderr.Len() != 0 {
-					t.Errorf("`yc %s %s` wrote to stderr, which breaks `| less`:\n%s",
-						name, flag, stderr.String())
-				}
-			}
+			assertHelpSucceeds(t, subcommand, name)
 		})
+	}
+}
+
+// assertHelpSucceeds runs `yc <subcommand> --help` and `-h`, requiring exit 0,
+// help on stdout, and silence on stderr for both spellings.
+func assertHelpSucceeds(t *testing.T, subcommand []string, name string) {
+	t.Helper()
+	for _, flag := range []string{"--help", "-h"} {
+		var stdout, stderr bytes.Buffer
+		args := append(append([]string{}, subcommand...), flag)
+
+		if code := Run(args, &stdout, &stderr); code != ExitOK {
+			t.Errorf("`yc %s %s` exited %d, want %d: asking for help is not a usage error",
+				name, flag, code, ExitOK)
+		}
+		if stdout.Len() == 0 {
+			t.Errorf("`yc %s %s` printed no help on stdout", name, flag)
+		}
+		if stderr.Len() != 0 {
+			t.Errorf("`yc %s %s` wrote to stderr, which breaks `| less`:\n%s",
+				name, flag, stderr.String())
+		}
 	}
 }
 

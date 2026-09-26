@@ -58,40 +58,45 @@ func TestAFailureAfterARefreshIsReportedAsItself(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			source := &refreshingCredentials{token: auth.NewSecret(expiredTestToken)}
-			var requests int
-			var mu sync.Mutex
-			client := newAuthTestClient(t, ClientConfig{Credentials: source}, func(w http.ResponseWriter, _ *http.Request) {
-				mu.Lock()
-				requests++
-				n := requests
-				mu.Unlock()
-				if n == 1 {
-					w.WriteHeader(http.StatusUnauthorized)
-					fmt.Fprint(w, unauthorizedBody())
-					return
-				}
-				w.WriteHeader(test.statusCode)
-				fmt.Fprint(w, googleError(test.statusCode, test.reason, "", "", "the API said no"))
-			})
-
-			_, err := client.ListMessages(context.Background(), ListRequest{LiveChatID: "chat-1"})
-			if !errors.Is(err, test.want) {
-				t.Fatalf("error = %v, want %v", err, test.want)
-			}
-			if errors.Is(err, ErrAuthFailed) {
-				t.Fatalf("error = %v, want no credential blame for a failure the refresh already fixed", err)
-			}
-			if strings.Contains(err.Error(), "yc login") {
-				t.Fatalf("error = %q, want no re-login instruction for a non-credential failure", err)
-			}
-			if Retryable(err) != test.retryable {
-				t.Fatalf("Retryable = %v, want %v; the poll loop reads this to decide whether to stop", Retryable(err), test.retryable)
-			}
-			if source.refreshCount() != 1 {
-				t.Fatalf("refreshes = %d, want exactly one", source.refreshCount())
-			}
+			assertFailureAfterRefresh(t, test.statusCode, test.reason, test.want, test.retryable)
 		})
+	}
+}
+
+func assertFailureAfterRefresh(t *testing.T, statusCode int, reason string, want error, retryable bool) {
+	t.Helper()
+	source := &refreshingCredentials{token: auth.NewSecret(expiredTestToken)}
+	var requests int
+	var mu sync.Mutex
+	client := newAuthTestClient(t, ClientConfig{Credentials: source}, func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		requests++
+		n := requests
+		mu.Unlock()
+		if n == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, unauthorizedBody())
+			return
+		}
+		w.WriteHeader(statusCode)
+		fmt.Fprint(w, googleError(statusCode, reason, "", "", "the API said no"))
+	})
+
+	_, err := client.ListMessages(context.Background(), ListRequest{LiveChatID: "chat-1"})
+	if !errors.Is(err, want) {
+		t.Fatalf("error = %v, want %v", err, want)
+	}
+	if errors.Is(err, ErrAuthFailed) {
+		t.Fatalf("error = %v, want no credential blame for a failure the refresh already fixed", err)
+	}
+	if strings.Contains(err.Error(), "yc login") {
+		t.Fatalf("error = %q, want no re-login instruction for a non-credential failure", err)
+	}
+	if Retryable(err) != retryable {
+		t.Fatalf("Retryable = %v, want %v; the poll loop reads this to decide whether to stop", Retryable(err), retryable)
+	}
+	if source.refreshCount() != 1 {
+		t.Fatalf("refreshes = %d, want exactly one", source.refreshCount())
 	}
 }
 

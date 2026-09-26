@@ -145,14 +145,19 @@ func TestFakeChatClientCloseIsIdempotentAndClosesEveryStream(t *testing.T) {
 	}
 
 	for range fake.Messages() {
+		// Drain until the channel closes.
 	}
 	for range fake.ConnectionStates() {
+		// Drain until the channel closes.
 	}
 	for range fake.Moderations() {
+		// Drain until the channel closes.
 	}
 	for range fake.RoomEvents() {
+		// Drain until the channel closes.
 	}
 	for range fake.Polls() {
+		// Drain until the channel closes.
 	}
 }
 

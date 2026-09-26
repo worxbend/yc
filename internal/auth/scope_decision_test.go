@@ -80,14 +80,7 @@ func TestMissingScopesHonorsSubsumption(t *testing.T) {
 // The capability answer is what enables or disables the composer and the
 // moderation keys, so each credential kind has to resolve to the honest answer.
 func TestCredentialCapabilityDecisions(t *testing.T) {
-	cases := []struct {
-		name        string
-		credentials Credentials
-		read        bool
-		send        bool
-		moderate    bool
-		stream      bool
-	}{
+	cases := []capabilityDecisionCase{
 		{
 			name:        "nothing configured",
 			credentials: Credentials{},
@@ -124,42 +117,58 @@ func TestCredentialCapabilityDecisions(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := map[string]bool{
-				"read":     tc.credentials.Can(CapabilityRead),
-				"send":     tc.credentials.CanSend(),
-				"moderate": tc.credentials.CanModerate(),
-				"stream":   tc.credentials.CanManageStream(),
-			}
-			want := map[string]bool{
-				"read": tc.read, "send": tc.send, "moderate": tc.moderate, "stream": tc.stream,
-			}
-			for capability, wanted := range want {
-				if got[capability] != wanted {
-					t.Errorf("can %s = %v, want %v", capability, got[capability], wanted)
-				}
-			}
+		t.Run(tc.name, func(t *testing.T) { tc.check(t) })
+	}
+}
 
-			// A control yc cannot offer must explain itself, and the
-			// explanation must never carry credential material.
-			for _, capability := range []Capability{
-				CapabilityRead, CapabilitySend, CapabilityModerate, CapabilityManageStream,
-			} {
-				reason := tc.credentials.Reason(capability)
-				if tc.credentials.Can(capability) {
-					if reason != "" {
-						t.Errorf("an available %v capability carried the reason %q", capability, reason)
-					}
-					continue
-				}
-				if reason == "" {
-					t.Errorf("the unavailable %v capability carried no reason", capability)
-				}
-				if strings.Contains(reason, FakeTokenMarker) || strings.Contains(reason, "AIza-") {
-					t.Errorf("the %v reason leaked a credential: %q", capability, reason)
-				}
+type capabilityDecisionCase struct {
+	name        string
+	credentials Credentials
+	read        bool
+	send        bool
+	moderate    bool
+	stream      bool
+}
+
+func (tc capabilityDecisionCase) check(t *testing.T) {
+	t.Helper()
+	got := map[string]bool{
+		"read":     tc.credentials.Can(CapabilityRead),
+		"send":     tc.credentials.CanSend(),
+		"moderate": tc.credentials.CanModerate(),
+		"stream":   tc.credentials.CanManageStream(),
+	}
+	want := map[string]bool{
+		"read": tc.read, "send": tc.send, "moderate": tc.moderate, "stream": tc.stream,
+	}
+	for capability, wanted := range want {
+		if got[capability] != wanted {
+			t.Errorf("can %s = %v, want %v", capability, got[capability], wanted)
+		}
+	}
+	tc.checkReasons(t)
+}
+
+func (tc capabilityDecisionCase) checkReasons(t *testing.T) {
+	t.Helper()
+	// A control yc cannot offer must explain itself, and the explanation must
+	// never carry credential material.
+	for _, capability := range []Capability{
+		CapabilityRead, CapabilitySend, CapabilityModerate, CapabilityManageStream,
+	} {
+		reason := tc.credentials.Reason(capability)
+		if tc.credentials.Can(capability) {
+			if reason != "" {
+				t.Errorf("an available %v capability carried the reason %q", capability, reason)
 			}
-		})
+			continue
+		}
+		if reason == "" {
+			t.Errorf("the unavailable %v capability carried no reason", capability)
+		}
+		if strings.Contains(reason, FakeTokenMarker) || strings.Contains(reason, "AIza-") {
+			t.Errorf("the %v reason leaked a credential: %q", capability, reason)
+		}
 	}
 }
 

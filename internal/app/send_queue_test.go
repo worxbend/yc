@@ -42,21 +42,7 @@ func TestSendQueueSerializesAndPreservesOrder(t *testing.T) {
 
 	// Three sends with nothing completing in between: only the first may be
 	// in flight, the rest queue behind it.
-	var first tea.Cmd
-	for i, text := range []string{"one", "two", "three"} {
-		next, cmd := submit(t, model, text)
-		model = next
-		if i == 0 {
-			if cmd == nil {
-				t.Fatal("the first send produced no command")
-			}
-			first = cmd
-			continue
-		}
-		if cmd != nil {
-			t.Fatalf("send %d dispatched while another was in flight", i)
-		}
-	}
+	model, first := sendQueueSubmitAll(t, model, "one", "two", "three")
 
 	state := model.activeChatState()
 	if len(state.sendQueue) != 2 {
@@ -70,15 +56,7 @@ func TestSendQueueSerializesAndPreservesOrder(t *testing.T) {
 	}
 
 	// Drain: each completion releases exactly the next one, in order.
-	completion := first()
-	for range 3 {
-		next, cmd := model.Update(completion)
-		model = next.(shellModel)
-		if cmd == nil {
-			break
-		}
-		completion = cmd()
-	}
+	model = sendQueueDrain(model, first(), 3)
 
 	sent := client.SentRequests()
 	if len(sent) != 3 {
@@ -92,6 +70,43 @@ func TestSendQueueSerializesAndPreservesOrder(t *testing.T) {
 	if got := model.activeChatState().sendQueue; len(got) != 0 {
 		t.Errorf("queue still holds %d after draining", len(got))
 	}
+}
+
+// sendQueueSubmitAll submits every text back to back and returns the command
+// of the first send. Only that first send may dispatch; any later one that
+// produces a command fails the test.
+func sendQueueSubmitAll(t *testing.T, model shellModel, texts ...string) (shellModel, tea.Cmd) {
+	t.Helper()
+	var first tea.Cmd
+	for i, text := range texts {
+		next, cmd := submit(t, model, text)
+		model = next
+		if i == 0 {
+			if cmd == nil {
+				t.Fatal("the first send produced no command")
+			}
+			first = cmd
+			continue
+		}
+		if cmd != nil {
+			t.Fatalf("send %d dispatched while another was in flight", i)
+		}
+	}
+	return model, first
+}
+
+// sendQueueDrain feeds completion into the model and keeps feeding whatever
+// command it returns, up to limit updates or until none is returned.
+func sendQueueDrain(model shellModel, completion tea.Msg, limit int) shellModel {
+	for range limit {
+		next, cmd := model.Update(completion)
+		model = next.(shellModel)
+		if cmd == nil {
+			break
+		}
+		completion = cmd()
+	}
+	return model
 }
 
 // A rate limit is feedback, not a failure: the draft is gone (it was accepted

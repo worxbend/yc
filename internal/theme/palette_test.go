@@ -337,45 +337,50 @@ func TestReadableOnKeepsRoleColorsDistinctOnEveryPresetAccent(t *testing.T) {
 		if achromaticAccentExceptions[name] {
 			continue
 		}
-		palette, ok := ResolvePalette(name, Palette{})
-		if !ok {
-			t.Fatalf("ResolvePalette(%q) not ok", name)
-		}
-		background := palette.Accent
-		fallback := ContrastCorrectedForeground(palette.Foreground, background, palette.Background)
+		assertRoleColorsStayDistinctOnAccent(t, name)
+	}
+}
 
-		roles := map[string]string{
-			"success": palette.Success,
-			"warning": palette.Warning,
-			"error":   palette.Error,
+func assertRoleColorsStayDistinctOnAccent(t *testing.T, name string) {
+	t.Helper()
+	palette, ok := ResolvePalette(name, Palette{})
+	if !ok {
+		t.Fatalf("ResolvePalette(%q) not ok", name)
+	}
+	background := palette.Accent
+	fallback := ContrastCorrectedForeground(palette.Foreground, background, palette.Background)
+
+	roles := map[string]string{
+		"success": palette.Success,
+		"warning": palette.Warning,
+		"error":   palette.Error,
+	}
+	sources := make(map[string]string, 3)
+	seen := make(map[string]string, 3)
+	for role, color := range roles {
+		got := ReadableOn(color, background, fallback)
+		corrected, valid := parseHexColor(got)
+		if !valid {
+			t.Fatalf("%s: ReadableOn(%s) = %q, not a color", name, role, got)
 		}
-		sources := make(map[string]string, 3)
-		seen := make(map[string]string, 3)
-		for role, color := range roles {
-			got := ReadableOn(color, background, fallback)
-			corrected, valid := parseHexColor(got)
-			if !valid {
-				t.Fatalf("%s: ReadableOn(%s) = %q, not a color", name, role, got)
-			}
-			accent, _ := parseHexColor(background)
-			if ratio := contrastRatio(corrected, accent); ratio < MinimumTextContrast {
-				t.Fatalf("%s: %s corrected to %s, contrast %.2f against accent %s", name, role, got, ratio, background)
-			}
-			// A deliberately monochrome preset signals by wording alone, and
-			// the correction must not invent a hue the palette withholds -
-			// mono's silver warning and white error legitimately land on the
-			// same neutral. Only role colors that carry chroma to begin with
-			// are required to stay apart.
-			if !chromatic(color) {
-				continue
-			}
-			if other, clash := seen[got]; clash {
-				t.Fatalf("%s: %s (%s) and %s (%s) both corrected to %s, so the meter cannot signal",
-					name, role, color, other, sources[other], got)
-			}
-			seen[got] = role
-			sources[role] = color
+		accent, _ := parseHexColor(background)
+		if ratio := contrastRatio(corrected, accent); ratio < MinimumTextContrast {
+			t.Fatalf("%s: %s corrected to %s, contrast %.2f against accent %s", name, role, got, ratio, background)
 		}
+		// A deliberately monochrome preset signals by wording alone, and
+		// the correction must not invent a hue the palette withholds -
+		// mono's silver warning and white error legitimately land on the
+		// same neutral. Only role colors that carry chroma to begin with
+		// are required to stay apart.
+		if !chromatic(color) {
+			continue
+		}
+		if other, clash := seen[got]; clash {
+			t.Fatalf("%s: %s (%s) and %s (%s) both corrected to %s, so the meter cannot signal",
+				name, role, color, other, sources[other], got)
+		}
+		seen[got] = role
+		sources[role] = color
 	}
 }
 

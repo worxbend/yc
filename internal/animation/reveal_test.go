@@ -176,7 +176,7 @@ func TestModesProduceDeterministicFrames(t *testing.T) {
 
 	cfg.Mode = ModeReduced
 	reduced := NewSequence(rows, cfg, now)
-	if changed := reduced.Advance(now.Add(time.Millisecond)); changed {
+	if reduced.Advance(now.Add(time.Millisecond)) {
 		t.Fatal("reduced mode advanced before its interval")
 	}
 	reduced.Advance(now.Add(2 * time.Millisecond))
@@ -254,22 +254,7 @@ func TestQueueBurstOverflowIsDeterministicAndBounded(t *testing.T) {
 	overflowed := make([]string, 0)
 	for i := range 10 {
 		id := fmt.Sprintf("message-%02d", i)
-		result := queue.Enqueue(id, textRows(id))
-		if result.Immediate {
-			t.Fatalf("enqueue %s completed immediately: %#v", id, result)
-		}
-		if result.QueueSize > cfg.MaxQueued {
-			t.Fatalf("enqueue %s queue size = %d, want <= %d", id, result.QueueSize, cfg.MaxQueued)
-		}
-		for _, reveal := range result.Completed {
-			overflowed = append(overflowed, reveal.ID)
-			if reveal.Reason != CompletionOverflow {
-				t.Fatalf("overflow reason for %s = %q, want %q", reveal.ID, reveal.Reason, CompletionOverflow)
-			}
-			if got, want := plainFrame(reveal.Rows), []string{reveal.ID}; !reflect.DeepEqual(got, want) {
-				t.Fatalf("overflow rows for %s = %#v, want %#v", reveal.ID, got, want)
-			}
-		}
+		overflowed = append(overflowed, enqueueBurst(t, queue, id, cfg.MaxQueued)...)
 	}
 
 	wantOverflowed := []string{
@@ -296,6 +281,30 @@ func TestQueueBurstOverflowIsDeterministicAndBounded(t *testing.T) {
 			t.Fatalf("active frames missing %s; got %#v", id, frames)
 		}
 	}
+}
+
+// enqueueBurst enqueues one message into a saturated queue and returns the IDs
+// it overflowed, asserting each completion carries the full final frame.
+func enqueueBurst(t *testing.T, queue *Queue, id string, maxQueued int) []string {
+	t.Helper()
+	result := queue.Enqueue(id, textRows(id))
+	if result.Immediate {
+		t.Fatalf("enqueue %s completed immediately: %#v", id, result)
+	}
+	if result.QueueSize > maxQueued {
+		t.Fatalf("enqueue %s queue size = %d, want <= %d", id, result.QueueSize, maxQueued)
+	}
+	overflowed := make([]string, 0, len(result.Completed))
+	for _, reveal := range result.Completed {
+		if reveal.Reason != CompletionOverflow {
+			t.Fatalf("overflow reason for %s = %q, want %q", reveal.ID, reveal.Reason, CompletionOverflow)
+		}
+		if got, want := plainFrame(reveal.Rows), []string{reveal.ID}; !reflect.DeepEqual(got, want) {
+			t.Fatalf("overflow rows for %s = %#v, want %#v", reveal.ID, got, want)
+		}
+		overflowed = append(overflowed, reveal.ID)
+	}
+	return overflowed
 }
 
 func TestQueueUsesFakeClockForCompletion(t *testing.T) {

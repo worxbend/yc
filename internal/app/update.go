@@ -163,12 +163,8 @@ func (m *shellModel) handleKey(msg tea.KeyMsg) tea.Cmd {
 		m.splashSkipped = true
 		return nil
 	}
-	if msg.Type == tea.KeyRunes && msg.Alt && len(msg.Runes) == 1 {
-		if tab, ok := tabForShortcutRune(msg.Runes[0]); ok {
-			m.activeTab = tab
-			m.clampScroll()
-			return nil
-		}
+	if m.handleAltTabShortcut(msg) {
+		return nil
 	}
 
 	// The search input line is modal for the same reason the moderation
@@ -187,20 +183,10 @@ func (m *shellModel) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return cmd
 	}
 
-	// Global toggles work from any focus, including from inside an overlay,
-	// because they are how the user gets back out of one.
-	switch msg.Type {
-	case tea.KeyCtrlP:
-		m.toggleOverlay(overlayPalette)
-		return nil
-	case tea.KeyCtrlE:
-		m.toggleOverlay(overlayEmojiPicker)
-		return nil
-	case tea.KeyCtrlT:
-		m.toggleOverlay(overlayThemePicker)
+	if m.handleGlobalToggleKey(msg) {
 		return nil
 	}
-	if handled := m.handleDisplayToggleKey(msg); handled {
+	if m.handleDisplayToggleKey(msg) {
 		return nil
 	}
 	if m.overlay.open() {
@@ -214,14 +200,8 @@ func (m *shellModel) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return m.adopt(model, cmd)
 	}
 
-	// The space leader chord is consumed before every other binding. It is
-	// only ever armed outside the composer, where space is literal text.
-	if m.leaderPending {
-		m.handleLeaderKey(msg)
-		return nil
-	}
-	if msg.Type == tea.KeySpace && m.focus != focusComposer {
-		m.leaderPending = true
+	// The space leader chord is consumed before every other binding.
+	if m.handleLeaderChord(msg) {
 		return nil
 	}
 	if m.focus == focusSidebar {
@@ -231,6 +211,53 @@ func (m *shellModel) handleKey(msg tea.KeyMsg) tea.Cmd {
 	}
 
 	return m.handleBindingKey(msg)
+}
+
+// handleAltTabShortcut switches tabs on alt+digit, reporting whether the key
+// was one.
+func (m *shellModel) handleAltTabShortcut(msg tea.KeyMsg) bool {
+	if msg.Type != tea.KeyRunes || !msg.Alt || len(msg.Runes) != 1 {
+		return false
+	}
+	tab, ok := tabForShortcutRune(msg.Runes[0])
+	if !ok {
+		return false
+	}
+	m.activeTab = tab
+	m.clampScroll()
+	return true
+}
+
+// handleGlobalToggleKey applies the overlay toggles that work from any focus,
+// including from inside an overlay, because they are how the user gets back
+// out of one.
+func (m *shellModel) handleGlobalToggleKey(msg tea.KeyMsg) bool {
+	switch msg.Type {
+	case tea.KeyCtrlP:
+		m.toggleOverlay(overlayPalette)
+	case tea.KeyCtrlE:
+		m.toggleOverlay(overlayEmojiPicker)
+	case tea.KeyCtrlT:
+		m.toggleOverlay(overlayThemePicker)
+	default:
+		return false
+	}
+	return true
+}
+
+// handleLeaderChord consumes the space leader chord and the key that follows
+// it. The chord is only ever armed outside the composer, where space is
+// literal text.
+func (m *shellModel) handleLeaderChord(msg tea.KeyMsg) bool {
+	if m.leaderPending {
+		m.handleLeaderKey(msg)
+		return true
+	}
+	if msg.Type == tea.KeySpace && m.focus != focusComposer {
+		m.leaderPending = true
+		return true
+	}
+	return false
 }
 
 // adopt takes over a model a sub-handler built and returns its command.
@@ -263,31 +290,16 @@ func (m *shellModel) handleBindingKey(msg tea.KeyMsg) tea.Cmd {
 	case tea.KeyPgDown:
 		m.scrollBy(-m.chatViewportHeight())
 	case tea.KeyHome:
-		if m.focus != focusComposer {
-			m.activeChatState().scrollOffset = m.maxScrollOffset()
-		}
+		m.jumpToOldestMessage()
 	case tea.KeyEnd:
-		if m.focus != focusComposer {
-			m.activeChatState().scrollOffset = 0
-			m.clampScroll()
-		}
+		m.jumpToNewestMessage()
 	case tea.KeyCtrlD:
 		// Half-page scrolling mirrors vim: ctrl+d moves toward the newest
 		// messages, ctrl+u back into history. Outside the composer only -
 		// inside it ctrl+u keeps its "clear the line" meaning below.
-		if m.focus != focusComposer {
-			m.scrollBy(-clampMin(m.chatViewportHeight()/2, 1))
-		}
+		m.halfPageScrollNewer()
 	case tea.KeyCtrlL:
-		// Clearing discards the whole retained backlog and cannot be undone.
-		// It is one keystroke, next to keys used constantly, on a tool that
-		// is often running during a live broadcast - so it asks once.
-		if m.pendingClearChat {
-			m.pendingClearChat = false
-			m.clearLocalChat()
-			break
-		}
-		m.pendingClearChat = true
+		m.handleClearChatKey()
 	case tea.KeyCtrlR:
 		return m.requestReconnect(m.now())
 	case tea.KeyBackspace:
@@ -295,38 +307,9 @@ func (m *shellModel) handleBindingKey(msg tea.KeyMsg) tea.Cmd {
 			m.deleteComposerGrapheme()
 		}
 	case tea.KeyCtrlU:
-		if m.focus == focusComposer {
-			m.activeChatState().composerText = ""
-			break
-		}
-		m.scrollBy(clampMin(m.chatViewportHeight()/2, 1))
+		m.clearLineOrHalfPageScrollOlder()
 	case tea.KeyEsc:
-		// esc is "leave insert mode" first: from the composer it always
-		// returns to the chat view, keeping the draft intact.
-		if m.focus == focusComposer {
-			m.focus = focusChat
-			return nil
-		}
-		state := m.activeChatState()
-		if state.inspectOpen {
-			state.inspectOpen = false
-			m.clampScroll()
-			return nil
-		}
-		// An active search is the next-most-recent mode, so esc clears it
-		// before touching the reply or the cursor beneath it.
-		if m.searchActive() {
-			m.clearSearch()
-			return nil
-		}
-		// Then unwind one step at a time: cancel the armed reply first and
-		// keep the cursor where it was, so changing your mind about replying
-		// does not also lose your place in the backlog.
-		if state.replyTo != nil {
-			state.replyTo = nil
-			return nil
-		}
-		state.selected = nil
+		m.handleEscapeKey()
 	case tea.KeyUp:
 		if m.focus == focusChat {
 			m.selectMessage(-1)
@@ -347,6 +330,83 @@ func (m *shellModel) handleBindingKey(msg tea.KeyMsg) tea.Cmd {
 		return m.adopt(m.handleRuneKey(msg))
 	}
 	return nil
+}
+
+// jumpToOldestMessage and jumpToNewestMessage are home and end outside the
+// composer, where they keep their text-editing meaning.
+func (m *shellModel) jumpToOldestMessage() {
+	if m.focus == focusComposer {
+		return
+	}
+	m.activeChatState().scrollOffset = m.maxScrollOffset()
+}
+
+func (m *shellModel) jumpToNewestMessage() {
+	if m.focus == focusComposer {
+		return
+	}
+	m.activeChatState().scrollOffset = 0
+	m.clampScroll()
+}
+
+func (m *shellModel) halfPageScrollNewer() {
+	if m.focus == focusComposer {
+		return
+	}
+	m.scrollBy(-clampMin(m.chatViewportHeight()/2, 1))
+}
+
+func (m *shellModel) clearLineOrHalfPageScrollOlder() {
+	if m.focus == focusComposer {
+		m.activeChatState().composerText = ""
+		return
+	}
+	m.scrollBy(clampMin(m.chatViewportHeight()/2, 1))
+}
+
+// handleClearChatKey arms, then fires, the one-keystroke backlog discard.
+// Clearing cannot be undone. It is one keystroke, next to keys used
+// constantly, on a tool that is often running during a live broadcast - so it
+// asks once.
+func (m *shellModel) handleClearChatKey() {
+	if m.pendingClearChat {
+		m.pendingClearChat = false
+		m.clearLocalChat()
+		return
+	}
+	m.pendingClearChat = true
+}
+
+// handleEscapeKey unwinds one layer of state at a time: "leave insert mode"
+// first, then the inspect pane, then an active search, then an armed reply,
+// and finally the browsing cursor.
+func (m *shellModel) handleEscapeKey() {
+	// esc is "leave insert mode" first: from the composer it always
+	// returns to the chat view, keeping the draft intact.
+	if m.focus == focusComposer {
+		m.focus = focusChat
+		return
+	}
+	state := m.activeChatState()
+	if state.inspectOpen {
+		state.inspectOpen = false
+		m.clampScroll()
+		return
+	}
+	// An active search is the next-most-recent mode, so esc clears it
+	// before touching the reply or the cursor beneath it.
+	if m.searchActive() {
+		m.clearSearch()
+		return
+	}
+	// Then unwind one step at a time: cancel the armed reply first and
+	// keep the cursor where it was, so changing your mind about replying
+	// does not also lose your place in the backlog.
+	if state.replyTo != nil {
+		state.replyTo = nil
+		return
+	}
+	state.selected = nil
 }
 
 func (m shellModel) handleRuneKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -391,6 +451,12 @@ func (m shellModel) handleRuneKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	return m, m.handleChatRuneKey(r)
+}
+
+// handleChatRuneKey runs the normal-mode bindings that apply while the chat
+// view has focus.
+func (m *shellModel) handleChatRuneKey(r rune) tea.Cmd {
 	switch {
 	case r == ']':
 		if m.chats.switchBy(1) {
@@ -404,7 +470,7 @@ func (m shellModel) handleRuneKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.activeChatState().filters.reset()
 		m.clampScroll()
 	case r == 'q':
-		return m, tea.Quit
+		return tea.Quit
 	case r == 'r':
 		m.startReplyMode()
 	case r == 'K':
@@ -428,7 +494,7 @@ func (m shellModel) handleRuneKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case r == 'N':
 		m.jumpSearchMatch(1)
 	case r == 'y':
-		return m.copySelectedMessage()
+		return m.adopt(m.copySelectedMessage())
 	case isInsertRune(r):
 		// i/o/a all enter the composer, matching vim's insert keys; the
 		// composer appends, so they differ only in muscle memory.
@@ -441,7 +507,7 @@ func (m shellModel) handleRuneKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.clampScroll()
 		}
 	}
-	return m, nil
+	return nil
 }
 
 func filterFeedback(set messageFilterSet, filter messageFilter) string {

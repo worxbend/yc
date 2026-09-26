@@ -58,6 +58,15 @@ const (
 	maxOAuthResponseBytes = 1 << 16
 )
 
+// Operation labels shared by the flow's error paths.
+const (
+	opCompleteLogin  = "complete Google OAuth login"
+	opRefreshToken   = "refresh Google OAuth token"
+	opRevokeToken    = "revoke Google OAuth token"
+	opInspectToken   = "inspect Google OAuth token"
+	opResolveChannel = "resolve YouTube channel"
+)
+
 // codeVerifierAlphabet is RFC 7636's unreserved set. Drawing from it directly
 // avoids base64 padding questions and keeps the verifier URL-safe by
 // construction.
@@ -330,7 +339,7 @@ func (f *GoogleOAuthLoginFlow) AwaitCallback(ctx context.Context, challenge Logi
 // user's channel identity.
 func (f *GoogleOAuthLoginFlow) CompleteLogin(ctx context.Context, callback LoginCallback) (LoginResult, error) {
 	if err := ctx.Err(); err != nil {
-		return LoginResult{}, safeError("complete Google OAuth login", err, callback.Redactor())
+		return LoginResult{}, safeError(opCompleteLogin, err, callback.Redactor())
 	}
 
 	state, err := validateCallbackState(callback)
@@ -349,7 +358,7 @@ func (f *GoogleOAuthLoginFlow) CompleteLogin(ctx context.Context, callback Login
 		// completing a callback this flow never began would let an attacker
 		// log the victim into the attacker's account (login CSRF). Only the
 		// explicit AllowExternalCallbacks opt-in relaxes it.
-		return LoginResult{}, safeErrorf("complete Google OAuth login",
+		return LoginResult{}, safeErrorf(opCompleteLogin,
 			"this login attempt is unknown or has expired; run `yc login` again",
 			callback.Redactor(), ErrStateMismatch)
 	}
@@ -358,12 +367,12 @@ func (f *GoogleOAuthLoginFlow) CompleteLogin(ctx context.Context, callback Login
 	redactor := NewRedactor(attempt.clientSecret, attempt.state, attempt.verifier, callback.Code, callback.State)
 
 	if strings.TrimSpace(callback.Code.Reveal()) == "" {
-		return LoginResult{}, safeErrorf("complete Google OAuth login",
+		return LoginResult{}, safeErrorf(opCompleteLogin,
 			"the callback did not include an authorization code; run `yc login` again",
 			redactor, ErrLoginDenied)
 	}
 	if !attempt.verifier.Present() {
-		return LoginResult{}, safeErrorf("complete Google OAuth login",
+		return LoginResult{}, safeErrorf(opCompleteLogin,
 			"the PKCE verifier for this login is unknown; run `yc login` again",
 			redactor, ErrLoginRequired)
 	}
@@ -416,10 +425,10 @@ func (f *GoogleOAuthLoginFlow) CompleteLogin(ctx context.Context, callback Login
 // token was revoked or expired and only a new interactive login can recover.
 func (f *GoogleOAuthLoginFlow) Refresh(ctx context.Context, refreshToken Secret) (TokenSet, error) {
 	if err := ctx.Err(); err != nil {
-		return TokenSet{}, safeError("refresh Google OAuth token", err, NewRedactor(refreshToken))
+		return TokenSet{}, safeError(opRefreshToken, err, NewRedactor(refreshToken))
 	}
 	if !refreshToken.Present() {
-		return TokenSet{}, safeErrorf("refresh Google OAuth token",
+		return TokenSet{}, safeErrorf(opRefreshToken,
 			"no refresh token is stored; run `yc login`",
 			Redactor{}, ErrLoginRequired)
 	}
@@ -441,7 +450,7 @@ func (f *GoogleOAuthLoginFlow) Refresh(ctx context.Context, refreshToken Secret)
 		case <-call.done:
 			return call.tokens, call.err
 		case <-ctx.Done():
-			return TokenSet{}, safeError("refresh Google OAuth token", ctx.Err(), NewRedactor(refreshToken))
+			return TokenSet{}, safeError(opRefreshToken, ctx.Err(), NewRedactor(refreshToken))
 		}
 	}
 	call := &refreshCall{done: make(chan struct{})}
@@ -530,7 +539,7 @@ func (f *GoogleOAuthLoginFlow) doRefresh(ctx context.Context, refreshToken Secre
 		form.Set("client_secret", f.cfg.ClientSecret.Reveal())
 	}
 
-	tokens, err := f.postToken(httpCtx, "refresh Google OAuth token", form, redactor)
+	tokens, err := f.postToken(httpCtx, opRefreshToken, form, redactor)
 	if err != nil {
 		return TokenSet{}, err
 	}
@@ -548,7 +557,7 @@ func (f *GoogleOAuthLoginFlow) doRefresh(ctx context.Context, refreshToken Secre
 // Revoke invalidates a token at Google.
 func (f *GoogleOAuthLoginFlow) Revoke(ctx context.Context, token Secret) error {
 	if err := ctx.Err(); err != nil {
-		return safeError("revoke Google OAuth token", ctx.Err(), NewRedactor(token))
+		return safeError(opRevokeToken, ctx.Err(), NewRedactor(token))
 	}
 	if !token.Present() {
 		return nil
@@ -561,7 +570,7 @@ func (f *GoogleOAuthLoginFlow) Revoke(ctx context.Context, token Secret) error {
 	form := url.Values{}
 	form.Set("token", token.Reveal())
 
-	resp, err := f.postForm(httpCtx, f.cfg.RevokeEndpoint, form, redactor, "revoke Google OAuth token")
+	resp, err := f.postForm(httpCtx, f.cfg.RevokeEndpoint, form, redactor, opRevokeToken)
 	if err != nil {
 		return err
 	}
@@ -572,7 +581,7 @@ func (f *GoogleOAuthLoginFlow) Revoke(ctx context.Context, token Secret) error {
 		if readErr != nil {
 			return safeError("read Google OAuth revoke response", readErr, redactor)
 		}
-		return statusError("revoke Google OAuth token", resp.StatusCode, detail, redactor)
+		return statusError(opRevokeToken, resp.StatusCode, detail, redactor)
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxOAuthResponseBytes))
 	return nil
@@ -582,10 +591,10 @@ func (f *GoogleOAuthLoginFlow) Revoke(ctx context.Context, token Secret) error {
 // expiry, without ever returning the token itself.
 func (f *GoogleOAuthLoginFlow) TokenInfo(ctx context.Context, accessToken Secret) (TokenSet, error) {
 	if err := ctx.Err(); err != nil {
-		return TokenSet{}, safeError("inspect Google OAuth token", ctx.Err(), NewRedactor(accessToken))
+		return TokenSet{}, safeError(opInspectToken, ctx.Err(), NewRedactor(accessToken))
 	}
 	if !accessToken.Present() {
-		return TokenSet{}, safeErrorf("inspect Google OAuth token",
+		return TokenSet{}, safeErrorf(opInspectToken,
 			"no access token is configured",
 			Redactor{}, ErrInvalidToken)
 	}
@@ -599,7 +608,7 @@ func (f *GoogleOAuthLoginFlow) TokenInfo(ctx context.Context, accessToken Secret
 	form := url.Values{}
 	form.Set("access_token", accessToken.Reveal())
 
-	resp, err := f.postForm(httpCtx, f.cfg.TokenInfoEndpoint, form, redactor, "inspect Google OAuth token")
+	resp, err := f.postForm(httpCtx, f.cfg.TokenInfoEndpoint, form, redactor, opInspectToken)
 	if err != nil {
 		return TokenSet{}, err
 	}
@@ -610,7 +619,7 @@ func (f *GoogleOAuthLoginFlow) TokenInfo(ctx context.Context, accessToken Secret
 		if readErr != nil {
 			return TokenSet{}, safeError("read Google tokeninfo response", readErr, redactor)
 		}
-		return TokenSet{}, statusError("inspect Google OAuth token", resp.StatusCode, detail, redactor, ErrInvalidToken)
+		return TokenSet{}, statusError(opInspectToken, resp.StatusCode, detail, redactor, ErrInvalidToken)
 	}
 
 	var decoded tokenInfoResponse
@@ -624,7 +633,7 @@ func (f *GoogleOAuthLoginFlow) TokenInfo(ctx context.Context, accessToken Secret
 	if f.cfg.ClientID != "" {
 		audience := firstNonEmpty(decoded.AuthorizedParty, decoded.Audience)
 		if audience != "" && audience != strings.TrimSpace(f.cfg.ClientID) {
-			return TokenSet{}, safeErrorf("inspect Google OAuth token",
+			return TokenSet{}, safeErrorf(opInspectToken,
 				"the stored token belongs to a different Google OAuth client; run `yc login` again",
 				redactor, ErrInvalidToken)
 		}
@@ -632,7 +641,7 @@ func (f *GoogleOAuthLoginFlow) TokenInfo(ctx context.Context, accessToken Secret
 
 	expiresIn := decoded.expiresInSeconds(f.cfg.Now())
 	if expiresIn <= 0 {
-		return TokenSet{}, safeErrorf("inspect Google OAuth token",
+		return TokenSet{}, safeErrorf(opInspectToken,
 			"Google reports the access token as expired",
 			redactor, ErrInvalidToken)
 	}
@@ -950,7 +959,7 @@ func (f *GoogleOAuthLoginFlow) resolveIdentity(ctx context.Context, accessToken 
 	redactor := NewRedactor(accessToken)
 	endpoint, err := url.Parse(f.cfg.ChannelsEndpoint)
 	if err != nil {
-		return Identity{}, safeError("resolve YouTube channel", err, redactor)
+		return Identity{}, safeError(opResolveChannel, err, redactor)
 	}
 	query := endpoint.Query()
 	query.Set("part", "snippet")
@@ -966,7 +975,7 @@ func (f *GoogleOAuthLoginFlow) resolveIdentity(ctx context.Context, accessToken 
 
 	resp, err := f.cfg.HTTPClient.Do(req)
 	if err != nil {
-		return Identity{}, safeError("resolve YouTube channel", err, redactor)
+		return Identity{}, safeError(opResolveChannel, err, redactor)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -975,7 +984,7 @@ func (f *GoogleOAuthLoginFlow) resolveIdentity(ctx context.Context, accessToken 
 		if readErr != nil {
 			return Identity{}, safeError("read YouTube channel response", readErr, redactor)
 		}
-		return Identity{}, statusError("resolve YouTube channel", resp.StatusCode, detail, redactor, ErrInvalidToken)
+		return Identity{}, statusError(opResolveChannel, resp.StatusCode, detail, redactor, ErrInvalidToken)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// Any other failure is informational: the login itself succeeded
@@ -1091,13 +1100,13 @@ func randomString(length int, alphabet string) (string, error) {
 func validateCallbackState(callback LoginCallback) (string, error) {
 	state := strings.TrimSpace(callback.State.Reveal())
 	if state == "" {
-		return "", safeErrorf("complete Google OAuth login",
+		return "", safeErrorf(opCompleteLogin,
 			"the callback did not include OAuth state; run `yc login` again",
 			callback.Redactor(), ErrStateMismatch)
 	}
 	expected := strings.TrimSpace(callback.ExpectedState.Reveal())
 	if expected != "" && subtle.ConstantTimeCompare([]byte(state), []byte(expected)) != 1 {
-		return "", safeErrorf("complete Google OAuth login",
+		return "", safeErrorf(opCompleteLogin,
 			"the callback state did not match; run `yc login` again",
 			callback.Redactor(), ErrStateMismatch)
 	}
@@ -1115,7 +1124,7 @@ func deniedError(callback LoginCallback, redactor Redactor) error {
 	if description := strings.TrimSpace(callback.ErrorDescription); description != "" {
 		detail += ": " + description
 	}
-	return safeErrorf("complete Google OAuth login", detail, redactor, ErrLoginDenied)
+	return safeErrorf(opCompleteLogin, detail, redactor, ErrLoginDenied)
 }
 
 // oauthTokenResponse is the token endpoint's success payload.

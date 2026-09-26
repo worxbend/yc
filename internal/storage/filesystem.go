@@ -72,7 +72,7 @@ func ProbeWritableDir(dir string) error {
 		// promise to leave nothing behind: without the remove, that stale file
 		// would sit in the directory forever and every later probe would fall
 		// through to a pid-suffixed name instead.
-		if removeErr := os.Remove(probePath); removeErr == nil {
+		if os.Remove(probePath) == nil {
 			file, err = os.OpenFile(probePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, cacheFileMode)
 		}
 	}

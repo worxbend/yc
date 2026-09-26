@@ -105,14 +105,7 @@ func googleError(code int, reason, status, errorInfoReason, message string) stri
 }
 
 func TestClientClassifiesEveryDocumentedReason(t *testing.T) {
-	tests := []struct {
-		name       string
-		statusCode int
-		reason     string
-		status     string
-		errorInfo  string
-		want       error
-	}{
+	tests := []classificationCase{
 		{name: "quota", statusCode: 403, reason: "quotaExceeded", status: "PERMISSION_DENIED", want: ErrQuotaExceeded},
 		{name: "daily limit", statusCode: 403, reason: "dailyLimitExceeded", want: ErrQuotaExceeded},
 		{name: "rate limit on list", statusCode: 403, reason: "rateLimitExceeded", want: ErrRateLimited},
@@ -148,30 +141,44 @@ func TestClientClassifiesEveryDocumentedReason(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			client, _ := newTestClient(t, oauthCredentials(), func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(test.statusCode)
-				fmt.Fprint(w, googleError(test.statusCode, test.reason, test.status, test.errorInfo, "the API said no"))
-			})
-
-			_, err := client.ListMessages(context.Background(), ListRequest{LiveChatID: "chat-1"})
-			if !errors.Is(err, test.want) {
-				t.Fatalf("error = %v, want %v", err, test.want)
-			}
-
-			var apiErr *APIError
-			if !errors.As(err, &apiErr) {
-				t.Fatalf("error = %T, want *APIError", err)
-			}
-			if apiErr.StatusCode != test.statusCode {
-				t.Fatalf("StatusCode = %d, want %d", apiErr.StatusCode, test.statusCode)
-			}
-			if apiErr.Method != quota.EndpointMessagesList {
-				t.Fatalf("Method = %q, want %q", apiErr.Method, quota.EndpointMessagesList)
-			}
-			if apiErr.Reason != test.reason || apiErr.ErrorInfoReason != test.errorInfo {
-				t.Fatalf("channels = %q/%q/%q, want all three preserved", apiErr.Reason, apiErr.Status, apiErr.ErrorInfoReason)
-			}
+			assertClientClassifiesReason(t, test)
 		})
+	}
+}
+
+type classificationCase struct {
+	name       string
+	statusCode int
+	reason     string
+	status     string
+	errorInfo  string
+	want       error
+}
+
+func assertClientClassifiesReason(t *testing.T, test classificationCase) {
+	t.Helper()
+	client, _ := newTestClient(t, oauthCredentials(), func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(test.statusCode)
+		fmt.Fprint(w, googleError(test.statusCode, test.reason, test.status, test.errorInfo, "the API said no"))
+	})
+
+	_, err := client.ListMessages(context.Background(), ListRequest{LiveChatID: "chat-1"})
+	if !errors.Is(err, test.want) {
+		t.Fatalf("error = %v, want %v", err, test.want)
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error = %T, want *APIError", err)
+	}
+	if apiErr.StatusCode != test.statusCode {
+		t.Fatalf("StatusCode = %d, want %d", apiErr.StatusCode, test.statusCode)
+	}
+	if apiErr.Method != quota.EndpointMessagesList {
+		t.Fatalf("Method = %q, want %q", apiErr.Method, quota.EndpointMessagesList)
+	}
+	if apiErr.Reason != test.reason || apiErr.ErrorInfoReason != test.errorInfo {
+		t.Fatalf("channels = %q/%q/%q, want all three preserved", apiErr.Reason, apiErr.Status, apiErr.ErrorInfoReason)
 	}
 }
 

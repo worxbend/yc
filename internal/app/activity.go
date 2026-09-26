@@ -85,30 +85,36 @@ func activityEntriesForChats(set *chatStateSet, limit int) []activityEntry {
 		if state == nil {
 			continue
 		}
-		label := state.target.Label()
-		messages := state.messages
-		if len(messages) > activityScanWindow {
-			messages = messages[len(messages)-activityScanWindow:]
-		}
-		for _, message := range messages {
-			if entry, ok := activityEntryForMessage(message, key, label); ok {
-				entries = append(entries, entry)
-			}
-		}
-		// Moderation is the one category that cannot be read off the message
-		// list: a deletion or a ban never becomes a chat row, by design, so
-		// the events themselves are the only record of it.
-		for _, event := range state.moderations {
-			if entry, ok := activityEntryForModeration(event, label); ok {
-				entry.ChatKey = key
-				entries = append(entries, entry)
-			}
-		}
+		entries = appendChatActivityEntries(entries, key, state)
 	}
 	mergeActivityByTime(entries)
 	entries = collapseGiftBursts(entries)
 	if len(entries) > limit {
 		entries = entries[len(entries)-limit:]
+	}
+	return entries
+}
+
+// appendChatActivityEntries collects one chat's entries. Moderation is the one
+// category that cannot be read off the message list: a deletion or a ban never
+// becomes a chat row, by design, so the events themselves are the only record
+// of it.
+func appendChatActivityEntries(entries []activityEntry, key string, state *chatState) []activityEntry {
+	label := state.target.Label()
+	messages := state.messages
+	if len(messages) > activityScanWindow {
+		messages = messages[len(messages)-activityScanWindow:]
+	}
+	for _, message := range messages {
+		if entry, ok := activityEntryForMessage(message, key, label); ok {
+			entries = append(entries, entry)
+		}
+	}
+	for _, event := range state.moderations {
+		if entry, ok := activityEntryForModeration(event, label); ok {
+			entry.ChatKey = key
+			entries = append(entries, entry)
+		}
 	}
 	return entries
 }

@@ -62,39 +62,44 @@ func TestBanSendsTemporaryAndPermanentShapes(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			var body liveChatBanRequest
-			client, _ := newTestClient(t, oauthCredentials(), func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/liveChat/bans" {
-					t.Fatalf("path = %q, want /liveChat/bans", r.URL.Path)
-				}
-				raw, _ := io.ReadAll(r.Body)
-				if err := json.Unmarshal(raw, &body); err != nil {
-					t.Fatalf("decode ban body: %v", err)
-				}
-				fmt.Fprint(w, `{"id":"ban-1"}`)
-			})
-
-			result, err := client.Ban(context.Background(), BanRequest{
-				LiveChatID: "chat-1",
-				ChannelID:  "UCspam0000000000000000001",
-				Duration:   test.duration,
-			})
-			if err != nil {
-				t.Fatalf("Ban error = %v", err)
-			}
-			if body.Snippet.Type != test.wantType {
-				t.Fatalf("type = %q, want %q", body.Snippet.Type, test.wantType)
-			}
-			if body.Snippet.BanDurationSeconds != test.wantSeconds {
-				t.Fatalf("banDurationSeconds = %q, want %q as a JSON string", body.Snippet.BanDurationSeconds, test.wantSeconds)
-			}
-			if body.Snippet.BannedUserDetails.ChannelID != "UCspam0000000000000000001" {
-				t.Fatalf("bannedUserDetails.channelId = %q", body.Snippet.BannedUserDetails.ChannelID)
-			}
-			if result.BanID != "ban-1" || result.Permanent != test.wantPermanent {
-				t.Fatalf("result = %#v", result)
-			}
+			assertBanShape(t, test.duration, test.wantType, test.wantSeconds, test.wantPermanent)
 		})
+	}
+}
+
+func assertBanShape(t *testing.T, duration time.Duration, wantType, wantSeconds string, wantPermanent bool) {
+	t.Helper()
+	var body liveChatBanRequest
+	client, _ := newTestClient(t, oauthCredentials(), func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/liveChat/bans" {
+			t.Fatalf("path = %q, want /liveChat/bans", r.URL.Path)
+		}
+		raw, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Fatalf("decode ban body: %v", err)
+		}
+		fmt.Fprint(w, `{"id":"ban-1"}`)
+	})
+
+	result, err := client.Ban(context.Background(), BanRequest{
+		LiveChatID: "chat-1",
+		ChannelID:  "UCspam0000000000000000001",
+		Duration:   duration,
+	})
+	if err != nil {
+		t.Fatalf("Ban error = %v", err)
+	}
+	if body.Snippet.Type != wantType {
+		t.Fatalf("type = %q, want %q", body.Snippet.Type, wantType)
+	}
+	if body.Snippet.BanDurationSeconds != wantSeconds {
+		t.Fatalf("banDurationSeconds = %q, want %q as a JSON string", body.Snippet.BanDurationSeconds, wantSeconds)
+	}
+	if body.Snippet.BannedUserDetails.ChannelID != "UCspam0000000000000000001" {
+		t.Fatalf("bannedUserDetails.channelId = %q", body.Snippet.BannedUserDetails.ChannelID)
+	}
+	if result.BanID != "ban-1" || result.Permanent != wantPermanent {
+		t.Fatalf("result = %#v", result)
 	}
 }
 

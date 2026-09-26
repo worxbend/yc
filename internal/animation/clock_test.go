@@ -47,7 +47,7 @@ func TestNormalizeModeMapsConfigValues(t *testing.T) {
 }
 
 func TestSystemClockAdvances(t *testing.T) {
-	var clock Clock = SystemClock{}
+	var clock Nower = SystemClock{}
 	if clock.Now().IsZero() {
 		t.Fatal("SystemClock.Now() is the zero time")
 	}

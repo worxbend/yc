@@ -45,6 +45,10 @@ const (
 	moderationBanRune     = 'b'
 )
 
+// moderationMessageSuffix names a deletion target by its author alone, so the
+// removed text is never reprinted to name what is going away.
+const moderationMessageSuffix = "'s message"
+
 const (
 	// defaultModerationTimeout pre-fills the duration prompt. It matches the
 	// timeout YouTube's own moderation menu offers first, so enter alone does
@@ -243,7 +247,7 @@ type moderationCompletedMsg struct {
 // The capability is asserted on the client rather than required by ChatClient,
 // which is what lets the mock source, the deterministic fake, and a key-only
 // live session drive the identical shell. A client that implements Moderator
-// but was built without a credential answers through ModerationCapability, so
+// but was built without a credential answers through ModerationAvailabilityChecker, so
 // "wired but unusable" is distinguishable from "not wired at all" before a key
 // is pressed rather than after a request fails.
 func (m shellModel) moderator() Moderator {
@@ -254,7 +258,7 @@ func (m shellModel) moderator() Moderator {
 	if !ok {
 		return nil
 	}
-	if reporter, ok := m.client.(ModerationCapability); ok {
+	if reporter, ok := m.client.(ModerationAvailabilityChecker); ok {
 		if available, _ := reporter.ModerationAvailable(); !available {
 			return nil
 		}
@@ -274,7 +278,7 @@ func (m shellModel) moderationCapability() moderationCapability {
 	if _, ok := m.client.(Moderator); !ok {
 		return moderationCapability{Reason: "this chat source cannot moderate", Certain: true}
 	}
-	if reporter, ok := m.client.(ModerationCapability); ok {
+	if reporter, ok := m.client.(ModerationAvailabilityChecker); ok {
 		if available, reason := reporter.ModerationAvailable(); !available {
 			if strings.TrimSpace(reason) == "" {
 				reason = ErrModerationUnavailable.Error()
@@ -593,7 +597,7 @@ func moderationConfirmPrompt(st moderationState) string {
 	subject := st.displayName
 	switch st.action {
 	case moderationActionDelete:
-		subject += "'s message"
+		subject += moderationMessageSuffix
 	case moderationActionTimeout:
 		subject += " for " + formatModerationDuration(st.duration)
 	}
@@ -689,7 +693,7 @@ func (m *shellModel) commitModeration() tea.Cmd {
 func moderationInFlightLine(st moderationState) string {
 	switch st.action {
 	case moderationActionDelete:
-		return "deleting " + st.displayName + "'s message"
+		return "deleting " + st.displayName + moderationMessageSuffix
 	case moderationActionTimeout:
 		return "timing out " + st.displayName + " for " + formatModerationDuration(st.duration)
 	case moderationActionBan:
@@ -821,7 +825,7 @@ func (m *shellModel) completeModeration(msg moderationCompletedMsg) {
 func moderationSuccessLine(msg moderationCompletedMsg) string {
 	switch msg.action {
 	case moderationActionDelete:
-		return "deleted " + msg.displayName + "'s message"
+		return "deleted " + msg.displayName + moderationMessageSuffix
 	case moderationActionTimeout:
 		return msg.displayName + " timed out for " + formatModerationDuration(msg.duration)
 	case moderationActionBan:

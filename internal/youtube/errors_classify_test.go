@@ -313,28 +313,7 @@ func TestEverySentinelHasAPolicy(t *testing.T) {
 
 	for sentinel := range classified {
 		t.Run(sentinel.Error(), func(t *testing.T) {
-			want, ok := expectedSentinelPolicy[sentinel]
-			if !ok {
-				t.Fatalf("%v is classified by a table but no test decides how the poll loop treats it", sentinel)
-			}
-			retryable, terminal := Retryable(sentinel), Terminal(sentinel)
-			if retryable && terminal {
-				t.Fatalf("%v is both retryable and terminal; the poll loop cannot obey both", sentinel)
-			}
-			switch want {
-			case policyRetry:
-				if !retryable {
-					t.Fatalf("%v must go on the backoff ladder", sentinel)
-				}
-			case policyTerminal:
-				if !terminal {
-					t.Fatalf("%v must end the session cleanly", sentinel)
-				}
-			case policyReported:
-				if retryable || terminal {
-					t.Fatalf("%v is expected to be neither retryable nor terminal", sentinel)
-				}
-			}
+			assertSentinelPolicy(t, sentinel)
 		})
 	}
 
@@ -347,6 +326,32 @@ func TestEverySentinelHasAPolicy(t *testing.T) {
 		}
 		if !classified[sentinel] {
 			t.Errorf("%v has a policy but no table produces it any more", sentinel)
+		}
+	}
+}
+
+func assertSentinelPolicy(t *testing.T, sentinel error) {
+	t.Helper()
+	want, ok := expectedSentinelPolicy[sentinel]
+	if !ok {
+		t.Fatalf("%v is classified by a table but no test decides how the poll loop treats it", sentinel)
+	}
+	retryable, terminal := Retryable(sentinel), Terminal(sentinel)
+	if retryable && terminal {
+		t.Fatalf("%v is both retryable and terminal; the poll loop cannot obey both", sentinel)
+	}
+	switch want {
+	case policyRetry:
+		if !retryable {
+			t.Fatalf("%v must go on the backoff ladder", sentinel)
+		}
+	case policyTerminal:
+		if !terminal {
+			t.Fatalf("%v must end the session cleanly", sentinel)
+		}
+	case policyReported:
+		if retryable || terminal {
+			t.Fatalf("%v is expected to be neither retryable nor terminal", sentinel)
 		}
 	}
 }

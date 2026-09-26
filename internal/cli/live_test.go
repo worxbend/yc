@@ -116,7 +116,7 @@ func TestQuotaWarningOnlyFiresForFollowServerCadence(t *testing.T) {
 	zeroed := cfg
 	zeroed.Quota.Costs.List = 0
 	zeroed.Quota.DailyQuotaUnits = 0
-	if got := quotaWarning(zeroed); got == "" {
+	if quotaWarning(zeroed) == "" {
 		t.Error("unset figures produced no warning; the defaults should still yield one")
 	}
 }

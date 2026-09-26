@@ -174,14 +174,21 @@ func TestResizePreservesAuthorColorsAndScrollPosition(t *testing.T) {
 		if len(resized.messages) != len(before) {
 			t.Fatalf("resize changed the history from %d to %d messages", len(before), len(resized.messages))
 		}
-		for i, message := range resized.messages {
-			if got := model.messageAuthorColor(message); got != before[i] {
-				t.Fatalf("resize to %dx%d recolored message %d: %q vs %q", size.Width, size.Height, i, got, before[i])
-			}
-		}
+		identityColorRequireUnchanged(t, model, size, resized.messages, before)
 		// The scroll offset must stay inside the buffer at every size.
 		if resized.scrollOffset < 0 || resized.scrollOffset > len(resized.messages) {
 			t.Errorf("resize to %dx%d left the scroll offset at %d", size.Width, size.Height, resized.scrollOffset)
+		}
+	}
+}
+
+// identityColorRequireUnchanged fails when any message's author color differs
+// from the one recorded before the resize.
+func identityColorRequireUnchanged(t *testing.T, model shellModel, size tea.WindowSizeMsg, messages []youtube.Message, before []string) {
+	t.Helper()
+	for i, message := range messages {
+		if got := model.messageAuthorColor(message); got != before[i] {
+			t.Fatalf("resize to %dx%d recolored message %d: %q vs %q", size.Width, size.Height, i, got, before[i])
 		}
 	}
 }

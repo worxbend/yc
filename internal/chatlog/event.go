@@ -99,7 +99,7 @@ func Records(r io.Reader, fn func(Event) error) (skipped int, err error) {
 			continue
 		}
 		var event Event
-		if decodeErr := json.Unmarshal(line, &event); decodeErr != nil {
+		if json.Unmarshal(line, &event) != nil {
 			skipped++
 			continue
 		}

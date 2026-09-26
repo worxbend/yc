@@ -23,6 +23,12 @@ const (
 	DoctorStatusWarn DoctorStatus = "warn"
 )
 
+// Doctor check names shared by every branch that reports them.
+const (
+	doctorCheckAuthMode = "credential mode"
+	doctorCheckDebugLog = "debug log"
+)
+
 // DoctorReport is the full diagnostic result printed by `yc doctor`.
 type DoctorReport struct {
 	Checks []DoctorCheck
@@ -47,7 +53,7 @@ type DoctorOptions struct {
 	// a broken config is exactly when someone runs doctor.
 	ConfigLoadError   error
 	ReachabilityProbe ReachabilityProbe
-	IdentityLookup    IdentityLookup
+	IdentityLookup    IdentityProvider
 	QuotaReporter     QuotaReporter
 	// Targets are the configured chats to probe for reachability.
 	Targets []youtube.ChatTarget
@@ -112,25 +118,25 @@ func doctorCredentialModeCheck(cfg config.Config) DoctorCheck {
 	switch {
 	case hasToken && hasRefresh:
 		return DoctorCheck{
-			Name:   "credential mode",
+			Name:   doctorCheckAuthMode,
 			Status: DoctorStatusOK,
 			Detail: "OAuth access token and refresh token present; reading, sending, and moderation are available if the granted scopes allow it",
 		}
 	case hasToken:
 		return DoctorCheck{
-			Name:   "credential mode",
+			Name:   doctorCheckAuthMode,
 			Status: DoctorStatusWarn,
 			Detail: "OAuth access token present but no refresh token; the session will stop when the token expires (about an hour). Run `yc login`",
 		}
 	case hasKey:
 		return DoctorCheck{
-			Name:   "credential mode",
+			Name:   doctorCheckAuthMode,
 			Status: DoctorStatusOK,
 			Detail: "API key only: public live chats are readable, but sending and moderation need `yc login`",
 		}
 	default:
 		return DoctorCheck{
-			Name:   "credential mode",
+			Name:   doctorCheckAuthMode,
 			Status: DoctorStatusWarn,
 			Detail: "no credentials: run `yc login`, set YC_YOUTUBE_API_KEY for read-only access, or run `yc chat --mock`",
 		}
@@ -203,13 +209,13 @@ func doctorCacheCheck(dir string) DoctorCheck {
 // doctorDebugLogCheck reports where redacted diagnostics will be written.
 func doctorDebugLogCheck(cfg config.Config) DoctorCheck {
 	if !cfg.Debug.Enabled {
-		return DoctorCheck{Name: "debug log", Status: DoctorStatusOK, Detail: "disabled"}
+		return DoctorCheck{Name: doctorCheckDebugLog, Status: DoctorStatusOK, Detail: "disabled"}
 	}
 	path := strings.TrimSpace(cfg.Debug.LogPath)
 	if path == "" {
-		return DoctorCheck{Name: "debug log", Status: DoctorStatusOK, Detail: "enabled, writing to the default path under the cache directory"}
+		return DoctorCheck{Name: doctorCheckDebugLog, Status: DoctorStatusOK, Detail: "enabled, writing to the default path under the cache directory"}
 	}
-	return DoctorCheck{Name: "debug log", Status: DoctorStatusOK, Detail: "enabled, writing to " + config.RedactDisplayValue(path)}
+	return DoctorCheck{Name: doctorCheckDebugLog, Status: DoctorStatusOK, Detail: "enabled, writing to " + config.RedactDisplayValue(path)}
 }
 
 // doctorTargetChecks reports what each configured chat resolved to, without
@@ -365,9 +371,9 @@ func doctorReachabilityCheck(ctx context.Context, probe ReachabilityProbe) Docto
 
 // doctorIdentityCheck resolves the signed-in channel, which is what the local
 // echo of a sent message renders from.
-func doctorIdentityCheck(ctx context.Context, cfg config.Config, lookup IdentityLookup) DoctorCheck {
+func doctorIdentityCheck(ctx context.Context, cfg config.Config, lookup IdentityProvider) DoctorCheck {
 	if lookup == nil {
-		if configured := strings.TrimSpace(cfg.YouTube.ChannelID); configured != "" {
+		if strings.TrimSpace(cfg.YouTube.ChannelID) != "" {
 			return DoctorCheck{
 				Name:   "identity",
 				Status: DoctorStatusWarn,

@@ -43,7 +43,6 @@ const busyPollerSettle = 100 * time.Millisecond
 type busyPoller struct {
 	t      *testing.T
 	poller *Poller
-	ctx    context.Context
 
 	requests chan struct{}
 	dispatch atomic.Int64
@@ -89,7 +88,7 @@ func newBusyPoller(t *testing.T, target ChatTarget) *busyPoller {
 	b.poller = poller
 
 	ctx, cancel := context.WithCancel(context.Background())
-	b.ctx = ctx
+	t.Cleanup(cancel)
 	t.Cleanup(func() {
 		cancel()
 		_ = poller.Close()
@@ -195,6 +194,8 @@ func (b *busyPoller) assertNoFurtherPolls(window time.Duration, why string) {
 func TestOverlappingReconnectsLeaveExactlyOneSession(t *testing.T) {
 	b := newBusyPoller(t, ChatTarget{Raw: "chat-1", Kind: TargetLiveChatID, LiveChatID: "chat-1"})
 	b.awaitRequest("to open the chat")
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 
 	const restarts = 16
 	var wg sync.WaitGroup
@@ -203,7 +204,7 @@ func TestOverlappingReconnectsLeaveExactlyOneSession(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := b.poller.Reconnect(b.ctx); err != nil {
+			if err := b.poller.Reconnect(ctx); err != nil {
 				errs <- err
 			}
 		}()
@@ -230,12 +231,14 @@ func TestOverlappingReconnectsLeaveExactlyOneSession(t *testing.T) {
 func TestRepeatedReconnectsNeverReResolveTheTarget(t *testing.T) {
 	b := newBusyPoller(t, ChatTarget{Raw: "dQw4w9WgXcQ", Kind: TargetVideoID, VideoID: "dQw4w9WgXcQ"})
 	b.awaitRequest("to open the chat")
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 	if got := b.resolves.Load(); got != 1 {
 		t.Fatalf("resolves = %d, want the one that opened the chat", got)
 	}
 
 	for i := 0; i < 10; i++ {
-		if err := b.poller.Reconnect(b.ctx); err != nil {
+		if err := b.poller.Reconnect(ctx); err != nil {
 			t.Fatalf("Reconnect %d error = %v", i, err)
 		}
 		b.drainRequests()
@@ -256,11 +259,13 @@ func TestRepeatedReconnectsNeverReResolveTheTarget(t *testing.T) {
 func TestRepeatedReconnectsLeaveNoGoroutinesBehind(t *testing.T) {
 	b := newBusyPoller(t, ChatTarget{Raw: "chat-1", Kind: TargetLiveChatID, LiveChatID: "chat-1"})
 	b.awaitRequest("to open the chat")
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 
 	reconnect := func(times int) {
 		t.Helper()
 		for i := 0; i < times; i++ {
-			if err := b.poller.Reconnect(b.ctx); err != nil {
+			if err := b.poller.Reconnect(ctx); err != nil {
 				t.Fatalf("Reconnect error = %v", err)
 			}
 			b.drainRequests()
@@ -314,7 +319,9 @@ func TestReconnectWithACancelledContextStartsNothing(t *testing.T) {
 
 	// And the poller is not wedged: a later restart on a live context works,
 	// resuming from the cursor the refused attempt never touched.
-	if err := b.poller.Reconnect(b.ctx); err != nil {
+	liveCtx, stop := context.WithCancel(context.Background())
+	t.Cleanup(stop)
+	if err := b.poller.Reconnect(liveCtx); err != nil {
 		t.Fatalf("Reconnect after a canceled one = %v", err)
 	}
 	b.drainRequests()
@@ -330,6 +337,8 @@ func TestCloseRacingReconnectNeverEmitsOntoAClosedStream(t *testing.T) {
 	for round := 0; round < 20; round++ {
 		b := newBusyPoller(t, ChatTarget{Raw: "chat-1", Kind: TargetLiveChatID, LiveChatID: "chat-1"})
 		b.awaitRequest("to open the chat")
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
 
 		start := make(chan struct{})
 		var wg sync.WaitGroup
@@ -338,7 +347,7 @@ func TestCloseRacingReconnectNeverEmitsOntoAClosedStream(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			reconnectErr = b.poller.Reconnect(b.ctx)
+			reconnectErr = b.poller.Reconnect(ctx)
 		}()
 		go func() {
 			defer wg.Done()
@@ -356,7 +365,7 @@ func TestCloseRacingReconnectNeverEmitsOntoAClosedStream(t *testing.T) {
 		if err := b.poller.Close(); err != nil {
 			t.Fatalf("round %d: second Close error = %v", round, err)
 		}
-		if err := b.poller.Reconnect(b.ctx); !errors.Is(err, ErrPollerClosed) {
+		if err := b.poller.Reconnect(ctx); !errors.Is(err, ErrPollerClosed) {
 			t.Fatalf("round %d: Reconnect after Close = %v, want ErrPollerClosed", round, err)
 		}
 		b.assertNoFurtherPolls(100*time.Millisecond, "a Close that raced a Reconnect")

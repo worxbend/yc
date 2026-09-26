@@ -171,26 +171,31 @@ func TestPathologicalIdentityAndBodyNeverOverflowARow(t *testing.T) {
 			msg := graphemeNameMessage(subject.value, body)
 			for _, layout := range []LayoutMode{LayoutInline, LayoutGrouped, LayoutCompact} {
 				for _, badges := range []BadgeMode{BadgeModeGlyph, BadgeModeText, BadgeModeOff} {
-					for width := MinimumRenderWidth; width <= 60; width++ {
-						opts := testOptions(width)
-						opts.Layout = layout
-						opts.Badges = badges
-						opts.FullUsername = true
-						opts.HighlightEmoji = true
-
-						for index, row := range Rows(msg, opts) {
-							plain := row.Plain()
-							if got := ansi.StringWidth(plain); got != row.Width() {
-								t.Fatalf("%s/%s/%s/w=%d row %d: measured %d cells but prints %d: %q",
-									subject.name, layout, badges, width, index, row.Width(), got, plain)
-							}
-							if row.Width() > width {
-								t.Fatalf("%s/%s/%s/w=%d row %d overflowed to %d cells: %q",
-									subject.name, layout, badges, width, index, row.Width(), plain)
-							}
-						}
-					}
+					assertPathologicalRowsFit(t, subject.name, msg, layout, badges)
 				}
+			}
+		}
+	}
+}
+
+func assertPathologicalRowsFit(t *testing.T, name string, msg youtube.Message, layout LayoutMode, badges BadgeMode) {
+	t.Helper()
+	for width := MinimumRenderWidth; width <= 60; width++ {
+		opts := testOptions(width)
+		opts.Layout = layout
+		opts.Badges = badges
+		opts.FullUsername = true
+		opts.HighlightEmoji = true
+
+		for index, row := range Rows(msg, opts) {
+			plain := row.Plain()
+			if got := ansi.StringWidth(plain); got != row.Width() {
+				t.Fatalf("%s/%s/%s/w=%d row %d: measured %d cells but prints %d: %q",
+					name, layout, badges, width, index, row.Width(), got, plain)
+			}
+			if row.Width() > width {
+				t.Fatalf("%s/%s/%s/w=%d row %d overflowed to %d cells: %q",
+					name, layout, badges, width, index, row.Width(), plain)
 			}
 		}
 	}

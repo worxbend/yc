@@ -185,10 +185,10 @@ type mockCollaborators struct {
 }
 
 var (
-	_ IdentityLookup     = mockCollaborators{}
-	_ BroadcastResolver  = mockCollaborators{}
-	_ SubscriptionLookup = mockCollaborators{}
-	_ CategoryLookup     = mockCollaborators{}
+	_ IdentityProvider     = mockCollaborators{}
+	_ BroadcastResolver    = mockCollaborators{}
+	_ SubscriptionProvider = mockCollaborators{}
+	_ CategoryProvider     = mockCollaborators{}
 )
 
 // Identity returns the simulated signed-in channel the local echo renders from.

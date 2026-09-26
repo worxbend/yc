@@ -39,6 +39,10 @@ var (
 	badgeModes     = []string{"glyph", "text", "off"}
 )
 
+// configPathFlagUsage is the --config flag's description, identical on every
+// subcommand that accepts it.
+const configPathFlagUsage = "config file path"
+
 const usage = `yc is a terminal YouTube live chat client.
 
 Usage:
@@ -173,7 +177,7 @@ func runChat(args []string, stdout, stderr io.Writer) int {
 	fs.Var(&opts.chats, "video", "video ID or watch URL to open (adds to --chat)")
 	fs.Var(&opts.chats, "channel", "@handle or channel ID to open (adds to --chat)")
 	fs.StringVar(&opts.liveChatID, "live-chat-id", "", "open an explicit liveChatId, skipping resolution and spending no quota")
-	fs.StringVar(&opts.cfgPath, "config", "", "config file path")
+	fs.StringVar(&opts.cfgPath, "config", "", configPathFlagUsage)
 	fs.BoolVar(&opts.mock, "mock", false, "run against the built-in scripted chat source with no credentials and no network")
 	fs.BoolVar(&opts.noMouse, "no-mouse", false, "disable terminal mouse reporting for this run")
 	fs.Var(&opts.themeName, "theme", "theme preset name for this run")
@@ -472,7 +476,7 @@ func runConfig(args []string, stdout, stderr io.Writer) int {
 		fs := flag.NewFlagSet("config show", flag.ContinueOnError)
 		fs.SetOutput(stderr)
 		var cfgPath string
-		fs.StringVar(&cfgPath, "config", "", "config file path")
+		fs.StringVar(&cfgPath, "config", "", configPathFlagUsage)
 		if code, ok := parseCommandFlags(fs, args[1:], configShowUsage, "config", stdout, stderr); !ok {
 			return code
 		}
@@ -511,7 +515,7 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	var cfgPath string
 	var debugFlags debugFlagOptions
-	fs.StringVar(&cfgPath, "config", "", "config file path")
+	fs.StringVar(&cfgPath, "config", "", configPathFlagUsage)
 	addDebugFlags(fs, &debugFlags)
 	if code, ok := parseCommandFlags(fs, args, doctorUsage, "doctor", stdout, stderr); !ok {
 		return code
@@ -721,7 +725,7 @@ func runProfileSet(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("profile set", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var cfgPath string
-	fs.StringVar(&cfgPath, "config", "", "config file path")
+	fs.StringVar(&cfgPath, "config", "", configPathFlagUsage)
 	// One flag per role, holding whatever the user passed. An empty value
 	// means the flag was not given and the stored color is left alone.
 	overrides := make([]string, len(paletteRoles))
@@ -769,7 +773,7 @@ func loadConfigForFlags(name, usage, argNoun string, args []string, stdout, stde
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var cfgPath string
-	fs.StringVar(&cfgPath, "config", "", "config file path")
+	fs.StringVar(&cfgPath, "config", "", configPathFlagUsage)
 	if code, ok := parseCommandFlags(fs, args, usage, argNoun, stdout, stderr); !ok {
 		return config.Config{}, code
 	}

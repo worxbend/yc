@@ -617,7 +617,7 @@ func TestScrolledAwayMessagesAppendStatically(t *testing.T) {
 	state.target.LiveChatID = "live-chat"
 	state.scrollOffset = 5
 
-	if cmd := model.enqueueMessage(testMessage(t, "m1", "live-chat", "alice", "hi")); cmd != nil {
+	if model.enqueueMessage(testMessage(t, "m1", "live-chat", "alice", "hi")) != nil {
 		t.Fatal("a message arriving while scrolled away must not animate")
 	}
 	if len(model.activeChatState().messages) != 1 {

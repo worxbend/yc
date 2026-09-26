@@ -176,6 +176,20 @@ func TestTabBarContextCannotInjectEscapes(t *testing.T) {
 	}
 }
 
+// escapeRequireNoControlRunes fails for every control or bidi override rune
+// left in got.
+func escapeRequireNoControlRunes(t *testing.T, got string) {
+	t.Helper()
+	for _, r := range got {
+		if unicode.IsControl(r) {
+			t.Errorf("control rune %U survived: %q", r, got)
+		}
+		if isBidiOverride(r) {
+			t.Errorf("bidi control %U survived: %q", r, got)
+		}
+	}
+}
+
 // sanitizeContextValue must neutralize hostile input on its own, not by
 // leaning on the pane writers that happen to run later. C0 and DEL were
 // always replaced; a raw C1 introducer and a bidi override used to slip
@@ -185,14 +199,7 @@ func TestSanitizeContextValueNeutralizesEveryControlFamily(t *testing.T) {
 	for _, hostile := range escapePayloads {
 		t.Run(hostile.name, func(t *testing.T) {
 			got := sanitizeContextValue(hostile.value)
-			for _, r := range got {
-				if unicode.IsControl(r) {
-					t.Errorf("control rune %U survived: %q", r, got)
-				}
-				if isBidiOverride(r) {
-					t.Errorf("bidi control %U survived: %q", r, got)
-				}
-			}
+			escapeRequireNoControlRunes(t, got)
 			if !strings.Contains(got, "evil") || !strings.Contains(got, "name") {
 				t.Errorf("visible text was lost: %q", got)
 			}

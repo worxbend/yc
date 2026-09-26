@@ -265,24 +265,29 @@ func TestEventRowsNeverExceedWidth(t *testing.T) {
 	for _, fixture := range eventFixtures() {
 		for _, layout := range []LayoutMode{LayoutInline, LayoutGrouped, LayoutCompact} {
 			for _, badges := range []BadgeMode{BadgeModeGlyph, BadgeModeText, BadgeModeOff} {
-				for width := MinimumRenderWidth; width <= 96; width++ {
-					opts := testOptions(width)
-					opts.Layout = layout
-					opts.Badges = badges
-					opts.FullUsername = true
-					opts.Meta = AuthorMeta{Role: "member", MemberMonths: 14, Now: testTimestamp, FirstSeen: testTimestamp}
+				assertRowsWithinWidth(t, fixture, layout, badges)
+			}
+		}
+	}
+}
 
-					for index, row := range Rows(fixture.msg, opts) {
-						if got := row.Width(); got > width {
-							t.Fatalf("%s / %s / %s / w=%d row %d width = %d: %q",
-								fixture.name, layout, badges, width, index, got, row.Plain())
-						}
-						if got := textWidth(row.Plain()); got > width {
-							t.Fatalf("%s / %s / %s / w=%d row %d plain width = %d: %q",
-								fixture.name, layout, badges, width, index, got, row.Plain())
-						}
-					}
-				}
+func assertRowsWithinWidth(t *testing.T, fixture eventFixture, layout LayoutMode, badges BadgeMode) {
+	t.Helper()
+	for width := MinimumRenderWidth; width <= 96; width++ {
+		opts := testOptions(width)
+		opts.Layout = layout
+		opts.Badges = badges
+		opts.FullUsername = true
+		opts.Meta = AuthorMeta{Role: "member", MemberMonths: 14, Now: testTimestamp, FirstSeen: testTimestamp}
+
+		for index, row := range Rows(fixture.msg, opts) {
+			if got := row.Width(); got > width {
+				t.Fatalf("%s / %s / %s / w=%d row %d width = %d: %q",
+					fixture.name, layout, badges, width, index, got, row.Plain())
+			}
+			if got := textWidth(row.Plain()); got > width {
+				t.Fatalf("%s / %s / %s / w=%d row %d plain width = %d: %q",
+					fixture.name, layout, badges, width, index, got, row.Plain())
 			}
 		}
 	}

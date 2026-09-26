@@ -95,9 +95,9 @@ type LiveChatConfig struct {
 // state: the model keys history, drafts, and scroll position by chat, and the
 // adapter swaps only what is underneath.
 //
-// It satisfies ChatClient plus the optional ModerationSource, RoomEventSource,
-// PollSource, ChatJoiner, QuotaReporter, MessageDropCounter, Moderator, and
-// ModerationCapability capabilities.
+// It satisfies ChatClient plus the optional ModerationStreamer, RoomEventStreamer,
+// PollStreamer, ChatJoiner, QuotaReporter, MessageDropCounter, Moderator, and
+// ModerationAvailabilityChecker capabilities.
 type LiveChatClient struct {
 	cfg liveChatDeps
 
@@ -106,9 +106,6 @@ type LiveChatClient struct {
 	moderations chan youtube.ModerationEvent
 	rooms       chan youtube.RoomEvent
 	polls       chan youtube.PollState
-
-	ctx    context.Context
-	cancel context.CancelFunc
 
 	mu       sync.Mutex
 	sessions map[string]*liveChatSession
@@ -134,15 +131,15 @@ type liveChatDeps struct {
 }
 
 var (
-	_ ChatClient           = (*LiveChatClient)(nil)
-	_ ModerationSource     = (*LiveChatClient)(nil)
-	_ RoomEventSource      = (*LiveChatClient)(nil)
-	_ PollSource           = (*LiveChatClient)(nil)
-	_ ChatJoiner           = (*LiveChatClient)(nil)
-	_ QuotaReporter        = (*LiveChatClient)(nil)
-	_ MessageDropCounter   = (*LiveChatClient)(nil)
-	_ Moderator            = (*LiveChatClient)(nil)
-	_ ModerationCapability = (*LiveChatClient)(nil)
+	_ ChatClient                    = (*LiveChatClient)(nil)
+	_ ModerationStreamer            = (*LiveChatClient)(nil)
+	_ RoomEventStreamer             = (*LiveChatClient)(nil)
+	_ PollStreamer                  = (*LiveChatClient)(nil)
+	_ ChatJoiner                    = (*LiveChatClient)(nil)
+	_ QuotaReporter                 = (*LiveChatClient)(nil)
+	_ MessageDropCounter            = (*LiveChatClient)(nil)
+	_ Moderator                     = (*LiveChatClient)(nil)
+	_ ModerationAvailabilityChecker = (*LiveChatClient)(nil)
 )
 
 // NewLiveChatClient returns an adapter for the configured targets. Sessions
@@ -152,7 +149,6 @@ func NewLiveChatClient(cfg LiveChatConfig) (*LiveChatClient, error) {
 	if cfg.Factory == nil {
 		return nil, errors.New("live chat client: missing transport factory")
 	}
-	ctx, cancel := context.WithCancel(context.Background())
 	client := &LiveChatClient{
 		cfg:         liveChatDeps{factory: cfg.Factory, logger: cfg.Logger, moderator: cfg.Moderator},
 		messages:    make(chan youtube.Message, liveChatBuffer),
@@ -160,8 +156,6 @@ func NewLiveChatClient(cfg LiveChatConfig) (*LiveChatClient, error) {
 		moderations: make(chan youtube.ModerationEvent, liveChatBuffer),
 		rooms:       make(chan youtube.RoomEvent, liveChatBuffer),
 		polls:       make(chan youtube.PollState, liveChatBuffer),
-		ctx:         ctx,
-		cancel:      cancel,
 		sessions:    make(map[string]*liveChatSession),
 	}
 	for _, target := range cfg.Targets {
@@ -376,7 +370,7 @@ func (c *LiveChatClient) Reconnect(ctx context.Context) error {
 		return ErrReconnectUnavailable
 	}
 	for _, session := range sessions {
-		session.restart()
+		session.restart(ctx)
 	}
 	return nil
 }
@@ -450,9 +444,9 @@ func (c *LiveChatClient) DroppedMessages() uint64 {
 	return c.dropped.Load()
 }
 
-// Close cancels every session and closes the merged streams. The old context is
-// canceled and the old channels closed before any replacement exists, and the
-// call is safe to repeat.
+// Close cancels every session and closes the merged streams. Each session's
+// context is canceled and its transport closed before the merged channels
+// close, and the call is safe to repeat.
 func (c *LiveChatClient) Close() error {
 	c.mu.Lock()
 	if c.closed {
@@ -464,7 +458,6 @@ func (c *LiveChatClient) Close() error {
 	c.sessions = make(map[string]*liveChatSession)
 	c.mu.Unlock()
 
-	c.cancel()
 	for _, session := range sessions {
 		session.stop()
 	}
@@ -529,12 +522,11 @@ func (c *LiveChatClient) startSession(target youtube.ChatTarget) bool {
 		c.mu.Unlock()
 		return false
 	}
-	ctx, cancel := context.WithCancel(c.ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	session := &liveChatSession{
 		client:     c,
 		routingKey: key,
 		target:     target,
-		ctx:        ctx,
 		cancel:     cancel,
 	}
 	c.sessions[key] = session
@@ -543,7 +535,7 @@ func (c *LiveChatClient) startSession(target youtube.ChatTarget) bool {
 
 	go func() {
 		defer c.wg.Done()
-		session.run()
+		session.run(ctx)
 	}()
 	return true
 }
@@ -601,7 +593,6 @@ type liveChatSession struct {
 	// can never be filed under whichever chat happens to be on screen.
 	routingKey string
 
-	ctx    context.Context
 	cancel context.CancelFunc
 
 	mu     sync.Mutex
@@ -750,14 +741,14 @@ func (s *liveChatSession) stop() {
 // of chat. Only a transport that cannot - or one whose restart failed - is
 // closed, which ends the fan-in and drops the run loop back onto the ladder to
 // build a replacement.
-func (s *liveChatSession) restart() {
+func (s *liveChatSession) restart(ctx context.Context) {
 	transport := s.currentTransport()
 	if reconnector, ok := transport.(LiveChatReconnector); ok {
-		err := reconnector.Reconnect(s.ctx)
+		err := reconnector.Reconnect(ctx)
 		if err == nil {
 			return
 		}
-		s.client.cfg.logger.Log(s.ctx, "app.live_chat.restart_in_place_failed",
+		s.client.cfg.logger.Log(ctx, "app.live_chat.restart_in_place_failed",
 			debuglog.Err("error", err),
 		)
 	}
@@ -776,105 +767,119 @@ func (s *liveChatSession) restart() {
 	}
 }
 
-func (s *liveChatSession) run() {
+func (s *liveChatSession) run(ctx context.Context) {
 	delay := reconnectInitialDelay
 	attempts := 0
 
 	for {
-		if s.ctx.Err() != nil {
+		if ctx.Err() != nil {
 			return
 		}
-		// The target is re-read every attempt rather than captured once: a
-		// previous attempt may have resolved it, and handing the factory the
-		// resolved target is what keeps a reconnect from re-spending a
-		// resolve unit and re-pulling the whole backlog.
-		transport, err := s.client.cfg.factory(s.currentTarget())
-		if err != nil {
-			s.client.emitState(s.ctx, youtube.ConnectionState{
-				Status: youtube.ConnectionFailed,
-				ChatID: s.routingKey,
-				Detail: credentialSafeDetail(err),
-				Err:    err,
-				At:     time.Now(),
-			})
-			if !s.wait(&attempts, &delay) {
-				return
-			}
-			continue
-		}
-
-		switch s.publishTransport(transport) {
-		case publishStopped:
-			_ = transport.Close()
+		transport, ok := s.connect(ctx, &attempts, &delay)
+		if !ok {
 			return
-		case publishSuperseded:
-			_ = transport.Close()
-			continue
 		}
-		if err := transport.Start(s.ctx); err != nil {
-			s.setTransport(nil)
-			_ = transport.Close()
-			s.client.emitState(s.ctx, youtube.ConnectionState{
-				Status: youtube.ConnectionFailed,
-				ChatID: s.routingKey,
-				Detail: credentialSafeDetail(err),
-				Err:    err,
-				At:     time.Now(),
-			})
-			if !s.wait(&attempts, &delay) {
-				return
-			}
+		if transport == nil {
 			continue
 		}
 
 		startedAt := time.Now()
-		s.forward(transport)
+		s.forward(ctx, transport)
 		s.adoptTarget(transport.Target())
 		s.setTransport(nil)
 		_ = transport.Close()
 
-		if s.ctx.Err() != nil {
-			return
-		}
-		// A session that survived long enough counts as healthy, so a later
-		// blip starts at the bottom of the ladder instead of inheriting an
-		// hour-old backoff.
-		s.mu.Lock()
-		explicit := s.explicitRestart
-		s.explicitRestart = false
-		s.mu.Unlock()
-		if explicit || time.Since(startedAt) >= reconnectResetAfter {
-			attempts = 0
-			delay = reconnectInitialDelay
-		}
-		if explicit {
-			// A reconnect the user asked for happens now. Making them wait
-			// out a backoff they did not cause is the opposite of what the
-			// key is for.
-			continue
-		}
-		if !s.wait(&attempts, &delay) {
+		if !s.reschedule(ctx, startedAt, &attempts, &delay) {
 			return
 		}
 	}
 }
 
+// connect builds, publishes, and starts the next transport. The boolean
+// reports whether the run loop should go on; a nil transport with it true
+// means this attempt folded into the ladder or was superseded and the loop
+// starts over.
+func (s *liveChatSession) connect(ctx context.Context, attempts *int, delay *time.Duration) (LiveChatTransport, bool) {
+	// The target is re-read every attempt rather than captured once: a
+	// previous attempt may have resolved it, and handing the factory the
+	// resolved target is what keeps a reconnect from re-spending a
+	// resolve unit and re-pulling the whole backlog.
+	transport, err := s.client.cfg.factory(s.currentTarget())
+	if err != nil {
+		return nil, s.connectFailed(ctx, err, attempts, delay)
+	}
+
+	switch s.publishTransport(transport) {
+	case publishStopped:
+		_ = transport.Close()
+		return nil, false
+	case publishSuperseded:
+		_ = transport.Close()
+		return nil, true
+	}
+	if err := transport.Start(ctx); err != nil {
+		s.setTransport(nil)
+		_ = transport.Close()
+		return nil, s.connectFailed(ctx, err, attempts, delay)
+	}
+	return transport, true
+}
+
+// connectFailed reports a failed attempt on the state stream and advances the
+// ladder, reporting whether another attempt should be made.
+func (s *liveChatSession) connectFailed(ctx context.Context, err error, attempts *int, delay *time.Duration) bool {
+	s.client.emitState(ctx, youtube.ConnectionState{
+		Status: youtube.ConnectionFailed,
+		ChatID: s.routingKey,
+		Detail: credentialSafeDetail(err),
+		Err:    err,
+		At:     time.Now(),
+	})
+	return s.wait(ctx, attempts, delay)
+}
+
+// reschedule advances the ladder after a session's transport has ended,
+// reporting whether another attempt should be made.
+func (s *liveChatSession) reschedule(ctx context.Context, startedAt time.Time, attempts *int, delay *time.Duration) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	// A session that survived long enough counts as healthy, so a later
+	// blip starts at the bottom of the ladder instead of inheriting an
+	// hour-old backoff.
+	s.mu.Lock()
+	explicit := s.explicitRestart
+	s.explicitRestart = false
+	s.mu.Unlock()
+	if explicit || time.Since(startedAt) >= reconnectResetAfter {
+		*attempts = 0
+		*delay = reconnectInitialDelay
+	}
+	if explicit {
+		// A reconnect the user asked for happens now. Making them wait
+		// out a backoff they did not cause is the opposite of what the
+		// key is for.
+		return true
+	}
+	return s.wait(ctx, attempts, delay)
+}
+
 // wait advances the ladder, reporting whether another attempt should be made.
-func (s *liveChatSession) wait(attempts *int, delay *time.Duration) bool {
+func (s *liveChatSession) wait(ctx context.Context, attempts *int, delay *time.Duration) bool {
 	*attempts++
 	if *attempts >= reconnectAttemptLimit {
-		s.client.emitState(s.ctx, youtube.ConnectionState{
+		s.client.emitState(ctx, youtube.ConnectionState{
 			Status: youtube.ConnectionFailed,
 			ChatID: s.routingKey,
 			Detail: "reconnect attempts exhausted; press ctrl+r to retry",
 			At:     time.Now(),
 		})
-		s.client.cfg.logger.Log(s.ctx, "app.live_chat.reconnect_exhausted",
+		s.client.cfg.logger.Log(ctx, "app.live_chat.reconnect_exhausted",
 			slog.Int("attempts", *attempts),
 		)
 		return false
 	}
-	s.client.emitState(s.ctx, youtube.ConnectionState{
+	s.client.emitState(ctx, youtube.ConnectionState{
 		Status: youtube.ConnectionReconnecting,
 		ChatID: s.routingKey,
 		Detail: "reconnecting in " + delay.Round(time.Second).String(),
@@ -884,7 +889,7 @@ func (s *liveChatSession) wait(attempts *int, delay *time.Duration) bool {
 	timer := time.NewTimer(*delay)
 	defer timer.Stop()
 	select {
-	case <-s.ctx.Done():
+	case <-ctx.Done():
 		return false
 	case <-timer.C:
 	}
@@ -899,7 +904,7 @@ func (s *liveChatSession) wait(attempts *int, delay *time.Duration) bool {
 // forward fans one transport's five streams into the merged streams and returns
 // once every one of them has closed, which is how a transport reports that it
 // is finished.
-func (s *liveChatSession) forward(transport LiveChatTransport) {
+func (s *liveChatSession) forward(ctx context.Context, transport LiveChatTransport) {
 	var wg sync.WaitGroup
 	key := s.routingKey
 
@@ -911,16 +916,16 @@ func (s *liveChatSession) forward(transport LiveChatTransport) {
 	// here instead of hiding in the middle of a copied goroutine.
 	forwardStream(&wg, transport.ConnectionStates(),
 		func(c *youtube.ConnectionState) { c.ChatID = key },
-		func(c youtube.ConnectionState) { s.client.emitState(s.ctx, c) })
+		func(c youtube.ConnectionState) { s.client.emitState(ctx, c) })
 	forwardStream(&wg, transport.Moderations(),
 		func(e *youtube.ModerationEvent) { e.LiveChatID = key },
-		func(e youtube.ModerationEvent) { s.client.emitModeration(s.ctx, e) })
+		func(e youtube.ModerationEvent) { s.client.emitModeration(ctx, e) })
 	forwardStream(&wg, transport.RoomEvents(),
 		func(e *youtube.RoomEvent) { e.LiveChatID = key },
-		func(e youtube.RoomEvent) { s.client.emitRoomEvent(s.ctx, e) })
+		func(e youtube.RoomEvent) { s.client.emitRoomEvent(ctx, e) })
 	forwardStream(&wg, transport.Polls(),
 		func(p *youtube.PollState) { p.LiveChatID = key },
-		func(p youtube.PollState) { s.client.emitPoll(s.ctx, p) })
+		func(p youtube.PollState) { s.client.emitPoll(ctx, p) })
 
 	wg.Wait()
 }

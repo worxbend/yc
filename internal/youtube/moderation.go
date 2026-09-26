@@ -12,16 +12,20 @@ import (
 // bansPath is the liveChatBans collection.
 const bansPath = "liveChat/bans"
 
+// liveChatBannedUser is snippet.bannedUserDetails of a ban insert: the request
+// takes the channel ID alone, unlike the wireChannelProfile the API returns.
+type liveChatBannedUser struct {
+	ChannelID string `json:"channelId"`
+}
+
 // liveChatBanRequest is the liveChatBans.insert body. banDurationSeconds is a
 // uint64 the API expects as a JSON string, matching how it sends one back.
 type liveChatBanRequest struct {
 	Snippet struct {
-		LiveChatID         string `json:"liveChatId"`
-		Type               string `json:"type"`
-		BanDurationSeconds string `json:"banDurationSeconds,omitempty"`
-		BannedUserDetails  struct {
-			ChannelID string `json:"channelId"`
-		} `json:"bannedUserDetails"`
+		LiveChatID         string             `json:"liveChatId"`
+		Type               string             `json:"type"`
+		BanDurationSeconds string             `json:"banDurationSeconds,omitempty"`
+		BannedUserDetails  liveChatBannedUser `json:"bannedUserDetails"`
 	} `json:"snippet"`
 }
 

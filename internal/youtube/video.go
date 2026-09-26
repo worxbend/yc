@@ -8,6 +8,24 @@ import (
 	"github.com/worxbend/yc/internal/quota"
 )
 
+// noVideoID tails the endpoint name in the empty-ID error.
+const noVideoID = ": no video id"
+
+// channelThumbnail is one entry of snippet.thumbnails.
+type channelThumbnail struct {
+	URL string `json:"url"`
+}
+
+// channelThumbnails is snippet.thumbnails of a channels.list item.
+type channelThumbnails struct {
+	Default channelThumbnail `json:"default"`
+}
+
+// subscriptionResource is snippet.resourceId of a subscriptions.list item.
+type subscriptionResource struct {
+	ChannelID string `json:"channelId"`
+}
+
 // videoListResponse is the videos.list envelope.
 type videoListResponse struct {
 	Items []struct {
@@ -41,13 +59,9 @@ type channelListResponse struct {
 	Items []struct {
 		ID      string `json:"id"`
 		Snippet struct {
-			Title      string `json:"title"`
-			CustomURL  string `json:"customUrl"`
-			Thumbnails struct {
-				Default struct {
-					URL string `json:"url"`
-				} `json:"default"`
-			} `json:"thumbnails"`
+			Title      string            `json:"title"`
+			CustomURL  string            `json:"customUrl"`
+			Thumbnails channelThumbnails `json:"thumbnails"`
 		} `json:"snippet"`
 		Statistics struct {
 			SubscriberCount       string `json:"subscriberCount"`
@@ -61,10 +75,8 @@ type subscriptionListResponse struct {
 	NextPageToken string `json:"nextPageToken"`
 	Items         []struct {
 		Snippet struct {
-			Title      string `json:"title"`
-			ResourceID struct {
-				ChannelID string `json:"channelId"`
-			} `json:"resourceId"`
+			Title      string               `json:"title"`
+			ResourceID subscriptionResource `json:"resourceId"`
 		} `json:"snippet"`
 	} `json:"items"`
 }
@@ -100,7 +112,7 @@ type videoCategoryListResponse struct {
 func (c *Client) Broadcast(ctx context.Context, videoID string) (BroadcastInfo, error) {
 	identifier := strings.TrimSpace(videoID)
 	if identifier == "" {
-		return BroadcastInfo{}, newSafeError(quota.EndpointVideosList+": no video id", ErrChatNotFound)
+		return BroadcastInfo{}, newSafeError(quota.EndpointVideosList+noVideoID, ErrChatNotFound)
 	}
 
 	query := map[string]string{
@@ -211,7 +223,7 @@ func (c *Client) Subscriptions(ctx context.Context) ([]Subscription, error) {
 func (c *Client) StreamInfo(ctx context.Context, videoID string) (StreamInfo, error) {
 	identifier := strings.TrimSpace(videoID)
 	if identifier == "" {
-		return StreamInfo{}, newSafeError(quota.EndpointVideosList+": no video id", ErrChatNotFound)
+		return StreamInfo{}, newSafeError(quota.EndpointVideosList+noVideoID, ErrChatNotFound)
 	}
 
 	query := map[string]string{"part": "snippet,status", "id": identifier}
@@ -254,7 +266,7 @@ type videoUpdateRequest struct {
 func (c *Client) UpdateStreamInfo(ctx context.Context, info StreamInfo) (StreamInfo, error) {
 	identifier := strings.TrimSpace(info.VideoID)
 	if identifier == "" {
-		return info, newSafeError(quota.EndpointVideosUpdate+": no video id", ErrMessageRejected)
+		return info, newSafeError(quota.EndpointVideosUpdate+noVideoID, ErrMessageRejected)
 	}
 	if !c.hasToken() {
 		return info, newSafeError("editing broadcast details requires signing in with Google", ErrNotPermitted)

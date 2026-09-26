@@ -21,8 +21,8 @@ var ErrReconnectUnavailable = errors.New("reconnect unavailable for this chat so
 // second ctrl+r cannot stack transports on top of each other.
 var ErrReconnectInProgress = errors.New("reconnect already in progress")
 
-// reconnectingChatClient is the optional capability behind ctrl+r.
-type reconnectingChatClient interface {
+// reconnecter is the optional capability behind ctrl+r.
+type reconnecter interface {
 	Reconnect(ctx context.Context) error
 }
 
@@ -125,7 +125,7 @@ func (m shellModel) nextConnectionStateCommand() tea.Cmd {
 }
 
 func (m shellModel) nextClientModerationCommand() tea.Cmd {
-	source, ok := m.client.(ModerationSource)
+	source, ok := m.client.(ModerationStreamer)
 	if !ok {
 		return nil
 	}
@@ -140,7 +140,7 @@ func (m shellModel) nextClientModerationCommand() tea.Cmd {
 }
 
 func (m shellModel) nextClientRoomEventCommand() tea.Cmd {
-	source, ok := m.client.(RoomEventSource)
+	source, ok := m.client.(RoomEventStreamer)
 	if !ok {
 		return nil
 	}
@@ -155,7 +155,7 @@ func (m shellModel) nextClientRoomEventCommand() tea.Cmd {
 }
 
 func (m shellModel) nextClientPollCommand() tea.Cmd {
-	source, ok := m.client.(PollSource)
+	source, ok := m.client.(PollStreamer)
 	if !ok {
 		return nil
 	}
@@ -257,7 +257,7 @@ func (m *shellModel) scheduleQuotaTick() tea.Cmd {
 		return nil
 	}
 	if _, ok := m.client.(QuotaReporter); !ok {
-		if _, ok := m.client.(PollIntervalSource); !ok {
+		if _, ok := m.client.(PollIntervalProvider); !ok {
 			return nil
 		}
 	}
@@ -272,7 +272,7 @@ func (m *shellModel) refreshQuota() {
 		m.quota = reporter.Quota()
 		m.quotaKnown = true
 	}
-	if source, ok := m.client.(PollIntervalSource); ok {
+	if source, ok := m.client.(PollIntervalProvider); ok {
 		m.pollInterval = source.PollInterval()
 	}
 }
@@ -392,7 +392,7 @@ func (m *shellModel) requestReconnect(now time.Time) tea.Cmd {
 		})
 		return nil
 	}
-	client, ok := m.client.(reconnectingChatClient)
+	client, ok := m.client.(reconnecter)
 	if !ok {
 		next := state.status
 		next.ChatID = chatID

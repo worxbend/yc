@@ -115,22 +115,7 @@ func newAuthTestClient(t *testing.T, cfg ClientConfig, handler http.HandlerFunc)
 const broadcastBody = `{"items":[{"id":"vid00000001","snippet":{"title":"t"},"liveStreamingDetails":{"activeLiveChatId":"chat-1"}}]}`
 
 func TestClientRefreshesOnceAfterA401(t *testing.T) {
-	tests := []struct {
-		name string
-		// credentials is the source under test.
-		credentials func() CredentialSource
-		// hook overrides the automatic wiring; nil leaves it alone.
-		hook func(*testing.T, CredentialSource) func(context.Context) error
-		// serve answers request n (1-based) with the token it presented.
-		serve func(w http.ResponseWriter, token string, n int)
-
-		wantErr       error
-		wantRequests  int
-		wantRefreshes int
-		// wantDetail is a fragment the error must name, so a terminal auth
-		// failure tells the user what to do rather than quoting an HTTP code.
-		wantDetail string
-	}{
+	tests := []refreshCase{
 		{
 			// The ordinary mid-broadcast expiry: renew, re-send, carry on.
 			name: "success after refresh",
@@ -277,56 +262,78 @@ func TestClientRefreshesOnceAfterA401(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			var mu sync.Mutex
-			var requests int
-			var presented []string
-
-			credentials := tc.credentials()
-			cfg := ClientConfig{Credentials: credentials}
-			if tc.hook != nil {
-				cfg.OnAuthFailure = tc.hook(t, credentials)
-			}
-
-			client := newAuthTestClient(t, cfg, func(w http.ResponseWriter, r *http.Request) {
-				mu.Lock()
-				requests++
-				n := requests
-				token := bearerOf(r)
-				presented = append(presented, token)
-				mu.Unlock()
-				tc.serve(w, token, n)
-			})
-
-			_, err := client.Broadcast(context.Background(), "vid00000001")
-			switch {
-			case tc.wantErr == nil && err != nil:
-				t.Fatalf("Broadcast error = %v, want the refreshed call to succeed", err)
-			case tc.wantErr != nil && !errors.Is(err, tc.wantErr):
-				t.Fatalf("Broadcast error = %v, want %v", err, tc.wantErr)
-			}
-			if tc.wantDetail != "" && !strings.Contains(err.Error(), tc.wantDetail) {
-				t.Errorf("error = %q, want it to name %q", err, tc.wantDetail)
-			}
-
-			mu.Lock()
-			gotRequests, gotPresented := requests, append([]string(nil), presented...)
-			mu.Unlock()
-			if gotRequests != tc.wantRequests {
-				t.Errorf("requests = %d, want %d", gotRequests, tc.wantRequests)
-			}
-			if source, ok := credentials.(*refreshingCredentials); ok && tc.hook == nil {
-				if got := source.refreshCount(); got != tc.wantRefreshes {
-					t.Errorf("refreshes = %d, want %d", got, tc.wantRefreshes)
-				}
-			}
-			// The retry must present the renewed token; re-sending the
-			// expired one would be a guaranteed second rejection.
-			if len(gotPresented) == 2 && gotPresented[0] != "" && gotPresented[0] == gotPresented[1] {
-				if tc.wantRefreshes > 0 {
-					t.Errorf("the retry presented the same token as the failed attempt")
-				}
-			}
+			assertRefreshOnceAfterA401(t, tc)
 		})
+	}
+}
+
+type refreshCase struct {
+	name string
+	// credentials is the source under test.
+	credentials func() CredentialSource
+	// hook overrides the automatic wiring; nil leaves it alone.
+	hook func(*testing.T, CredentialSource) func(context.Context) error
+	// serve answers request n (1-based) with the token it presented.
+	serve func(w http.ResponseWriter, token string, n int)
+
+	wantErr       error
+	wantRequests  int
+	wantRefreshes int
+	// wantDetail is a fragment the error must name, so a terminal auth
+	// failure tells the user what to do rather than quoting an HTTP code.
+	wantDetail string
+}
+
+func assertRefreshOnceAfterA401(t *testing.T, tc refreshCase) {
+	t.Helper()
+	var mu sync.Mutex
+	var requests int
+	var presented []string
+
+	credentials := tc.credentials()
+	cfg := ClientConfig{Credentials: credentials}
+	if tc.hook != nil {
+		cfg.OnAuthFailure = tc.hook(t, credentials)
+	}
+
+	client := newAuthTestClient(t, cfg, func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requests++
+		n := requests
+		token := bearerOf(r)
+		presented = append(presented, token)
+		mu.Unlock()
+		tc.serve(w, token, n)
+	})
+
+	_, err := client.Broadcast(context.Background(), "vid00000001")
+	switch {
+	case tc.wantErr == nil && err != nil:
+		t.Fatalf("Broadcast error = %v, want the refreshed call to succeed", err)
+	case tc.wantErr != nil && !errors.Is(err, tc.wantErr):
+		t.Fatalf("Broadcast error = %v, want %v", err, tc.wantErr)
+	}
+	if tc.wantDetail != "" && !strings.Contains(err.Error(), tc.wantDetail) {
+		t.Errorf("error = %q, want it to name %q", err, tc.wantDetail)
+	}
+
+	mu.Lock()
+	gotRequests, gotPresented := requests, append([]string(nil), presented...)
+	mu.Unlock()
+	if gotRequests != tc.wantRequests {
+		t.Errorf("requests = %d, want %d", gotRequests, tc.wantRequests)
+	}
+	if source, ok := credentials.(*refreshingCredentials); ok && tc.hook == nil {
+		if got := source.refreshCount(); got != tc.wantRefreshes {
+			t.Errorf("refreshes = %d, want %d", got, tc.wantRefreshes)
+		}
+	}
+	// The retry must present the renewed token; re-sending the
+	// expired one would be a guaranteed second rejection.
+	if len(gotPresented) == 2 && gotPresented[0] != "" && gotPresented[0] == gotPresented[1] {
+		if tc.wantRefreshes > 0 {
+			t.Errorf("the retry presented the same token as the failed attempt")
+		}
 	}
 }
 

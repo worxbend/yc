@@ -120,14 +120,8 @@ type liveChatSnippet struct {
 	} `json:"giftEventDetails"`
 
 	PollDetails *struct {
-		Status   string `json:"status"`
-		Metadata struct {
-			QuestionText string `json:"questionText"`
-			Options      []struct {
-				OptionText string `json:"optionText"`
-				Tally      string `json:"tally"`
-			} `json:"options"`
-		} `json:"metadata"`
+		Status   string           `json:"status"`
+		Metadata wirePollMetadata `json:"metadata"`
 	} `json:"pollDetails"`
 
 	// MessageDeletedDetails and MessageRetractedDetails were removed from the
@@ -146,6 +140,18 @@ type liveChatSnippet struct {
 		BanType            string             `json:"banType"`
 		BanDurationSeconds string             `json:"banDurationSeconds"`
 	} `json:"userBannedDetails"`
+}
+
+// wirePollMetadata is pollDetails.metadata. Tallies arrive as JSON strings.
+type wirePollMetadata struct {
+	QuestionText string           `json:"questionText"`
+	Options      []wirePollOption `json:"options"`
+}
+
+// wirePollOption is one option of pollDetails.metadata.
+type wirePollOption struct {
+	OptionText string `json:"optionText"`
+	Tally      string `json:"tally"`
 }
 
 // wireAmountDetails is the shared money block. amountMicros is a uint64 sent as

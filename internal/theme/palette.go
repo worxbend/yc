@@ -302,20 +302,31 @@ func IdentityColor(identity string, backgrounds []string, fallback string) strin
 	if lightCanvas {
 		lightnesses = []float64{0.34, 0.28, 0.22, 0.16}
 	}
-	for _, lightness := range lightnesses {
-		candidate := hslColor(hue, saturation, lightness)
-		readable := true
-		for _, background := range parsedBackgrounds {
-			if contrastRatio(candidate, background) < MinimumTextContrast {
-				readable = false
-				break
-			}
-		}
-		if readable {
-			return canonicalHex(candidate)
-		}
+	if candidate, ok := firstReadableCandidate(hue, saturation, lightnesses, parsedBackgrounds); ok {
+		return canonicalHex(candidate)
 	}
 	return fallback
+}
+
+// firstReadableCandidate walks the lightness ladder and returns the first
+// candidate that clears MinimumTextContrast against every background.
+func firstReadableCandidate(hue, saturation float64, lightnesses []float64, backgrounds []rgb) (rgb, bool) {
+	for _, lightness := range lightnesses {
+		candidate := hslColor(hue, saturation, lightness)
+		if readableOnAll(candidate, backgrounds) {
+			return candidate, true
+		}
+	}
+	return rgb{}, false
+}
+
+func readableOnAll(candidate rgb, backgrounds []rgb) bool {
+	for _, background := range backgrounds {
+		if contrastRatio(candidate, background) < MinimumTextContrast {
+			return false
+		}
+	}
+	return true
 }
 
 // rgb is an 8-bit-per-channel color. Every public helper parses to this type,

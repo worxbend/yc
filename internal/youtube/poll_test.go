@@ -409,6 +409,7 @@ func newLedgerPoller(t *testing.T, ledger *quota.Ledger) *pollHarness {
 	harness.poller = poller
 
 	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 	t.Cleanup(func() {
 		cancel()
 		_ = poller.Close()
@@ -463,26 +464,31 @@ func TestCloseIsIdempotentAndClosesEveryStream(t *testing.T) {
 
 func drainedMessages(ch <-chan Message) bool {
 	for range ch {
+		// Drain until the channel closes.
 	}
 	return true
 }
 func drainedStates(ch <-chan ConnectionState) bool {
 	for range ch {
+		// Drain until the channel closes.
 	}
 	return true
 }
 func drainedModerations(ch <-chan ModerationEvent) bool {
 	for range ch {
+		// Drain until the channel closes.
 	}
 	return true
 }
 func drainedRooms(ch <-chan RoomEvent) bool {
 	for range ch {
+		// Drain until the channel closes.
 	}
 	return true
 }
 func drainedPolls(ch <-chan PollState) bool {
 	for range ch {
+		// Drain until the channel closes.
 	}
 	return true
 }
@@ -498,11 +504,7 @@ func TestStartTwiceIsRefused(t *testing.T) {
 }
 
 func TestNextIntervalRespectsEveryFloor(t *testing.T) {
-	for name, tc := range map[string]struct {
-		server, budget, min, max time.Duration
-		backoff                  float64
-		atLeast, atMost          time.Duration
-	}{
+	for name, tc := range map[string]nextIntervalCase{
 		"server floor wins over config minimum": {
 			server: 5 * time.Second, min: time.Second,
 			atLeast: 5 * time.Second, atMost: 6 * time.Second,
@@ -521,22 +523,33 @@ func TestNextIntervalRespectsEveryFloor(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			backoff := tc.backoff
-			if backoff == 0 {
-				backoff = 1
-			}
-			// Jitter is random, so the property is asserted over many draws
-			// rather than on one.
-			for range 500 {
-				got := NextInterval(tc.server, tc.budget, tc.min, tc.max, backoff)
-				if got < tc.atLeast || got > tc.atMost {
-					t.Fatalf("NextInterval = %v, want within [%v, %v]", got, tc.atLeast, tc.atMost)
-				}
-				if got < tc.server {
-					t.Fatalf("NextInterval = %v undercuts the server floor %v", got, tc.server)
-				}
-			}
+			assertNextIntervalRespectsFloors(t, tc)
 		})
+	}
+}
+
+type nextIntervalCase struct {
+	server, budget, min, max time.Duration
+	backoff                  float64
+	atLeast, atMost          time.Duration
+}
+
+func assertNextIntervalRespectsFloors(t *testing.T, tc nextIntervalCase) {
+	t.Helper()
+	backoff := tc.backoff
+	if backoff == 0 {
+		backoff = 1
+	}
+	// Jitter is random, so the property is asserted over many draws
+	// rather than on one.
+	for range 500 {
+		got := NextInterval(tc.server, tc.budget, tc.min, tc.max, backoff)
+		if got < tc.atLeast || got > tc.atMost {
+			t.Fatalf("NextInterval = %v, want within [%v, %v]", got, tc.atLeast, tc.atMost)
+		}
+		if got < tc.server {
+			t.Fatalf("NextInterval = %v undercuts the server floor %v", got, tc.server)
+		}
 	}
 }
 

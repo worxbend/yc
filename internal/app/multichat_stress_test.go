@@ -111,14 +111,7 @@ func TestMultiChatHighThroughputKeepsEveryTargetSeparate(t *testing.T) {
 		targetKey := keyForChatID[chatID]
 
 		// Snapshot every chat the delivery must not touch.
-		before := make(map[string]chatFingerprint, len(keys))
-		for _, key := range keys {
-			if key == targetKey {
-				continue
-			}
-			before[key] = fingerprint(model.chats.stateForKey(key))
-		}
-
+		before := multichatSnapshotOthers(model, keys, targetKey)
 		activeBefore := model.activeChatKey()
 		targetLenBefore := len(model.chats.stateForKey(targetKey).messages)
 
@@ -126,40 +119,8 @@ func TestMultiChatHighThroughputKeepsEveryTargetSeparate(t *testing.T) {
 		delivered[chatID]++
 		newest[chatID] = message.ID
 
-		// --- the delivery landed in exactly one chat ------------------------
-		target := model.chats.stateForKey(targetKey)
-		grew := len(target.messages) - targetLenBefore
-		if grew <= 0 && target.revealQueue.Len() == 0 && len(target.messages) < stressScrollback {
-			t.Fatalf("message %d for %q landed nowhere: history %d, reveals 0",
-				i, chatID, len(target.messages))
-		}
-		for key, snapshot := range before {
-			assertUnchanged(t, fmt.Sprintf("chat %q while %q received message %d", key, chatID, i),
-				snapshot, fingerprint(model.chats.stateForKey(key)))
-		}
-
-		// --- only the chat on screen animates -------------------------------
-		//
-		// A background chat that queued reveals would keep re-rendering rows
-		// nobody can see and would still be draining them minutes after the
-		// user switched away.
-		for _, key := range keys {
-			state := model.chats.stateForKey(key)
-			if got := state.revealQueue.Len(); got > animation.DefaultMaxQueued {
-				t.Fatalf("message %d: chat %q holds %d reveals, above the bound of %d",
-					i, key, got, animation.DefaultMaxQueued)
-			}
-			if key == model.activeChatKey() {
-				continue
-			}
-			if got := state.revealQueue.Len(); got != 0 {
-				t.Fatalf("message %d: background chat %q holds %d reveals", i, key, got)
-			}
-			if state.active.len() != 0 {
-				t.Fatalf("message %d: background chat %q tracks %d mid-reveal messages",
-					i, key, state.active.len())
-			}
-		}
+		multichatAssertLandedOnce(t, model, i, chatID, targetKey, targetLenBefore, before)
+		multichatAssertOnlyActiveAnimates(t, model, keys, i)
 
 		// --- unread belongs to the chats nobody is reading -------------------
 		if got := model.chats.stateForKey(model.activeChatKey()).unread; got != 0 {
@@ -167,53 +128,21 @@ func TestMultiChatHighThroughputKeepsEveryTargetSeparate(t *testing.T) {
 		}
 
 		// --- drafts never follow the user -----------------------------------
-		for key, draft := range drafts {
-			if got := model.chats.stateForKey(key).composerText; got != draft {
-				t.Fatalf("message %d: chat %q holds the draft %q, want %q", i, key, got, draft)
-			}
-		}
+		multichatAssertDrafts(t, model, drafts, "message %d: chat %q holds the draft %q, want %q", i)
 		if activeBefore != model.activeChatKey() {
 			t.Fatalf("message %d: a delivery moved the active chat from %q to %q",
 				i, activeBefore, model.activeChatKey())
 		}
 
 		// --- interaction ------------------------------------------------------
-		switch {
-		case i%29 == 0:
-			model = press(t, model, runeKey(']'))
+		var switched bool
+		model, switched = multichatInteract(t, model, clock, widths, i)
+		if switched {
 			switches++
-		case i%23 == 0:
-			model = press(t, model, key(tea.KeyCtrlG))
-			if got := render.NormalizeLayoutMode(string(model.messageLayout)); got != model.messageLayout {
-				t.Fatalf("message %d: ctrl+g produced the unknown layout %q", i, model.messageLayout)
-			}
-		case i%19 == 0:
-			size := tea.WindowSizeMsg{Width: widths[(i/19)%len(widths)], Height: 20 + (i/19)%16}
-			next, _ := model.Update(size)
-			model = next.(shellModel)
-		case i%17 == 0:
-			clock.advance(2 * animation.DefaultFrameInterval)
-			next, _ := model.Update(revealTickMsg{})
-			model = next.(shellModel)
-		case i%13 == 0:
-			// Filter the chat on screen. It is a view predicate, so it must
-			// not change what any chat retains - including this one.
-			model = press(t, model, runeKey('1'))
-		case i%11 == 0:
-			model = press(t, model, runeKey('0'))
-		case i%7 == 0:
-			model = press(t, model, key(tea.KeyPgUp))
-		case i%5 == 0:
-			model = press(t, model, key(tea.KeyEnd))
 		}
 		// Drafts are re-checked after interaction too: switching chats with a
 		// draft in the composer is exactly how a draft leaks.
-		for key, draft := range drafts {
-			if got := model.chats.stateForKey(key).composerText; got != draft {
-				t.Fatalf("message %d: interaction moved chat %q's draft to %q, want %q",
-					i, key, got, draft)
-			}
-		}
+		multichatAssertDrafts(t, model, drafts, "message %d: interaction moved chat %q's draft to %q, want %q", i)
 
 		if i%31 == 0 {
 			assertRectangularFrame(t, model, fmt.Sprintf("multi-chat flood at message %d", i))
@@ -237,54 +166,159 @@ func TestMultiChatHighThroughputKeepsEveryTargetSeparate(t *testing.T) {
 		t.Fatalf("delivered %d of %d messages", totalDelivered, len(burst))
 	}
 	for index, key := range keys {
-		state := model.chats.stateForKey(key)
 		chatID := chatIDs[index]
-		held := len(state.messages) + state.active.len()
-		if held > stressScrollback+animation.DefaultMaxQueued {
-			t.Errorf("chat %q holds %d messages, above the scrollback limit of %d",
-				key, held, stressScrollback)
-		}
-		if held > delivered[chatID] {
-			t.Errorf("chat %q holds %d messages but only %d were delivered to it",
-				key, held, delivered[chatID])
-		}
-		if held == 0 {
-			t.Errorf("chat %q holds nothing after %d deliveries", key, delivered[chatID])
-		}
-		var newestHeld bool
-		for _, message := range state.messages {
-			if message.ID == newest[chatID] {
-				newestHeld = true
-			}
-		}
-		// Mid-reveal rows are filed under a synthesized reveal key rather
-		// than the message ID, so this matches on the message itself.
-		state.active.each(func(_ string, message youtube.Message) {
-			if message.ID == newest[chatID] {
-				newestHeld = true
-			}
-		})
-		if !newestHeld {
-			t.Errorf("chat %q lost its newest message %q", key, newest[chatID])
-		}
-		// Every retained row wears the routing key it was filed under, so a
-		// misfiled message shows up here rather than as a mystery in the
-		// activity column.
-		for _, message := range state.messages {
-			if message.LiveChatID != "" && message.LiveChatID != chatID {
-				t.Fatalf("chat %q retains a message stamped for %q", key, message.LiveChatID)
-			}
-		}
+		multichatAssertAccounted(t, key, chatID, model.chats.stateForKey(key), delivered[chatID], newest[chatID])
 	}
 
 	// --- the frame is still exact at every size -----------------------------
-	for _, width := range append(widths, 8, 200) {
-		for _, height := range []int{3, 20, 34, 60} {
-			resized, _ := model.Update(tea.WindowSizeMsg{Width: width, Height: height})
-			assertRectangularFrame(t, resized.(shellModel),
-				fmt.Sprintf("post multi-chat flood at %dx%d", width, height))
+	stressAssertFrameAtSizes(t, model, append(widths, 8, 200), []int{3, 20, 34, 60}, "post multi-chat flood")
+}
+
+// multichatSnapshotOthers fingerprints every chat except targetKey.
+func multichatSnapshotOthers(model shellModel, keys []string, targetKey string) map[string]chatFingerprint {
+	before := make(map[string]chatFingerprint, len(keys))
+	for _, key := range keys {
+		if key != targetKey {
+			before[key] = fingerprint(model.chats.stateForKey(key))
 		}
 	}
+	return before
+}
+
+// multichatAssertLandedOnce asserts delivery i landed in the target chat and
+// left every other chat exactly as snapshotted in before.
+func multichatAssertLandedOnce(t *testing.T, model shellModel, i int, chatID, targetKey string, targetLenBefore int, before map[string]chatFingerprint) {
+	t.Helper()
+	target := model.chats.stateForKey(targetKey)
+	grew := len(target.messages) - targetLenBefore
+	if grew <= 0 && target.revealQueue.Len() == 0 && len(target.messages) < stressScrollback {
+		t.Fatalf("message %d for %q landed nowhere: history %d, reveals 0",
+			i, chatID, len(target.messages))
+	}
+	for key, snapshot := range before {
+		assertUnchanged(t, fmt.Sprintf("chat %q while %q received message %d", key, chatID, i),
+			snapshot, fingerprint(model.chats.stateForKey(key)))
+	}
+}
+
+// multichatAssertOnlyActiveAnimates asserts every reveal queue is bounded and
+// only the chat on screen animates.
+//
+// A background chat that queued reveals would keep re-rendering rows nobody
+// can see and would still be draining them minutes after the user switched
+// away.
+func multichatAssertOnlyActiveAnimates(t *testing.T, model shellModel, keys []string, i int) {
+	t.Helper()
+	for _, key := range keys {
+		state := model.chats.stateForKey(key)
+		if got := state.revealQueue.Len(); got > animation.DefaultMaxQueued {
+			t.Fatalf("message %d: chat %q holds %d reveals, above the bound of %d",
+				i, key, got, animation.DefaultMaxQueued)
+		}
+		if key == model.activeChatKey() {
+			continue
+		}
+		if got := state.revealQueue.Len(); got != 0 {
+			t.Fatalf("message %d: background chat %q holds %d reveals", i, key, got)
+		}
+		if state.active.len() != 0 {
+			t.Fatalf("message %d: background chat %q tracks %d mid-reveal messages",
+				i, key, state.active.len())
+		}
+	}
+}
+
+// multichatAssertDrafts asserts every chat still holds its own draft. format
+// takes the message index, chat key, held draft, and wanted draft.
+func multichatAssertDrafts(t *testing.T, model shellModel, drafts map[string]string, format string, i int) {
+	t.Helper()
+	for key, draft := range drafts {
+		if got := model.chats.stateForKey(key).composerText; got != draft {
+			t.Fatalf(format, i, key, got, draft)
+		}
+	}
+}
+
+// multichatInteract applies the interaction scheduled for delivery i,
+// reporting whether it switched chats.
+func multichatInteract(t *testing.T, model shellModel, clock *stressClock, widths []int, i int) (shellModel, bool) {
+	t.Helper()
+	switch {
+	case i%29 == 0:
+		return press(t, model, runeKey(']')), true
+	case i%23 == 0:
+		model = press(t, model, key(tea.KeyCtrlG))
+		if render.NormalizeLayoutMode(string(model.messageLayout)) != model.messageLayout {
+			t.Fatalf("message %d: ctrl+g produced the unknown layout %q", i, model.messageLayout)
+		}
+	case i%19 == 0:
+		size := tea.WindowSizeMsg{Width: widths[(i/19)%len(widths)], Height: 20 + (i/19)%16}
+		next, _ := model.Update(size)
+		model = next.(shellModel)
+	case i%17 == 0:
+		clock.advance(2 * animation.DefaultFrameInterval)
+		next, _ := model.Update(revealTickMsg{})
+		model = next.(shellModel)
+	case i%13 == 0:
+		// Filter the chat on screen. It is a view predicate, so it must
+		// not change what any chat retains - including this one.
+		model = press(t, model, runeKey('1'))
+	case i%11 == 0:
+		model = press(t, model, runeKey('0'))
+	case i%7 == 0:
+		model = press(t, model, key(tea.KeyPgUp))
+	case i%5 == 0:
+		model = press(t, model, key(tea.KeyEnd))
+	}
+	return model, false
+}
+
+// multichatAssertAccounted asserts chat key retains a bounded, non-empty share
+// of the delivered messages, still holds the newest one, and holds nothing
+// stamped for another chat.
+func multichatAssertAccounted(t *testing.T, key, chatID string, state *chatState, delivered int, newest string) {
+	t.Helper()
+	held := len(state.messages) + state.active.len()
+	if held > stressScrollback+animation.DefaultMaxQueued {
+		t.Errorf("chat %q holds %d messages, above the scrollback limit of %d",
+			key, held, stressScrollback)
+	}
+	if held > delivered {
+		t.Errorf("chat %q holds %d messages but only %d were delivered to it",
+			key, held, delivered)
+	}
+	if held == 0 {
+		t.Errorf("chat %q holds nothing after %d deliveries", key, delivered)
+	}
+	if !multichatHolds(state, func(message youtube.Message) bool { return message.ID == newest }) {
+		t.Errorf("chat %q lost its newest message %q", key, newest)
+	}
+	// Every retained row wears the routing key it was filed under, so a
+	// misfiled message shows up here rather than as a mystery in the
+	// activity column.
+	for _, message := range state.messages {
+		if message.LiveChatID != "" && message.LiveChatID != chatID {
+			t.Fatalf("chat %q retains a message stamped for %q", key, message.LiveChatID)
+		}
+	}
+}
+
+// multichatHolds reports whether any message in state's history or mid-reveal
+// set matches. Mid-reveal rows are filed under a synthesized reveal key rather
+// than the message ID, so this matches on the message itself.
+func multichatHolds(state *chatState, match func(youtube.Message) bool) bool {
+	for _, message := range state.messages {
+		if match(message) {
+			return true
+		}
+	}
+	var found bool
+	state.active.each(func(_ string, message youtube.Message) {
+		if match(message) {
+			found = true
+		}
+	})
+	return found
 }
 
 // A moderation action taken in the middle of a four-chat flood must land in the
@@ -347,34 +381,32 @@ func TestModerationDuringAMultiChatFloodStaysInItsOwnChat(t *testing.T) {
 	model = runModerationCmd(t, model, cmd)
 
 	for index, key := range keys {
-		state := model.chats.stateForKey(key)
-		var spamVisible bool
-		for _, message := range state.messages {
-			if strings.Contains(message.Text, "buy followers") {
-				spamVisible = true
-			}
-		}
-		state.active.each(func(_ string, message youtube.Message) {
-			if strings.Contains(message.Text, "buy followers") {
-				spamVisible = true
-			}
-		})
-		if key == armedKey {
-			if spamVisible {
-				t.Fatalf("the ban left the spam on screen in the chat it was armed in")
-			}
-			if len(state.moderations) != 1 {
-				t.Fatalf("the armed chat recorded %d moderations, want 1", len(state.moderations))
-			}
-			continue
-		}
-		if !spamVisible {
-			t.Fatalf("a ban in %q also blanked chat %q (index %d)", armedKey, key, index)
-		}
-		if len(state.moderations) != 0 {
-			t.Fatalf("chat %q recorded a moderation that belonged to %q", key, armedKey)
-		}
+		multichatAssertBanScoped(t, model.chats.stateForKey(key), key, armedKey, index)
 	}
 
 	assertRectangularFrame(t, model, "after moderating during a multi-chat flood")
+}
+
+// multichatAssertBanScoped asserts a ban armed in armedKey removed the spam
+// and recorded one moderation there, and left chat key untouched otherwise.
+func multichatAssertBanScoped(t *testing.T, state *chatState, key, armedKey string, index int) {
+	t.Helper()
+	spamVisible := multichatHolds(state, func(message youtube.Message) bool {
+		return strings.Contains(message.Text, "buy followers")
+	})
+	if key == armedKey {
+		if spamVisible {
+			t.Fatalf("the ban left the spam on screen in the chat it was armed in")
+		}
+		if len(state.moderations) != 1 {
+			t.Fatalf("the armed chat recorded %d moderations, want 1", len(state.moderations))
+		}
+		return
+	}
+	if !spamVisible {
+		t.Fatalf("a ban in %q also blanked chat %q (index %d)", armedKey, key, index)
+	}
+	if len(state.moderations) != 0 {
+		t.Fatalf("chat %q recorded a moderation that belonged to %q", key, armedKey)
+	}
 }

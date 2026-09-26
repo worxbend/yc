@@ -319,20 +319,11 @@ func sampleItems(liveChatID string, start time.Time) []liveChatMessage {
 	})
 	add("pollEvent", func(item *liveChatMessage) {
 		item.Snippet.PollDetails = &struct {
-			Status   string `json:"status"`
-			Metadata struct {
-				QuestionText string `json:"questionText"`
-				Options      []struct {
-					OptionText string `json:"optionText"`
-					Tally      string `json:"tally"`
-				} `json:"options"`
-			} `json:"metadata"`
+			Status   string           `json:"status"`
+			Metadata wirePollMetadata `json:"metadata"`
 		}{Status: "active"}
 		item.Snippet.PollDetails.Metadata.QuestionText = "which theme next?"
-		item.Snippet.PollDetails.Metadata.Options = []struct {
-			OptionText string `json:"optionText"`
-			Tally      string `json:"tally"`
-		}{
+		item.Snippet.PollDetails.Metadata.Options = []wirePollOption{
 			{OptionText: "kanagawa", Tally: "128"},
 			{OptionText: "rose-pine", Tally: "97"},
 		}

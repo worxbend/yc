@@ -45,7 +45,7 @@ type ChatClient interface {
 	Close() error
 }
 
-// ModerationSource is an optional ChatClient capability exposing moderation
+// ModerationStreamer is an optional ChatClient capability exposing moderation
 // actions: deletions, tombstones, bans, and timeouts.
 //
 // It is deliberately not folded into the message stream. A moderation action is
@@ -53,19 +53,19 @@ type ChatClient interface {
 // another chat message puts the removed text back in front of the viewer - on a
 // terminal that is frequently on stream. Consumers apply these to messages they
 // already hold instead.
-type ModerationSource interface {
+type ModerationStreamer interface {
 	Moderations() <-chan youtube.ModerationEvent
 }
 
-// RoomEventSource is an optional ChatClient capability exposing chat-wide state
+// RoomEventStreamer is an optional ChatClient capability exposing chat-wide state
 // changes: members-only mode, chat ended, and the broadcast going offline.
-type RoomEventSource interface {
+type RoomEventStreamer interface {
 	RoomEvents() <-chan youtube.RoomEvent
 }
 
-// PollSource is an optional ChatClient capability exposing creator polls, fed
+// PollStreamer is an optional ChatClient capability exposing creator polls, fed
 // by both pollEvent items and the list response's activePollItem.
-type PollSource interface {
+type PollStreamer interface {
 	Polls() <-chan youtube.PollState
 }
 
@@ -92,7 +92,7 @@ type Moderator interface {
 	Unban(ctx context.Context, banID string) error
 }
 
-// ModerationCapability is an optional companion to Moderator, reporting whether
+// ModerationAvailabilityChecker is an optional companion to Moderator, reporting whether
 // a client that implements the interface can currently act on it.
 //
 // The two are separate because Go interfaces are satisfied by a type, not by an
@@ -100,7 +100,7 @@ type Moderator interface {
 // methods, so asserting Moderator alone would report the capability as present
 // and only discover otherwise after a destructive keystroke had been confirmed.
 // The reason string is user-facing and carries no credential material.
-type ModerationCapability interface {
+type ModerationAvailabilityChecker interface {
 	ModerationAvailable() (available bool, reason string)
 }
 
@@ -125,20 +125,20 @@ type QuotaReporter interface {
 	Quota() quota.Snapshot
 }
 
-// PollIntervalSource is an optional ChatClient capability exposing the current
+// PollIntervalProvider is an optional ChatClient capability exposing the current
 // effective poll interval when a transport tracks cadence without owning a full
 // quota ledger.
-type PollIntervalSource interface {
+type PollIntervalProvider interface {
 	PollInterval() time.Duration
 }
 
-// IdentityLookup resolves the authenticated user's own channel. yc renders its
+// IdentityProvider resolves the authenticated user's own channel. yc renders its
 // own sent messages from a local echo, and this is the only place that echo can
 // learn the sender's display name and badges from.
 //
 // Implementations must not perform network work from View; the shell schedules
 // the lookup once at startup through a command.
-type IdentityLookup interface {
+type IdentityProvider interface {
 	Identity(ctx context.Context) (youtube.Identity, error)
 }
 
@@ -149,10 +149,10 @@ type BroadcastResolver interface {
 	Broadcast(ctx context.Context, videoID string) (youtube.BroadcastInfo, error)
 }
 
-// SubscriptionLookup feeds the chat picker's autocomplete from the user's own
+// SubscriptionProvider feeds the chat picker's autocomplete from the user's own
 // subscriptions. Failure is inline text in the picker, not an error that stops
 // the UI.
-type SubscriptionLookup interface {
+type SubscriptionProvider interface {
 	Subscriptions(ctx context.Context) ([]youtube.Subscription, error)
 }
 
@@ -163,8 +163,8 @@ type StreamInfoManager interface {
 	UpdateStreamInfo(ctx context.Context, info youtube.StreamInfo) (youtube.StreamInfo, error)
 }
 
-// CategoryLookup feeds the Stream Info tab's category picker.
-type CategoryLookup interface {
+// CategoryProvider feeds the Stream Info tab's category picker.
+type CategoryProvider interface {
 	Categories(ctx context.Context) ([]youtube.Category, error)
 }
 
@@ -205,10 +205,10 @@ type ChatLogger interface {
 type ClientOptions struct {
 	SystemNotifier     SystemNotifier
 	DebugLogger        debuglog.Logger
-	IdentityLookup     IdentityLookup
+	IdentityLookup     IdentityProvider
 	BroadcastResolver  BroadcastResolver
-	SubscriptionLookup SubscriptionLookup
+	SubscriptionLookup SubscriptionProvider
 	StreamInfoManager  StreamInfoManager
-	CategoryLookup     CategoryLookup
+	CategoryLookup     CategoryProvider
 	ChatLogger         ChatLogger
 }

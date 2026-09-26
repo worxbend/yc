@@ -20,7 +20,7 @@ func TestZeroLoggerIsUsable(t *testing.T) {
 		t.Fatal("zero Logger reports enabled, want disabled")
 	}
 	logger.Log(context.Background(), "event", slog.String("key", "value"))
-	if got := logger.Redact(fakeToken + "-value"); got == "" {
+	if logger.Redact(fakeToken+"-value") == "" {
 		t.Fatal("zero Logger.Redact() returned empty, want the value back")
 	}
 }

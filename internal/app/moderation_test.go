@@ -34,9 +34,9 @@ type fakeModeratingClient struct {
 }
 
 var (
-	_ ChatClient           = (*fakeModeratingClient)(nil)
-	_ Moderator            = (*fakeModeratingClient)(nil)
-	_ ModerationCapability = (*fakeModeratingClient)(nil)
+	_ ChatClient                    = (*fakeModeratingClient)(nil)
+	_ Moderator                     = (*fakeModeratingClient)(nil)
+	_ ModerationAvailabilityChecker = (*fakeModeratingClient)(nil)
 )
 
 func newFakeModeratingClient() *fakeModeratingClient {
@@ -494,27 +494,35 @@ func TestModerationDisabledStatesAreExplainedNotSilent(t *testing.T) {
 			model, client := moderationModel(t)
 			test.arrange(&model, client)
 
-			model, cmd := pressModeration(t, model, runeKey(moderationDeleteRune))
-			if cmd != nil {
-				t.Fatal("a disabled moderation key dispatched a request")
-			}
-			if model.moderation.stage != moderationStageIdle {
-				t.Fatalf("stage = %v, want idle", model.moderation.stage)
-			}
-			line, level := model.moderationStatus()
-			if line == "" {
-				t.Fatal("a disabled moderation key produced no explanation, which is a silent no-op")
-			}
-			if level != moderationLevelError {
-				t.Fatalf("level = %v, want error", level)
-			}
-			if !strings.Contains(line, test.want) {
-				t.Fatalf("status = %q, want it to mention %q", line, test.want)
-			}
-			if len(client.deletedIDs) != 0 {
-				t.Fatalf("a disabled key still reached the transport: %v", client.deletedIDs)
-			}
+			assertModerationDeleteExplainedNotSent(t, model, client, test.want)
 		})
+	}
+}
+
+// assertModerationDeleteExplainedNotSent presses the delete key on a model
+// whose moderation is disabled and checks it stays idle, sends nothing, and
+// explains why with an error line that mentions want.
+func assertModerationDeleteExplainedNotSent(t *testing.T, model shellModel, client *fakeModeratingClient, want string) {
+	t.Helper()
+	model, cmd := pressModeration(t, model, runeKey(moderationDeleteRune))
+	if cmd != nil {
+		t.Fatal("a disabled moderation key dispatched a request")
+	}
+	if model.moderation.stage != moderationStageIdle {
+		t.Fatalf("stage = %v, want idle", model.moderation.stage)
+	}
+	line, level := model.moderationStatus()
+	if line == "" {
+		t.Fatal("a disabled moderation key produced no explanation, which is a silent no-op")
+	}
+	if level != moderationLevelError {
+		t.Fatalf("level = %v, want error", level)
+	}
+	if !strings.Contains(line, want) {
+		t.Fatalf("status = %q, want it to mention %q", line, want)
+	}
+	if len(client.deletedIDs) != 0 {
+		t.Fatalf("a disabled key still reached the transport: %v", client.deletedIDs)
 	}
 }
 
@@ -706,7 +714,7 @@ func TestModerationStatusReachesEveryTerminalWidth(t *testing.T) {
 // --- transport wiring ------------------------------------------------------
 
 // TestLiveChatClientReportsModerationUnavailableWithoutACredential pins the
-// reason ModerationCapability exists: the methods are on the type either way,
+// reason ModerationAvailabilityChecker exists: the methods are on the type either way,
 // so only an explicit report can tell the two apart before a key is pressed.
 func TestLiveChatClientReportsModerationUnavailableWithoutACredential(t *testing.T) {
 	client, err := NewLiveChatClient(LiveChatConfig{

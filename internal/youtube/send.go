@@ -96,14 +96,17 @@ func (l *SendLimiter) Allow() (bool, time.Duration) {
 // sendPath is the liveChatMessages collection.
 const sendPath = "liveChat/messages"
 
+// liveChatTextDetails is snippet.textMessageDetails of an insert body.
+type liveChatTextDetails struct {
+	MessageText string `json:"messageText"`
+}
+
 // liveChatInsertRequest is the liveChatMessages.insert body.
 type liveChatInsertRequest struct {
 	Snippet struct {
-		LiveChatID         string `json:"liveChatId"`
-		Type               string `json:"type"`
-		TextMessageDetails struct {
-			MessageText string `json:"messageText"`
-		} `json:"textMessageDetails"`
+		LiveChatID         string              `json:"liveChatId"`
+		Type               string              `json:"type"`
+		TextMessageDetails liveChatTextDetails `json:"textMessageDetails"`
 	} `json:"snippet"`
 }
 

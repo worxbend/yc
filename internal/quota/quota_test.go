@@ -280,10 +280,10 @@ func TestCredentialFingerprintIsAHashAndNotTheInput(t *testing.T) {
 	if !ledgerFingerprintPattern.MatchString(fingerprint) {
 		t.Fatalf("fingerprint %q is not the expected hex shape", fingerprint)
 	}
-	if again := CredentialFingerprint(clientID, "UC-account"); again != fingerprint {
+	if CredentialFingerprint(clientID, "UC-account") != fingerprint {
 		t.Fatal("fingerprint is not stable across calls")
 	}
-	if other := CredentialFingerprint(clientID, "UC-other"); other == fingerprint {
+	if CredentialFingerprint(clientID, "UC-other") == fingerprint {
 		t.Fatal("two accounts share a fingerprint")
 	}
 	if got := CredentialFingerprint("", ""); got != anonymousFingerprint {

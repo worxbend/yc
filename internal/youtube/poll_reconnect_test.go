@@ -21,7 +21,6 @@ import (
 type reconnectHarness struct {
 	t      *testing.T
 	poller *Poller
-	ctx    context.Context
 
 	// sleeping receives once the poll loop has finished a cycle and parked.
 	// Waiting on it is how a test knows the response has been processed and
@@ -87,7 +86,7 @@ func newReconnectHarness(t *testing.T, target ChatTarget, respond func(listCall 
 	h.poller = poller
 
 	ctx, cancel := context.WithCancel(context.Background())
-	h.ctx = ctx
+	t.Cleanup(cancel)
 	t.Cleanup(func() {
 		cancel()
 		_ = poller.Close()
@@ -172,6 +171,8 @@ func TestReconnectResumesFromTheRetainedTokenWithoutReprinting(t *testing.T) {
 				textItem(fmt.Sprintf("m-%d", call), "fresh"),
 				call+1)
 		})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 
 	harness.awaitSleep()
 	if got := harness.nextRequest().Get("pageToken"); got != "" {
@@ -181,7 +182,7 @@ func TestReconnectResumesFromTheRetainedTokenWithoutReprinting(t *testing.T) {
 		t.Fatalf("resolve calls = %d, want 1", got)
 	}
 
-	if err := harness.poller.Reconnect(harness.ctx); err != nil {
+	if err := harness.poller.Reconnect(ctx); err != nil {
 		t.Fatalf("Reconnect error = %v", err)
 	}
 
@@ -234,67 +235,77 @@ func TestReconnectRePrimesWhenTheRetainedTokenIsRejected(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			harness := newReconnectHarness(t, ChatTarget{Raw: "chat-1", Kind: TargetLiveChatID, LiveChatID: "chat-1"},
-				func(call int, w http.ResponseWriter, _ *http.Request) {
-					switch call {
-					case 1:
-						fmt.Fprintf(w, `{"items":[%s],"nextPageToken":"stale-token","pollingIntervalMillis":1000}`,
-							textItem("m-overlap", "already on screen"))
-					case 2:
-						w.WriteHeader(tc.status)
-						fmt.Fprint(w, tc.body)
-					default:
-						fmt.Fprintf(w, `{"items":[%s,%s],"nextPageToken":"fresh-token","pollingIntervalMillis":1000}`,
-							textItem("m-overlap", "already on screen"),
-							textItem("m-after", "recovered"))
-					}
-				})
+			assertReconnectRePrimesOnRejectedToken(t, tc.status, tc.body)
+		})
+	}
+}
 
-			harness.awaitSleep()
-			harness.nextRequest()
-			if err := harness.poller.Reconnect(harness.ctx); err != nil {
-				t.Fatalf("Reconnect error = %v", err)
-			}
-
-			// The resumed session presents the retained token and is refused.
-			harness.awaitSleep()
-			if got := harness.nextRequest().Get("pageToken"); got != "stale-token" {
-				t.Fatalf("the resumed call carried pageToken %q, want stale-token", got)
-			}
-			// The rejection is a reason to re-prime, not to end the chat.
-			harness.release()
-			harness.awaitSleep()
-			if got := harness.nextRequest().Get("pageToken"); got != "" {
-				t.Fatalf("the retry after a rejected token carried pageToken %q, want none", got)
-			}
-			if state := harness.poller.State(); state == PollerEnded {
-				t.Fatal("a rejected continuation token ended the session")
-			}
-
-			// The re-primed page still must not reprint what is on screen.
-			messages := drainMessages(harness.poller)
-			overlaps, recovered := 0, 0
-			for _, message := range messages {
-				switch message.ID {
-				case "m-overlap":
-					overlaps++
-				case "m-after":
-					recovered++
-				}
-			}
-			if overlaps != 1 {
-				t.Fatalf("m-overlap was delivered %d times across a re-prime, want exactly once", overlaps)
-			}
-			if recovered != 1 {
-				t.Fatalf("the recovered message arrived %d times, want once", recovered)
-			}
-
-			// A rejected token must not be handed to the next reconnect: it
-			// would spend a unit to be refused all over again.
-			if got := harness.poller.pageToken(); got == "stale-token" {
-				t.Fatal("the poller retained a continuation token the API had already rejected")
+// assertReconnectRePrimesOnRejectedToken drives one rejected-token status
+// through a reconnect: the resume is refused, the session re-primes, and the
+// rejected token is discarded.
+func assertReconnectRePrimesOnRejectedToken(t *testing.T, status int, body string) {
+	t.Helper()
+	harness := newReconnectHarness(t, ChatTarget{Raw: "chat-1", Kind: TargetLiveChatID, LiveChatID: "chat-1"},
+		func(call int, w http.ResponseWriter, _ *http.Request) {
+			switch call {
+			case 1:
+				fmt.Fprintf(w, `{"items":[%s],"nextPageToken":"stale-token","pollingIntervalMillis":1000}`,
+					textItem("m-overlap", "already on screen"))
+			case 2:
+				w.WriteHeader(status)
+				fmt.Fprint(w, body)
+			default:
+				fmt.Fprintf(w, `{"items":[%s,%s],"nextPageToken":"fresh-token","pollingIntervalMillis":1000}`,
+					textItem("m-overlap", "already on screen"),
+					textItem("m-after", "recovered"))
 			}
 		})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	harness.awaitSleep()
+	harness.nextRequest()
+	if err := harness.poller.Reconnect(ctx); err != nil {
+		t.Fatalf("Reconnect error = %v", err)
+	}
+
+	// The resumed session presents the retained token and is refused.
+	harness.awaitSleep()
+	if got := harness.nextRequest().Get("pageToken"); got != "stale-token" {
+		t.Fatalf("the resumed call carried pageToken %q, want stale-token", got)
+	}
+	// The rejection is a reason to re-prime, not to end the chat.
+	harness.release()
+	harness.awaitSleep()
+	if got := harness.nextRequest().Get("pageToken"); got != "" {
+		t.Fatalf("the retry after a rejected token carried pageToken %q, want none", got)
+	}
+	if harness.poller.State() == PollerEnded {
+		t.Fatal("a rejected continuation token ended the session")
+	}
+
+	// The re-primed page still must not reprint what is on screen.
+	messages := drainMessages(harness.poller)
+	overlaps, recovered := 0, 0
+	for _, message := range messages {
+		switch message.ID {
+		case "m-overlap":
+			overlaps++
+		case "m-after":
+			recovered++
+		}
+	}
+	if overlaps != 1 {
+		t.Fatalf("m-overlap was delivered %d times across a re-prime, want exactly once", overlaps)
+	}
+	if recovered != 1 {
+		t.Fatalf("the recovered message arrived %d times, want once", recovered)
+	}
+
+	// A rejected token must not be handed to the next reconnect: it
+	// would spend a unit to be refused all over again.
+	if harness.poller.pageToken() == "stale-token" {
+		t.Fatal("the poller retained a continuation token the API had already rejected")
 	}
 }
 

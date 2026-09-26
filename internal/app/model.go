@@ -156,11 +156,11 @@ type shellModel struct {
 	systemNotifier SystemNotifier
 	debugLogger    debuglog.Logger
 
-	identityLookup     IdentityLookup
+	identityLookup     IdentityProvider
 	broadcastResolver  BroadcastResolver
-	subscriptionLookup SubscriptionLookup
+	subscriptionLookup SubscriptionProvider
 	streamInfoManager  StreamInfoManager
-	categoryLookup     CategoryLookup
+	categoryLookup     CategoryProvider
 
 	// chatLogger is the opt-in chat log. chatLogFailed latches the first
 	// write failure so a full disk degrades to one status notice rather
@@ -257,7 +257,7 @@ type shellModel struct {
 // drifted: four display settings that config parsed, doctor validated, and the
 // toggles persisted did nothing in the only mode that talked to the network.
 // Callers add only their source-specific tail.
-func newShellModel(cfg config.Config, clock animation.Clock) shellModel {
+func newShellModel(cfg config.Config, clock animation.Nower) shellModel {
 	animationConfig := animationConfigFor(cfg.Features.AnimationMode)
 	chats := newChatStateSet(
 		configuredTargets(cfg.DefaultChats),
@@ -296,7 +296,7 @@ func newShellModel(cfg config.Config, clock animation.Clock) shellModel {
 // newLiveModel builds the model for a real chat client plus its optional
 // collaborators. Every collaborator is nil-able: a credential-free run drives
 // the whole UI with absent data rather than failing.
-func newLiveModel(cfg config.Config, client ChatClient, clock animation.Clock, opts ClientOptions) shellModel {
+func newLiveModel(cfg config.Config, client ChatClient, clock animation.Nower, opts ClientOptions) shellModel {
 	model := newShellModel(cfg, clock)
 	model.client = client
 	model.systemNotifier = opts.SystemNotifier
