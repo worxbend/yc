@@ -97,7 +97,7 @@ check_shebang() {
 		report_at "$file" 1 "no shebang"
 		;;
 	esac
-	if [ ! -x "$file" ]; then
+	if [[ ! -x $file ]]; then
 		report_at "$file" 1 "not executable (chmod +x)"
 	fi
 }
@@ -128,12 +128,14 @@ check_hygiene() {
 		n=$((n + 1))
 		case "$line" in
 		*$'\r') report_at "$file" "$n" "CRLF line ending" ;;
+		*) ;;
 		esac
 		case "$line" in
 		*[[:space:]]) report_at "$file" "$n" "trailing whitespace" ;;
+		*) ;;
 		esac
 	done
-	if [ -n "$(tail -c 1 "$file")" ]; then
+	if [[ -n $(tail -c 1 "$file") ]]; then
 		report_at "$file" "$n" "no newline at end of file"
 	fi
 }
@@ -150,6 +152,7 @@ check_no_shell_execution() {
 		code=${line#"${line%%[![:space:]]*}"}
 		case "$code" in
 		'#'*) continue ;;
+		*) ;;
 		esac
 		if [[ $code =~ \|[[:space:]]*(sudo[[:space:]]+)?(ba|z|k)?sh([[:space:]]|$) ]]; then
 			report_at "$file" "$n" "pipes into a shell: $code"
@@ -184,11 +187,12 @@ run_shellcheck() {
 
 main() {
 	local -a files=()
-	while [ "$#" -gt 0 ]; do
-		case "$1" in
+	while [[ $# -gt 0 ]]; do
+		local option=$1
+		case "$option" in
 		-s | --severity)
-			[ "$#" -ge 2 ] || {
-				printf 'shell_lint_test: missing value for %s\n' "$1" >&2
+			[[ $# -ge 2 ]] || {
+				printf 'shell_lint_test: missing value for %s\n' "$option" >&2
 				exit 2
 			}
 			severity=$2
@@ -207,7 +211,7 @@ main() {
 			exit 0
 			;;
 		-*)
-			printf 'shell_lint_test: unknown option: %s\n\n' "$1" >&2
+			printf 'shell_lint_test: unknown option: %s\n\n' "$option" >&2
 			usage >&2
 			exit 2
 			;;
@@ -226,21 +230,21 @@ main() {
 		;;
 	esac
 
-	if [ "${#files[@]}" -eq 0 ]; then
+	if [[ ${#files[@]} -eq 0 ]]; then
 		local candidate
 		for candidate in "$script_dir"/*.sh; do
-			[ -e "$candidate" ] || continue
+			[[ -e $candidate ]] || continue
 			files+=("$candidate")
 		done
 	fi
-	if [ "${#files[@]}" -eq 0 ]; then
+	if [[ ${#files[@]} -eq 0 ]]; then
 		printf 'no shell scripts found in %s\n' "$script_dir" >&2
 		exit 1
 	fi
 
 	local file
 	for file in "${files[@]}"; do
-		[ -f "$file" ] || {
+		[[ -f $file ]] || {
 			report "$file:0: not a file"
 			continue
 		}
@@ -255,11 +259,11 @@ main() {
 	run_shellcheck "${files[@]}"
 
 	printf '\n'
-	if [ "$strict" -eq 1 ]; then
+	if [[ $strict -eq 1 ]]; then
 		findings=$((findings + notes))
 		notes=0
 	fi
-	if [ "$findings" -eq 0 ]; then
+	if [[ $findings -eq 0 ]]; then
 		printf 'PASS %s script(s) checked, no findings, %s note(s)\n' "$checked" "$notes"
 		return 0
 	fi

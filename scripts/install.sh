@@ -32,12 +32,16 @@ readonly YC_BIN_NAME="yc"
 # pipefail is not POSIX, so dash and ash abort on that line with "Illegal option
 # -o pipefail" - a confusing failure instead of the instruction this header
 # promises. Nothing above this point relies on bash.
-if [ -z "${BASH_VERSION:-}" ]; then
+# It is a case rather than a test so it reads the same under every shell.
+case "${BASH_VERSION:-}" in
+'')
 	printf 'yc: error: this installer requires bash; pipe it into bash:\n' >&2
 	printf "  curl --proto '=https' --tlsv1.2 -sSf https://github.com/%s/releases/latest/download/install.sh | bash\n" \
 		"$YC_REPO" >&2
 	exit 1
-fi
+	;;
+*) ;;
+esac
 
 set -euo pipefail
 
@@ -85,7 +89,7 @@ die() {
 tmp_dir=""
 
 cleanup() {
-	[ -z "$tmp_dir" ] || rm -rf -- "$tmp_dir"
+	[[ -z $tmp_dir ]] || rm -rf -- "$tmp_dir"
 }
 
 require_cmd() {
@@ -100,7 +104,7 @@ detect_platform() {
 	os=$(uname -s 2>/dev/null || echo unknown)
 	arch=$(uname -m 2>/dev/null || echo unknown)
 
-	if [ "$os" != "Linux" ]; then
+	if [[ $os != Linux ]]; then
 		printf 'yc: error: prebuilt binaries are published for Linux only (this system reports %s).\n' "$os" >&2
 		printf '  Build from source instead:\n' >&2
 		printf '    go install github.com/%s/cmd/%s@latest\n' "$YC_REPO" "$YC_BIN_NAME" >&2
@@ -163,18 +167,18 @@ sha256_of() {
 verify_checksum() {
 	local bin_file=$1 sum_file=$2 expected actual
 
-	[ -s "$sum_file" ] || die "the published checksum file is empty; refusing to install"
+	[[ -s $sum_file ]] || die "the published checksum file is empty; refusing to install"
 
 	expected=$(awk 'NR == 1 { print $1 }' "$sum_file" | tr -d '\r' | tr 'A-F' 'a-f')
 
-	if [ "${#expected}" -ne 64 ] || [ -n "${expected//[0-9a-f]/}" ]; then
+	if [[ ${#expected} -ne 64 || -n ${expected//[0-9a-f]/} ]]; then
 		rm -f -- "$bin_file"
 		die "the published checksum file is not a SHA-256 digest; refusing to install"
 	fi
 
 	actual=$(sha256_of "$bin_file")
 
-	if [ "$expected" != "$actual" ]; then
+	if [[ $expected != "$actual" ]]; then
 		rm -f -- "$bin_file"
 		printf 'yc: error: CHECKSUM MISMATCH — the download does not match the published digest.\n' >&2
 		printf '  expected: %s\n' "$expected" >&2
@@ -207,10 +211,10 @@ warn_if_not_on_path() {
 }
 
 do_uninstall() {
-	local bin_dir=$1 dest="$1/$YC_BIN_NAME" other
+	local dest="$1/$YC_BIN_NAME" other
 
-	if [ -e "$dest" ] || [ -L "$dest" ]; then
-		[ ! -d "$dest" ] || die "$dest is a directory; refusing to remove it"
+	if [[ -e $dest || -L $dest ]]; then
+		[[ ! -d $dest ]] || die "$dest is a directory; refusing to remove it"
 		rm -f -- "$dest"
 		log "removed $dest"
 	else
@@ -220,7 +224,7 @@ do_uninstall() {
 	# A copy installed somewhere else stays put; say so instead of pretending
 	# the machine is clean.
 	other=$(command -v "$YC_BIN_NAME" 2>/dev/null || true)
-	if [ -n "$other" ]; then
+	if [[ -n $other ]]; then
 		warn "another $YC_BIN_NAME is still on your PATH at $other (left untouched)"
 	fi
 
@@ -239,10 +243,11 @@ main() {
 	local dry_run=0 uninstall=0
 	local goarch=""
 
-	while [ "$#" -gt 0 ]; do
-		case "$1" in
+	while [[ $# -gt 0 ]]; do
+		local option=$1
+		case "$option" in
 		--version)
-			[ "$#" -ge 2 ] || die "missing value for --version"
+			[[ $# -ge 2 ]] || die "missing value for --version"
 			version=$2
 			shift 2
 			;;
@@ -251,7 +256,7 @@ main() {
 			shift
 			;;
 		--bin-dir | --dir)
-			[ "$#" -ge 2 ] || die "missing value for $1"
+			[[ $# -ge 2 ]] || die "missing value for $option"
 			bin_dir=$2
 			shift 2
 			;;
@@ -272,23 +277,23 @@ main() {
 			exit 0
 			;;
 		*)
-			printf 'yc: error: unknown option: %s\n\n' "$1" >&2
+			printf 'yc: error: unknown option: %s\n\n' "$option" >&2
 			usage >&2
 			exit 2
 			;;
 		esac
 	done
 
-	[ -n "$bin_dir" ] || die "the install directory must not be empty"
-	[ -n "$version" ] || die "the version must not be empty"
+	[[ -n $bin_dir ]] || die "the install directory must not be empty"
+	[[ -n $version ]] || die "the version must not be empty"
 
 	# The tag becomes part of a URL path. Keep it to the characters a release
 	# tag actually uses so it cannot smuggle a path segment or a query.
-	if [ "$version" != "latest" ] && [ -n "${version//[0-9A-Za-z._+-]/}" ]; then
+	if [[ $version != latest && -n ${version//[0-9A-Za-z._+-]/} ]]; then
 		die "invalid version '$version'; expected a release tag such as v0.1.0"
 	fi
 
-	if [ "$uninstall" -eq 1 ]; then
+	if [[ $uninstall -eq 1 ]]; then
 		do_uninstall "$bin_dir"
 		return 0
 	fi
@@ -297,13 +302,13 @@ main() {
 
 	local asset="${YC_BIN_NAME}_linux_${goarch}"
 	local base_url
-	if [ "$version" = "latest" ]; then
+	if [[ $version == latest ]]; then
 		base_url="https://github.com/${YC_REPO}/releases/latest/download"
 	else
 		base_url="https://github.com/${YC_REPO}/releases/download/${version}"
 	fi
 
-	if [ "$dry_run" -eq 1 ]; then
+	if [[ $dry_run -eq 1 ]]; then
 		printf 'yc install dry run — nothing was downloaded, nothing was written.\n'
 		printf '  platform:  linux/%s\n' "$goarch"
 		printf '  release:   %s\n' "$version"
@@ -338,14 +343,14 @@ main() {
 	fetch "$base_url/$asset.sha256" "$tmp_dir/$asset.sha256" ||
 		die "could not download the checksum for $asset; refusing to install an unverified binary"
 
-	[ -s "$tmp_dir/$asset" ] || die "the downloaded binary is empty; refusing to install"
+	[[ -s $tmp_dir/$asset ]] || die "the downloaded binary is empty; refusing to install"
 
 	local digest
 	digest=$(verify_checksum "$tmp_dir/$asset" "$tmp_dir/$asset.sha256")
 	log "checksum verified (sha256:$digest)"
 
 	mkdir -p -- "$bin_dir" || die "could not create $bin_dir"
-	[ -w "$bin_dir" ] || die "$bin_dir is not writable; pass --bin-dir DIR to install elsewhere"
+	[[ -w $bin_dir ]] || die "$bin_dir is not writable; pass --bin-dir DIR to install elsewhere"
 
 	# Install to a staging name in the destination directory and rename, so an
 	# interrupted run cannot leave a half-written yc on PATH, and so replacing
@@ -361,7 +366,7 @@ main() {
 
 	local reported
 	reported=$("$bin_dir/$YC_BIN_NAME" --version 2>/dev/null || true)
-	[ -n "$reported" ] || die "the installed binary did not run; remove $bin_dir/$YC_BIN_NAME and report this"
+	[[ -n $reported ]] || die "the installed binary did not run; remove $bin_dir/$YC_BIN_NAME and report this"
 	log "installed $reported"
 
 	warn_if_not_on_path "$bin_dir"

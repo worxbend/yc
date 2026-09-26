@@ -105,14 +105,14 @@ readonly TESTS=(
 # --- output -----------------------------------------------------------------
 
 use_colour=0
-if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+if [[ -t 1 && -z ${NO_COLOR:-} ]]; then
 	use_colour=1
 fi
 
 paint() {
 	local colour=$1
 	shift
-	if [ "$use_colour" -eq 1 ]; then
+	if [[ $use_colour -eq 1 ]]; then
 		printf '\033[%sm%s\033[0m' "$colour" "$*"
 	else
 		printf '%s' "$*"
@@ -160,11 +160,11 @@ require_tools() {
 	for tool in python3 openssl curl sha256sum mktemp install awk; do
 		command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
 	done
-	if [ "${#missing[@]}" -gt 0 ]; then
+	if [[ ${#missing[@]} -gt 0 ]]; then
 		skip_run "missing ${missing[*]}"
 	fi
-	[ -f "$INSTALL_SH" ] || die "$INSTALL_SH not found"
-	[ -x "$INSTALL_SH" ] || die "$INSTALL_SH is not executable"
+	[[ -f $INSTALL_SH ]] || die "$INSTALL_SH not found"
+	[[ -x $INSTALL_SH ]] || die "$INSTALL_SH is not executable"
 }
 
 # --- sandbox ----------------------------------------------------------------
@@ -177,13 +177,13 @@ keep=0
 cleanup() {
 	local status=$? pid
 	for pid in "$server_pid" "$plain_pid"; do
-		if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+		if [[ -n $pid ]] && kill -0 "$pid" 2>/dev/null; then
 			kill "$pid" 2>/dev/null || true
 			wait "$pid" 2>/dev/null || true
 		fi
 	done
-	if [ -n "$work" ] && [ -d "$work" ]; then
-		if [ "$keep" -eq 1 ]; then
+	if [[ -n $work && -d $work ]]; then
+		if [[ $keep -eq 1 ]]; then
 			printf 'sandbox kept at %s\n' "$work"
 		else
 			rm -rf -- "$work"
@@ -219,7 +219,7 @@ write_payload() {
 		printf '#!/usr/bin/env bash\n'
 		printf '# fake yc %s (linux/%s) written by scripts/install_test.sh\n' "$version" "$arch"
 		printf 'printf "%%s :: %%s\\n" "$0" "$*" >> %q\n' "$exec_log"
-		if [ "$flavour" = hostile ]; then
+		if [[ $flavour == hostile ]]; then
 			printf 'printf "the downloaded payload was executed\\n" >> %q\n' "$work/executed-payload"
 			printf 'exit 0\n'
 		fi
@@ -372,15 +372,15 @@ PYTHON
 
 await_port() {
 	local pid=$1 port_file=$2 err_file=$3 waited=0 found=""
-	while [ "$waited" -lt 200 ]; do
+	while [[ $waited -lt 200 ]]; do
 		found=$(head -n 1 "$port_file" 2>/dev/null || true)
-		[ -n "$found" ] && break
+		[[ -n $found ]] && break
 		kill -0 "$pid" 2>/dev/null ||
 			die "the fake release server exited: $(cat "$err_file")"
 		sleep 0.05
 		waited=$((waited + 1))
 	done
-	[ -n "$found" ] || die "the fake release server never reported a port"
+	[[ -n $found ]] || die "the fake release server never reported a port"
 	printf '%s' "$found"
 }
 
@@ -409,7 +409,7 @@ build_sandbox_path() {
 	local dirs=() tool dir
 	for tool in curl wget sha256sum mktemp install awk env cat rm mv chmod mkdir tr uname stat; do
 		dir=$(command -v "$tool" 2>/dev/null || true)
-		[ -n "$dir" ] || continue
+		[[ -n $dir ]] || continue
 		dir=$(dirname -- "$dir")
 		case " ${dirs[*]-} " in
 		*" $dir "*) ;;
@@ -484,7 +484,7 @@ toolbox() {
 	mkdir -p "$t/toolbox"
 	for tool in bash "$@"; do
 		src=$(command -v "$tool" 2>/dev/null || true)
-		[ -n "$src" ] || die "toolbox: $tool not found"
+		[[ -n $src ]] || die "toolbox: $tool not found"
 		ln -s -- "$src" "$t/toolbox/$tool"
 	done
 	toolbox_only=1
@@ -492,10 +492,10 @@ toolbox() {
 
 run_install() {
 	local path="$t/fakebin:$sandbox_path"
-	if [ "$toolbox_only" -eq 1 ]; then
+	if [[ $toolbox_only -eq 1 ]]; then
 		path="$t/fakebin:$t/toolbox"
 	fi
-	if [ -n "$path_extra" ]; then
+	if [[ -n $path_extra ]]; then
 		path="$path:$path_extra"
 	fi
 
@@ -505,7 +505,7 @@ run_install() {
 		"TMPDIR=${tmpdir_override:-$t/tmp}"
 		"CURL_HOME=$t/home"
 	)
-	if [ "${#extra_env[@]}" -gt 0 ]; then
+	if [[ ${#extra_env[@]} -gt 0 ]]; then
 		env_args+=("${extra_env[@]}")
 	fi
 
@@ -528,36 +528,42 @@ fail() {
 }
 
 assert_status() {
-	[ "$status" -eq "$1" ] || fail "expected exit status $1, got $status"
+	local want=$1
+	[[ $status -eq $want ]] || fail "expected exit status $want, got $status"
 }
 
 assert_stderr_has() {
-	grep -qF -- "$1" "$t/err" || fail "stderr does not mention: $1"
+	local needle=$1
+	grep -qF -- "$needle" "$t/err" || fail "stderr does not mention: $needle"
 }
 
 assert_stderr_lacks() {
-	grep -qF -- "$1" "$t/err" && fail "stderr should not mention: $1"
+	local needle=$1
+	grep -qF -- "$needle" "$t/err" && fail "stderr should not mention: $needle"
 	return 0
 }
 
 assert_stdout_has() {
-	grep -qF -- "$1" "$t/out" || fail "stdout does not mention: $1"
+	local needle=$1
+	grep -qF -- "$needle" "$t/out" || fail "stdout does not mention: $needle"
 }
 
 assert_stdout_lacks() {
-	grep -qF -- "$1" "$t/out" && fail "stdout should not mention: $1"
+	local needle=$1
+	grep -qF -- "$needle" "$t/out" && fail "stdout should not mention: $needle"
 	return 0
 }
 
 assert_installed() {
-	[ -f "$1" ] || fail "$1 was not installed"
-	local mode
-	mode=$(stat -c '%a' "$1")
-	[ "$mode" = "755" ] || fail "$1 has mode $mode, expected 755"
+	local file=$1 mode
+	[[ -f $file ]] || fail "$file was not installed"
+	mode=$(stat -c '%a' "$file")
+	[[ $mode == 755 ]] || fail "$file has mode $mode, expected 755"
 }
 
 assert_same_bytes() {
-	cmp -s -- "$1" "$2" || fail "$1 and $2 differ"
+	local first=$1 second=$2
+	cmp -s -- "$first" "$second" || fail "$first and $second differ"
 }
 
 # assert_nothing_installed also catches the staging file install.sh writes
@@ -569,24 +575,24 @@ assert_same_bytes() {
 # shellcheck disable=SC2120
 assert_nothing_installed() {
 	local dir=${1:-$bin_dir} leftovers
-	[ -d "$dir" ] || return 0
+	[[ -d $dir ]] || return 0
 	leftovers=$(find "$dir" -mindepth 1 | sort | tr '\n' ' ')
-	[ -z "$leftovers" ] || fail "expected $dir to be empty, found: $leftovers"
+	[[ -z $leftovers ]] || fail "expected $dir to be empty, found: $leftovers"
 }
 
 # Optional directory argument, as above.
 # shellcheck disable=SC2120
 assert_no_staging_file() {
 	local dir=${1:-$bin_dir} leftovers
-	[ -d "$dir" ] || return 0
+	[[ -d $dir ]] || return 0
 	leftovers=$(find "$dir" -mindepth 1 -name '.yc.install.*' | tr '\n' ' ')
-	[ -z "$leftovers" ] || fail "a staging file survived: $leftovers"
+	[[ -z $leftovers ]] || fail "a staging file survived: $leftovers"
 }
 
 assert_temp_is_clean() {
 	local leftovers
 	leftovers=$(find "$t/tmp" -mindepth 1 -maxdepth 1 | tr '\n' ' ')
-	[ -z "$leftovers" ] || fail "the download directory was not removed: $leftovers"
+	[[ -z $leftovers ]] || fail "the download directory was not removed: $leftovers"
 }
 
 executions_since() {
@@ -596,7 +602,7 @@ executions_since() {
 assert_execution_count() {
 	local want=$1 got
 	got=$(executions_since | grep -c . || true)
-	[ "$got" -eq "$want" ] ||
+	[[ $got -eq $want ]] ||
 		fail "expected $want payload execution(s), got $got: $(executions_since | tr '\n' ';')"
 }
 
@@ -604,7 +610,7 @@ assert_only_execution_is() {
 	local want_path=$1 want_args=$2 line
 	assert_execution_count 1
 	line=$(executions_since | head -n 1)
-	[ "$line" = "$want_path :: $want_args" ] ||
+	[[ $line == "$want_path :: $want_args" ]] ||
 		fail "expected the payload to run once as '$want_path :: $want_args', got '$line'"
 }
 
@@ -615,24 +621,26 @@ requests_since() {
 assert_no_requests() {
 	local seen
 	seen=$(requests_since | tr '\n' ';')
-	[ -z "$seen" ] || fail "expected no request to the release server, got: $seen"
+	[[ -z $seen ]] || fail "expected no request to the release server, got: $seen"
 }
 
 assert_requested() {
-	requests_since | grep -qF -- "$1" ||
-		fail "expected a request for $1, saw: $(requests_since | tr '\n' ';')"
+	local pattern=$1
+	requests_since | grep -qF -- "$pattern" ||
+		fail "expected a request for $pattern, saw: $(requests_since | tr '\n' ';')"
 }
 
 assert_not_requested() {
-	requests_since | grep -qF -- "$1" &&
-		fail "did not expect a request for $1"
+	local pattern=$1
+	requests_since | grep -qF -- "$pattern" &&
+		fail "did not expect a request for $pattern"
 	return 0
 }
 
 assert_no_plain_http_requests() {
 	local seen
 	seen=$(tail -n +"$((plain_before + 1))" "$plain_log" | tr '\n' ';')
-	[ -z "$seen" ] || fail "install.sh spoke plain HTTP to the mirror: $seen"
+	[[ -z $seen ]] || fail "install.sh spoke plain HTTP to the mirror: $seen"
 }
 
 served() {
@@ -699,7 +707,7 @@ test_writes_nothing_outside_the_bin_dir() {
 
 	local unexpected
 	unexpected=$(find "$t/home" -mindepth 1 ! -name '.curlrc' | tr '\n' ' ')
-	[ -z "$unexpected" ] || fail "install.sh wrote outside the bin dir: $unexpected"
+	[[ -z $unexpected ]] || fail "install.sh wrote outside the bin dir: $unexpected"
 	assert_temp_is_clean
 }
 
@@ -782,7 +790,7 @@ test_never_executes_downloaded_content() {
 
 	assert_status 1
 	assert_stderr_has 'CHECKSUM MISMATCH'
-	[ ! -e "$work/executed-payload" ] ||
+	[[ ! -e $work/executed-payload ]] ||
 		fail "the downloaded payload was executed: $(cat "$work/executed-payload")"
 	assert_execution_count 0
 	assert_nothing_installed
@@ -792,7 +800,7 @@ test_never_executes_downloaded_content() {
 	run_install --bin-dir "$bin_dir"
 	assert_status 0
 	assert_only_execution_is "$bin_dir/yc" '--version'
-	[ ! -e "$work/executed-payload" ] || fail "a payload was executed during a successful install"
+	[[ ! -e $work/executed-payload ]] || fail "a payload was executed during a successful install"
 }
 
 # A redirect out of HTTPS is the classic downgrade. The mirror on the other
@@ -862,11 +870,11 @@ test_dry_run_touches_neither_network_nor_disk() {
 	assert_stdout_has "$bin_dir/yc (mode 0755)"
 	assert_no_requests
 	assert_execution_count 0
-	[ ! -e "$bin_dir" ] || fail "--dry-run created $bin_dir"
+	[[ ! -e $bin_dir ]] || fail "--dry-run created $bin_dir"
 
 	local unexpected
 	unexpected=$(find "$t/home" "$t/tmp" -mindepth 1 ! -name '.curlrc' | tr '\n' ' ')
-	[ -z "$unexpected" ] || fail "--dry-run wrote: $unexpected"
+	[[ -z $unexpected ]] || fail "--dry-run wrote: $unexpected"
 }
 
 test_dry_run_reports_the_pinned_release() {
@@ -1020,7 +1028,7 @@ test_reinstall_replaces_the_previous_binary() {
 
 	local entries
 	entries=$(find "$bin_dir" -mindepth 1 | wc -l)
-	[ "$entries" -eq 1 ] || fail "expected one file in $bin_dir, found $entries"
+	[[ $entries -eq 1 ]] || fail "expected one file in $bin_dir, found $entries"
 }
 
 test_uninstall_removes_only_the_binary() {
@@ -1032,8 +1040,8 @@ test_uninstall_removes_only_the_binary() {
 	run_install --bin-dir "$bin_dir" --uninstall
 	assert_status 0
 	assert_stderr_has "removed $bin_dir/yc"
-	[ ! -e "$bin_dir/yc" ] || fail "yc survived --uninstall"
-	[ -f "$bin_dir/other-tool" ] || fail "--uninstall removed an unrelated file"
+	[[ ! -e $bin_dir/yc ]] || fail "yc survived --uninstall"
+	[[ -f $bin_dir/other-tool ]] || fail "--uninstall removed an unrelated file"
 	assert_no_requests
 	assert_execution_count 0
 }
@@ -1044,7 +1052,7 @@ test_uninstall_refuses_a_directory() {
 
 	assert_status 1
 	assert_stderr_has 'is a directory; refusing to remove it'
-	[ -d "$bin_dir/yc/inner" ] || fail "--uninstall removed a directory it promised to leave"
+	[[ -d $bin_dir/yc/inner ]] || fail "--uninstall removed a directory it promised to leave"
 }
 
 test_uninstall_is_idempotent() {
@@ -1081,7 +1089,7 @@ test_stays_quiet_when_the_bin_dir_is_on_path() {
 }
 
 test_refuses_an_unwritable_bin_dir() {
-	if [ "$(id -u)" -eq 0 ]; then
+	if [[ $(id -u) -eq 0 ]]; then
 		exit 77
 	fi
 	mkdir -p "$bin_dir"
@@ -1115,7 +1123,7 @@ for required in --https-only --secure-protocol=TLSv1_2 --max-redirect; do
 	esac
 done
 url="" out=""
-while [ "\$#" -gt 0 ]; do
+while [[ "\$#" -gt 0 ]]; do
 	case "\$1" in
 	-O)
 		out=\$2
@@ -1128,7 +1136,7 @@ while [ "\$#" -gt 0 ]; do
 		;;
 	esac
 done
-[ -n "\$url" ] && [ -n "\$out" ] || exit 92
+[[ -n "\$url" && -n "\$out" ]] || exit 92
 exec $real_curl --proto '=https' --proto-redir '=https' --tlsv1.2 \\
 	--location --max-redirs 5 --max-time 60 -sSf "\$url" -o "\$out"
 WGET
@@ -1156,7 +1164,7 @@ test_refuses_without_any_checksum_tool() {
 	toolbox curl mktemp install awk env cat rm mv chmod mkdir tr stat
 	run_install --bin-dir "$bin_dir"
 
-	[ "$status" -ne 0 ] || fail "install.sh installed a binary it could not verify"
+	[[ $status -ne 0 ]] || fail "install.sh installed a binary it could not verify"
 	assert_stderr_has 'is required to verify the download'
 	assert_nothing_installed
 	assert_execution_count 0
@@ -1222,7 +1230,7 @@ test_a_hostile_tmpdir_must_not_execute_code() {
 
 	run_install --bin-dir "$bin_dir"
 
-	if [ -e "$marker" ]; then
+	if [[ -e $marker ]]; then
 		printf 'KNOWN BUG - scripts/install.sh:322 executes code from TMPDIR\n'
 		printf '  TMPDIR was: %s\n' "$hostile"
 		printf '  the trap ran the embedded command and created: %s\n' "$marker"
@@ -1243,7 +1251,7 @@ test_a_hostile_tmpdir_must_not_execute_code() {
 	assert_installed "$bin_dir/yc"
 	local leftovers
 	leftovers=$(find "$hostile" -mindepth 1 -maxdepth 1 | tr '\n' ' ')
-	[ -z "$leftovers" ] || fail "the download directory survived: $leftovers"
+	[[ -z $leftovers ]] || fail "the download directory survived: $leftovers"
 }
 
 # The whole script lives in functions with `main "$@"` on the last line, so a
@@ -1251,7 +1259,7 @@ test_a_hostile_tmpdir_must_not_execute_code() {
 test_a_truncated_download_installs_nothing() {
 	local last
 	last=$(tail -n 1 "$INSTALL_SH")
-	[ "$last" = 'main "$@"' ] ||
+	[[ $last == 'main "$@"' ]] ||
 		fail "install.sh must end with 'main \"\$@\"' or a truncated download could run something, got: $last"
 
 	local lines cut
@@ -1268,7 +1276,7 @@ test_a_truncated_download_installs_nothing() {
 		assert_no_requests
 		assert_execution_count 0
 		assert_nothing_installed
-		[ ! -e "$t/home/.local" ] || fail "a truncated installer wrote to \$HOME (cut at line $cut)"
+		[[ ! -e $t/home/.local ]] || fail "a truncated installer wrote to \$HOME (cut at line $cut)"
 	done
 }
 
@@ -1278,9 +1286,9 @@ test_a_non_bash_shell_installs_nothing() {
 	local shells=() candidate found
 	for candidate in dash ash mksh ksh yash zsh; do
 		found=$(command -v "$candidate" 2>/dev/null || true)
-		[ -n "$found" ] && shells+=("$found")
+		[[ -n $found ]] && shells+=("$found")
 	done
-	if [ "${#shells[@]}" -eq 0 ]; then
+	if [[ ${#shells[@]} -eq 0 ]]; then
 		exit 77
 	fi
 
@@ -1293,7 +1301,7 @@ test_a_non_bash_shell_installs_nothing() {
 			>"$t/out" 2>"$t/err"
 		status=$?
 		set -e
-		[ "$status" -ne 0 ] || fail "$shell ran install.sh to completion; expected a refusal"
+		[[ $status -ne 0 ]] || fail "$shell ran install.sh to completion; expected a refusal"
 		assert_nothing_installed
 		assert_execution_count 0
 	done
@@ -1303,10 +1311,11 @@ test_a_non_bash_shell_installs_nothing() {
 
 main() {
 	local filter="" verbose=0 list=0
-	while [ "$#" -gt 0 ]; do
-		case "$1" in
+	while [[ $# -gt 0 ]]; do
+		local option=$1
+		case "$option" in
 		-f | --filter)
-			[ "$#" -ge 2 ] || die "missing value for $1"
+			[[ $# -ge 2 ]] || die "missing value for $option"
 			filter=$2
 			shift 2
 			;;
@@ -1331,14 +1340,14 @@ main() {
 			exit 0
 			;;
 		*)
-			printf 'install_test: unknown option: %s\n\n' "$1" >&2
+			printf 'install_test: unknown option: %s\n\n' "$option" >&2
 			usage >&2
 			exit 2
 			;;
 		esac
 	done
 
-	if [ "$list" -eq 1 ]; then
+	if [[ $list -eq 1 ]]; then
 		printf '%s\n' "${TESTS[@]}"
 		return 0
 	fi
@@ -1364,7 +1373,7 @@ main() {
 	local name passed=0 failed=0 skipped=0 selected=0 rc
 	local -a failures=() skips=()
 	for name in "${TESTS[@]}"; do
-		if [ -n "$filter" ] && [[ "$name" != *"$filter"* ]]; then
+		if [[ -n $filter && $name != *"$filter"* ]]; then
 			continue
 		fi
 		selected=$((selected + 1))
@@ -1400,19 +1409,19 @@ main() {
 			sed 's/^/      /' "$work/tests/$name.log"
 			;;
 		esac
-		if [ "$verbose" -eq 1 ] && [ "$rc" -eq 0 ] && [ -s "$work/tests/$name.log" ]; then
+		if [[ $verbose -eq 1 && $rc -eq 0 && -s $work/tests/$name.log ]]; then
 			sed 's/^/      /' "$work/tests/$name.log"
 		fi
 	done
 
 	info ""
-	if [ "$selected" -eq 0 ]; then
+	if [[ $selected -eq 0 ]]; then
 		die "no test matched '$filter'"
 	fi
-	if [ "$skipped" -gt 0 ]; then
+	if [[ $skipped -gt 0 ]]; then
 		info "skipped: ${skips[*]}"
 	fi
-	if [ "$failed" -eq 0 ]; then
+	if [[ $failed -eq 0 ]]; then
 		info "$(paint 32 PASS) $passed passed, $skipped skipped"
 		return 0
 	fi

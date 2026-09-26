@@ -64,9 +64,10 @@ fi
 # attributes, <link> hrefs, CSS url() and @import, and JS network calls.
 fail=0
 report() {
+	local message=$1 details=$2
 	fail=1
-	echo "error: $1" >&2
-	printf '%s\n' "$2" | sed 's/^/    /' >&2
+	echo "error: $message" >&2
+	printf '%s\n' "$details" | sed 's/^/    /' >&2
 }
 
 scan() {

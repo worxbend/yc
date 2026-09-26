@@ -59,29 +59,29 @@ go_version_override=${YC_RELEASE_GO_VERSION:-}
 skip_docker=0
 keep_runtime=0
 
-while [ "$#" -gt 0 ]; do
+while [[ $# -gt 0 ]]; do
 	case "$1" in
 	--help | -h)
 		usage
 		exit 0
 		;;
 	--out)
-		[ "$#" -ge 2 ] || { echo "missing value for --out" >&2; exit 2; }
+		[[ $# -ge 2 ]] || { echo "missing value for --out" >&2; exit 2; }
 		out_dir=$2
 		shift 2
 		;;
 	--version)
-		[ "$#" -ge 2 ] || { echo "missing value for --version" >&2; exit 2; }
+		[[ $# -ge 2 ]] || { echo "missing value for --version" >&2; exit 2; }
 		version=$2
 		shift 2
 		;;
 	--image)
-		[ "$#" -ge 2 ] || { echo "missing value for --image" >&2; exit 2; }
+		[[ $# -ge 2 ]] || { echo "missing value for --image" >&2; exit 2; }
 		image=$2
 		shift 2
 		;;
 	--targets)
-		[ "$#" -ge 2 ] || { echo "missing value for --targets" >&2; exit 2; }
+		[[ $# -ge 2 ]] || { echo "missing value for --targets" >&2; exit 2; }
 		targets=$2
 		shift 2
 		;;
@@ -145,6 +145,7 @@ purge_credentials() {
 		YC_* | GOOGLE_*)
 			unset "$name" || true
 			;;
+		*) ;;
 		esac
 	done
 }
@@ -153,11 +154,11 @@ purge_credentials
 cd "$repo_root"
 
 command -v go >/dev/null 2>&1 || die "go is required"
-[ -f go.mod ] || die "go.mod not found in $repo_root"
+[[ -f go.mod ]] || die "go.mod not found in $repo_root"
 
 runtime_dir=$(mktemp -d "${TMPDIR:-/tmp}/yc-release-runtime.XXXXXX")
 cleanup() {
-	if [ "$keep_runtime" -eq 1 ]; then
+	if [[ $keep_runtime -eq 1 ]]; then
 		printf '\nkept runtime directory: %s\n' "$runtime_dir"
 		return 0
 	fi
@@ -197,9 +198,9 @@ smoke() {
 
 # --- version ----------------------------------------------------------------
 
-if [ -z "$version" ]; then
+if [[ -z $version ]]; then
 	version=$(git -C "$repo_root" describe --tags --always --dirty 2>/dev/null || true)
-	[ -n "$version" ] || version="0.0.0-dev"
+	[[ -n $version ]] || version="0.0.0-dev"
 fi
 # A tag is written v0.1.0; the binary reports 0.1.0.
 version=${version#v}
@@ -208,6 +209,7 @@ case "$version" in
 *[[:space:]]* | "")
 	die "invalid version string: '$version'"
 	;;
+*) ;;
 esac
 
 # The build identity lives in internal/cli, not package main.
@@ -215,7 +217,7 @@ version_symbol="github.com/worxbend/yc/internal/cli.Version"
 ldflags="-s -w -X ${version_symbol}=${version}"
 
 toolchain=$(awk '$1 == "toolchain" { print $2; exit }' go.mod)
-[ -n "$toolchain" ] || die "go.mod must declare a toolchain directive for release builds"
+[[ -n $toolchain ]] || die "go.mod must declare a toolchain directive for release builds"
 go_version=${go_version_override:-"${toolchain#go}"}
 
 step "release dry run"
@@ -224,7 +226,7 @@ info "version:     $version"
 info "output:      $out_dir"
 info "targets:     $targets"
 info "go toolchain: $toolchain"
-info "docker:      $([ "$skip_docker" -eq 1 ] && echo skipped || echo "$image")"
+info "docker:      $([[ $skip_docker -eq 1 ]] && echo skipped || echo "$image")"
 
 # --- build ------------------------------------------------------------------
 
@@ -253,7 +255,7 @@ for target in $targets; do
 	env CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
 		go build -trimpath -ldflags "$ldflags" -o "$bin" ./cmd/yc
 
-	[ -s "$bin" ] || die "$name was not produced"
+	[[ -s $bin ]] || die "$name was not produced"
 
 	# CGO_ENABLED=0 must yield a static binary; a dynamic one would fail on a
 	# machine without the matching libc.
@@ -272,18 +274,18 @@ for target in $targets; do
 
 	# Verify by recomputing rather than trusting the file just written.
 	recomputed=$(sha256_of "$bin")
-	[ "$digest" = "$recomputed" ] || die "checksum for $name is not reproducible"
+	[[ $digest == "$recomputed" ]] || die "checksum for $name is not reproducible"
 	(cd "$out_dir" && sha256sum -c --quiet "$name.sha256") ||
 		die "sha256sum -c rejected $name.sha256"
 	info "sha256: $digest"
 
 	built+=("$name")
-	if [ "$goos" = "$native_goos" ] && [ "$goarch" = "$native_goarch" ]; then
+	if [[ $goos == "$native_goos" && $goarch == "$native_goarch" ]]; then
 		native_bin=$bin
 	fi
 done
 
-[ "${#built[@]}" -gt 0 ] || die "no targets were built"
+[[ ${#built[@]} -gt 0 ]] || die "no targets were built"
 
 # --- aggregate checksum file ------------------------------------------------
 
@@ -312,14 +314,14 @@ info "tampered artifact rejected as expected"
 
 # --- native binary smokes ---------------------------------------------------
 
-if [ -n "$native_bin" ]; then
+if [[ -n $native_bin ]]; then
 	step "smoking native binary $(basename -- "$native_bin")"
 
 	# The version ldflag is part of the release contract: a binary that reports
 	# "dev" in a release is a broken release.
 	reported=$(smoke "$native_bin" --version)
 	info "--version -> $reported"
-	[ "$reported" = "yc $version" ] ||
+	[[ $reported == "yc $version" ]] ||
 		die "expected 'yc $version' from --version, got '$reported'"
 
 	smoke "$native_bin" --help >/dev/null
@@ -341,7 +343,7 @@ if [ -n "$native_bin" ]; then
 	# which fires on any non-zero command even with errexit disabled.
 	live_status=0
 	smoke "$native_bin" chat --video dQw4w9WgXcQ >/dev/null 2>&1 || live_status=$?
-	[ "$live_status" -eq 2 ] ||
+	[[ $live_status -eq 2 ]] ||
 		die "credential-free live chat should exit 2, got $live_status"
 	info "credential-free live chat refused with exit 2"
 else
@@ -350,7 +352,7 @@ fi
 
 # --- docker -----------------------------------------------------------------
 
-if [ "$skip_docker" -eq 0 ]; then
+if [[ $skip_docker -eq 0 ]]; then
 	command -v docker >/dev/null 2>&1 ||
 		die "docker is required unless --skip-docker is passed"
 
@@ -367,7 +369,7 @@ if [ "$skip_docker" -eq 0 ]; then
 	# unstamped image makes a bug report from a container unattributable, and
 	# the failure is silent unless it is asserted.
 	docker_version=$(docker run --rm "$image" --version)
-	[ "$docker_version" = "yc $version" ] ||
+	[[ $docker_version == "yc $version" ]] ||
 		die "docker image reports '$docker_version', want 'yc $version'"
 	info "--version ok ($docker_version)"
 	docker run --rm "$image" doctor >/dev/null
